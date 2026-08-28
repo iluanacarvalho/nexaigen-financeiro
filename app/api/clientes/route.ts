@@ -19,7 +19,7 @@ const ClienteSchema = z.object({
 });
 
 export async function GET() {
-  const supabase = supabaseServer();
+  const supabase = await supabaseServer();
   const { data, error } = await supabase.from("cliente_prefeitura").select("*").order("nome");
   if (error) return NextResponse.json({ erro: error.message }, { status: 500 });
   return NextResponse.json({ clientes: data });
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   const parsed = ClienteSchema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ erro: "Dados inválidos", detalhes: parsed.error.flatten() }, { status: 400 });
 
-  const supabase = supabaseServer();
+  const supabase = await supabaseServer();
   const { data, error } = await supabase.from("cliente_prefeitura").insert(parsed.data).select("id").single();
   if (error) return NextResponse.json({ erro: error.message }, { status: 500 });
   return NextResponse.json({ id: data.id });

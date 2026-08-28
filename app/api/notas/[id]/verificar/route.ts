@@ -15,15 +15,18 @@ const VerificacaoSchema = z.object({
   verificado_por: z.string().uuid().optional()
 });
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+// UPGRADE Next.js 16: `params` de route handlers dinâmicos (aqui, [id]) virou
+// Promise a partir do Next 15 — precisa dar await antes de usar.
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const parsed = VerificacaoSchema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ erro: "Dados inválidos", detalhes: parsed.error.flatten() }, { status: 400 });
 
-  const supabase = supabaseServer();
+  const { id } = await params;
+  const supabase = await supabaseServer();
   const { resultado, data_evento, observacao, verificado_por } = parsed.data;
 
   await supabase.from("evento_verificacao").insert({
-    nota_fiscal_id: params.id,
+    nota_fiscal_id: id,
     resultado,
     observacao,
     verificado_por: verificado_por ?? null
@@ -33,11 +36,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     await supabase
       .from("nota_fiscal")
       .update({ data_atesto: data_evento ?? new Date().toISOString().slice(0, 10), status: "atestada" })
-      .eq("id", params.id);
+      .eq("id", id);
     await supabase
       .from("alerta_cobranca")
       .update({ status: "resolvido", resolvido_em: new Date().toISOString() })
-      .eq("nota_fiscal_id", params.id)
+      .eq("nota_fiscal_id", id)
       .eq("tipo", "sem_atesto_prolongado")
       .neq("status", "resolvido");
   }
@@ -46,11 +49,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     await supabase
       .from("nota_fiscal")
       .update({ data_pagamento: data_evento ?? new Date().toISOString().slice(0, 10), status: "paga" })
-      .eq("id", params.id);
+      .eq("id", id);
     await supabase
       .from("alerta_cobranca")
       .update({ status: "resolvido", resolvido_em: new Date().toISOString() })
-      .eq("nota_fiscal_id", params.id)
+      .eq("nota_fiscal_id", id)
       .neq("status", "resolvido");
   }
 

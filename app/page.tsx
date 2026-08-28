@@ -1,7 +1,7 @@
 import { supabaseServer } from "@/lib/supabase/server";
 
 export default async function Dashboard() {
-  const supabase = supabaseServer();
+  const supabase = await supabaseServer();
   const { data: notas } = await supabase.from("nota_fiscal").select("status, valor");
   const { data: alertas } = await supabase.from("alerta_cobranca").select("tipo").neq("status", "resolvido");
 

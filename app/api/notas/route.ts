@@ -12,7 +12,7 @@ const NotaSchema = z.object({
 
 export async function GET(req: NextRequest) {
   const status = req.nextUrl.searchParams.get("status");
-  const supabase = supabaseServer();
+  const supabase = await supabaseServer();
   let query = supabase
     .from("nota_fiscal")
     .select("*, cliente:cliente_id ( nome, uf, sistema_portal, portal_url )")
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   const parsed = NotaSchema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ erro: "Dados inválidos", detalhes: parsed.error.flatten() }, { status: 400 });
 
-  const supabase = supabaseServer();
+  const supabase = await supabaseServer();
   const { data, error } = await supabase
     .from("nota_fiscal")
     .insert({ ...parsed.data, status: "aguardando_atesto" })
