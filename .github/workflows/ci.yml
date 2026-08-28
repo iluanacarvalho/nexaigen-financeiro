@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  typecheck-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Testes unitários
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+        env:
+          # Valores fictícios — suficientes para o build (rotas são todas
+          # dinâmicas, nenhuma faz chamada real ao Supabase em build-time).
+          NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder-anon-key"
+          SUPABASE_SERVICE_ROLE_KEY: "placeholder-service-role-key"
+          NEXT_PUBLIC_SITE_URL: "http://localhost:3001"
+          CRON_SECRET: "placeholder-secret-apenas-para-ci"
+          RESEND_API_KEY: "placeholder-apenas-para-ci"
+          COBRANCA_EMAIL_DESTINO: "cobranca@nexaigen.com.br"
