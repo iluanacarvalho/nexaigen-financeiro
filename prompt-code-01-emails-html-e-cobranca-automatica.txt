@@ -1,0 +1,109 @@
+CONTEXTO
+
+Luana pediu e-mails "bem lindos" (HTML com identidade visual) e confirmou que quer o
+alerta de cobrança para a prefeitura devedora SAINDO AUTOMÁTICO (não é só um template
+manual) — decisão dela, explícita, então implemente o disparo automático mesmo, mas leia
+a Tarefa 2 com atenção: o TOM do texto pro cliente é a parte mais sensível deste pedido
+(é uma prefeitura, cliente institucional da própria Nexaigen — nunca pode soar agressivo
+ou fazer ameaça/afirmação jurídica automática).
+
+Hoje (lib/notificacao-interna.ts) só existe alerta INTERNO — pro time da própria
+Nexaigen (COBRANCA_EMAIL_DESTINO, agora financeiro@nexaigen.com.br) — em texto puro. Não
+existe NENHUM e-mail disparado para a prefeitura cliente. Isso é o que este prompt cria
+do zero, além de vestir o alerta interno existente.
+
+Cor de marca: siga a mesma paleta usada no nexaigen-educa — navy #1F3864 (primário) e
+teal #2E75B6 (destaque) — mesma empresa, mesma identidade, dois produtos.
+
+TAREFA 1 — Módulo de template de e-mail compartilhado
+
+Criar lib/emailTemplate.ts (mesmo formato do que foi pedido no prompt irmão do
+nexaigen-educa — código igual, só o produto muda) — casca HTML com tabela e CSS inline
+(obrigatório pra renderizar certo em cliente de e-mail, não é escolha estética):
+
+  export function montarEmailHtml(opts: {
+    produto: string; // "NEXAIGEN" aqui (uso interno da empresa, não precisa dizer "Financeiro" pro cliente externo)
+    corpoHtml: string;
+    rodape?: string;
+  }): string
+
+Reaproveite exatamente a estrutura de tabela HTML com header navy (#1F3864), barra teal
+(#2E75B6) de 4px, corpo branco, rodapé cinza claro — mesmo código do prompt do Educa,
+copie a estrutura pra manter as duas plataformas com a MESMA identidade visual.
+
+TAREFA 2 — Vestir o alerta interno existente
+
+lib/notificacao-interna.ts já envia de verdade pro time interno — trocar o corpo de texto
+puro por HTML via montarEmailHtml(), mantendo a mesma informação (tipo de alerta, cliente,
+NF, valor, dias de atraso) só com layout decente (tabela simples com os campos, não
+precisa ser elaborado — é uso interno).
+
+TAREFA 3 — NOVO: e-mail automático para a prefeitura devedora
+
+Criar lib/notificacaoCliente.ts com uma função que dispara e-mail PARA O CONTATO DA
+PREFEITURA (não pro time interno da Nexaigen) quando o job diário de verificação de
+prazos (app/api/cron/verificar-prazos) processa uma nota em um dos 4 estágios. Precisa de
+um campo de e-mail de contato por cliente — confira se `cliente_prefeitura` já tem uma
+coluna de e-mail de contato (schema em supabase/schema.sql); se não tiver, adicione
+(migração), é pré-requisito óbvio pra mandar e-mail pra alguém.
+
+MUITO IMPORTANTE — tom do texto varia por estágio, do mais leve ao mais sério, e em
+NENHUM estágio deve soar como ameaça, cobrança agressiva ou conter qualquer afirmação de
+natureza jurídica (nada de "vamos protestar", "vamos acionar", "medidas legais" etc.) —
+é uma prefeitura, cliente institucional, e uma frase automática desse tipo pode gerar
+problema desproporcional ao objetivo (que é só lembrar/pedir uma ação). Sugestão de
+copy por estágio (ajuste a redação se achar necessário, mas mantenha o tom described):
+
+  sem_atesto_prolongado (lembrete de atesto pendente, tom neutro/prestativo):
+  Assunto: "Nota fiscal aguardando atesto — {clienteNome}"
+  Corpo: "Olá! A nota fiscal nº {numeroNf}, no valor de R$ {valor}, está aguardando o
+  atesto de recebimento há alguns dias. Assim que possível, pedimos a gentileza de
+  verificar e confirmar o atesto junto ao setor responsável, para que o pagamento possa
+  seguir o fluxo normal. Qualquer dúvida, estamos à disposição."
+
+  proximo_vencimento (aviso amigável, positivo, NUNCA soa como cobrança):
+  Assunto: "Lembrete: vencimento próximo — NF {numeroNf}"
+  Corpo: "Olá! Passando para lembrar que a nota fiscal nº {numeroNf}, no valor de
+  R$ {valor}, vence em breve, no dia {dataVencimento}. Qualquer dúvida sobre o processo,
+  estamos à disposição."
+
+  vencido (lembrete firme, mas cordial):
+  Assunto: "Nota fiscal vencida — NF {numeroNf}"
+  Corpo: "Olá! A nota fiscal nº {numeroNf}, no valor de R$ {valor}, venceu em
+  {dataVencimento} e consta em aberto até o momento. Pedimos a gentileza de verificar a
+  situação do pagamento junto ao setor financeiro. Qualquer dúvida ou pendência de nossa
+  parte, estamos à disposição para esclarecer."
+
+  atraso_60_dias (mais sério, ainda sem ameaça, convida ao contato direto):
+  Assunto: "Nota fiscal em atraso há mais de 60 dias — NF {numeroNf}"
+  Corpo: "Olá! A nota fiscal nº {numeroNf}, no valor de R$ {valor}, está em aberto há
+  mais de 60 dias, com vencimento em {dataVencimento}. Gostaríamos de entender se há
+  alguma pendência de nossa parte ou do processo interno que esteja impedindo o
+  pagamento, e ficamos à disposição para conversar e resolver o quanto antes."
+
+- Todo e-mail enviado ao cliente deve ir também em cópia (BCC, nunca CC visível pro
+  cliente) para o e-mail interno de cobrança (COBRANCA_EMAIL_DESTINO) — a Luana precisa
+  ter visibilidade total do que está sendo mandado automaticamente em nome da empresa,
+  sem exceção.
+- Mesmo contrato de robustez das outras funções de e-mail do projeto: nunca lança, loga
+  aviso em qualquer falha, nunca expõe a chave.
+- Decida (e documente a decisão) se o e-mail pro cliente dispara TODA VEZ que o job
+  diário processa aquele alerta (ou seja, todo dia enquanto o estado persistir) ou só na
+  TRANSIÇÃO de estado (vira "vencido" uma vez, manda uma vez) — mandar todo dia o mesmo
+  aviso pra prefeitura tende a ser ruim pra relação com o cliente; a segunda opção
+  (só na transição) é a recomendação, mas registre a decisão e o porquê no código/README.
+
+VERIFICAÇÃO ESPERADA
+
+- npx tsc --noEmit / npx eslint .
+- npm run test — cubra lib/emailTemplate.ts, o novo lib/notificacaoCliente.ts (todos os 4
+  estágios, incluindo o BCC pro time interno) e a lógica de "só dispara na transição de
+  estado" com casos de borda (job rodando duas vezes seguidas no mesmo dia não deve
+  duplicar envio).
+- Rode a suíte de integração completa do projeto.
+
+RISCOS/PENDÊNCIAS — reporte no final, como sempre. Pontos que eu já identifico: (1)
+confirmar/adicionar coluna de e-mail de contato em cliente_prefeitura; (2) a lógica de
+"só na transição" precisa de algum campo de controle (ex.: `ultimo_alerta_cliente_enviado`
+por nota) — decida o desenho mínimo necessário, sem exagerar em complexidade; (3) nenhum
+e-mail de teste real será enviado nesta verificação (mock do Resend é suficiente).
