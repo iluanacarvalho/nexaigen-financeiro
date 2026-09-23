@@ -8,12 +8,29 @@
 // quando a env var CRON_SECRET está configurada no projeto Vercel — ver
 // https://vercel.com/docs/cron-jobs/manage-cron-jobs#securing-cron-jobs
 // POST fica disponível para disparo manual/teste com o mesmo header.
+//
+// E-MAIL AO CLIENTE (rodada de "e-mails bem lindos e cobrança automática"):
+// notificarClientePrefeitura (lib/notificacaoCliente.ts) é chamada pros 4
+// tipos de alerta, sempre que `alertaData` vier truthy — ou seja, só
+// quando o upsert em alerta_cobranca abaixo REALMENTE inseriu uma linha
+// nova. Isso é o mecanismo INTEIRO da regra "só na transição de estado,
+// nunca todo dia enquanto o estado persistir" (decisão de produto da
+// Luana) — reaproveitando o índice único parcial `uq_alerta_ativo`
+// (nota_fiscal_id+tipo, where status <> 'resolvido') que já existia pra
+// dar idempotência ao alerta em si. Rodar o job duas vezes no mesmo dia
+// (ou todo dia seguinte, enquanto o tipo de alerta não mudar) faz o
+// upsert ignorar a segunda tentativa silenciosamente (`ignoreDuplicates:
+// true`), então `alertaData` vem null e nenhum e-mail novo é disparado —
+// nenhuma coluna de controle extra (`ultimo_alerta_cliente_enviado` ou
+// similar) foi necessária. Ver o comentário completo em
+// lib/notificacaoCliente.ts.
 
 import { timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { diagnosticarNota } from "@/lib/prazos";
 import { notificarTimeDeCobranca } from "@/lib/notificacao-interna";
+import { notificarClientePrefeitura } from "@/lib/notificacaoCliente";
 
 export async function GET(req: NextRequest) {
   return executar(req);
@@ -50,7 +67,9 @@ async function executar(req: NextRequest) {
 
   const { data: notas, error } = await supabase
     .from("nota_fiscal")
-    .select("id, cliente_id, numero_nf, valor, data_emissao, data_atesto, data_limite_pagamento, status, cliente:cliente_id ( nome )")
+    .select(
+      "id, cliente_id, numero_nf, valor, data_emissao, data_atesto, data_limite_pagamento, status, cliente:cliente_id ( nome, contato_email )"
+    )
     .not("status", "in", "(paga,cancelada)");
 
   if (error) return NextResponse.json({ erro: error.message }, { status: 500 });
@@ -95,6 +114,17 @@ async function executar(req: NextRequest) {
             diasDeAtraso: diagnostico.diasDeAtraso
           });
         }
+        // Os 4 tipos, sempre — ver comentário de topo do arquivo sobre
+        // por que `alertaData` truthy já é a própria checagem de
+        // "transição de estado" (nenhuma coluna de controle extra).
+        await notificarClientePrefeitura({
+          tipo: diagnostico.deveGerarAlerta,
+          clienteNome: (nota.cliente as any)?.nome ?? "—",
+          contatoEmail: (nota.cliente as any)?.contato_email ?? null,
+          numeroNf: nota.numero_nf,
+          valor: nota.valor,
+          dataVencimento: nota.data_limite_pagamento
+        });
       }
     }
   }
