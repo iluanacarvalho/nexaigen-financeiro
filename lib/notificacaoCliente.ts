@@ -103,6 +103,15 @@ function formatarDataBr(iso: string): string {
   return `${dia}/${mes}/${ano}`;
 }
 
+// E-mail de contato citado no corpo dos 4 estágios (pedido explícito da
+// Luana, revisando o texto) — dá um canal concreto pra prefeitura
+// responder, em vez de um "estamos à disposição" vago sem endereço
+// nenhum. Mesmo endereço já usado como COBRANCA_EMAIL_DESTINO (BCC) por
+// padrão — mas como uma STRING fixa aqui, não lida de env var: mudar o
+// e-mail de BCC (ex.: uma conta de monitoramento) não deve mudar
+// silenciosamente o e-mail que o CLIENTE vê e usa pra responder.
+const EMAIL_CONTATO = "financeiro@nexaigen.com.br";
+
 interface ConteudoEstagio {
   assunto: string;
   corpoHtml: string;
@@ -127,7 +136,7 @@ function montarConteudo(dados: DadosNotificacaoCliente): ConteudoEstagio {
         corpoHtml: `
           <p>Olá!</p>
           <p>A nota fiscal nº <strong>${numeroNf}</strong>, no valor de R$ ${valor}, está aguardando o atesto de recebimento há alguns dias. Assim que possível, pedimos a gentileza de verificar e confirmar o atesto junto ao setor responsável, para que o pagamento possa seguir o fluxo normal.</p>
-          <p>Qualquer dúvida, estamos à disposição.</p>
+          <p>Qualquer dúvida, estamos à disposição em <a href="mailto:${EMAIL_CONTATO}">${EMAIL_CONTATO}</a>.</p>
         `
       };
     case "proximo_vencimento":
@@ -136,7 +145,7 @@ function montarConteudo(dados: DadosNotificacaoCliente): ConteudoEstagio {
         corpoHtml: `
           <p>Olá!</p>
           <p>Passando para lembrar que a nota fiscal nº <strong>${numeroNf}</strong>, no valor de R$ ${valor}, vence em breve, no dia <strong>${dataVencimento}</strong>.</p>
-          <p>Qualquer dúvida sobre o processo, estamos à disposição.</p>
+          <p>Qualquer dúvida sobre o processo, estamos à disposição em <a href="mailto:${EMAIL_CONTATO}">${EMAIL_CONTATO}</a>.</p>
         `
       };
     case "vencido":
@@ -145,7 +154,7 @@ function montarConteudo(dados: DadosNotificacaoCliente): ConteudoEstagio {
         corpoHtml: `
           <p>Olá!</p>
           <p>A nota fiscal nº <strong>${numeroNf}</strong>, no valor de R$ ${valor}, venceu em <strong>${dataVencimento}</strong> e consta em aberto até o momento. Pedimos a gentileza de verificar a situação do pagamento junto ao setor financeiro.</p>
-          <p>Qualquer dúvida ou pendência de nossa parte, estamos à disposição para esclarecer.</p>
+          <p>Qualquer dúvida ou pendência de nossa parte, estamos à disposição para esclarecer em <a href="mailto:${EMAIL_CONTATO}">${EMAIL_CONTATO}</a>.</p>
         `
       };
     case "atraso_60_dias":
@@ -153,7 +162,7 @@ function montarConteudo(dados: DadosNotificacaoCliente): ConteudoEstagio {
         assunto: `Nota fiscal em atraso há mais de 60 dias — NF ${numeroNf}`,
         corpoHtml: `
           <p>Olá!</p>
-          <p>A nota fiscal nº <strong>${numeroNf}</strong>, no valor de R$ ${valor}, está em aberto há mais de 60 dias, com vencimento em <strong>${dataVencimento}</strong>. Gostaríamos de entender se há alguma pendência de nossa parte ou do processo interno que esteja impedindo o pagamento, e ficamos à disposição para conversar e resolver o quanto antes.</p>
+          <p>A nota fiscal nº <strong>${numeroNf}</strong>, no valor de R$ ${valor}, está em aberto há mais de 60 dias, com vencimento em <strong>${dataVencimento}</strong>. Gostaríamos de entender se há alguma pendência de nossa parte ou do processo interno que esteja impedindo o pagamento — ficamos à disposição para conversar e resolver o quanto antes em <a href="mailto:${EMAIL_CONTATO}">${EMAIL_CONTATO}</a>.</p>
         `
       };
   }
@@ -182,7 +191,11 @@ export async function notificarClientePrefeitura(dados: DadosNotificacaoCliente)
   }
 
   const conteudo = montarConteudo(dados);
-  const html = montarEmailHtml({ produto: "NEXAIGEN", corpoHtml: conteudo.corpoHtml });
+  // rodape (pedido explícito da Luana): TODO e-mail de alerta do
+  // financeiro — interno ou pro cliente — leva o e-mail de contato no
+  // rodapé, não só na frase de fechamento do corpo (ver montarConteudo
+  // acima, que já cita EMAIL_CONTATO no texto pros 4 estágios).
+  const html = montarEmailHtml({ produto: "NEXAIGEN", corpoHtml: conteudo.corpoHtml, rodape: EMAIL_CONTATO });
 
   try {
     const resend = new Resend(apiKey);

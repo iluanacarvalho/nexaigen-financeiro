@@ -1,0 +1,117 @@
+CONTEXTO — ACHADO CRÍTICO DE SEGURANÇA, PRIORIDADE MÁXIMA
+
+Investigando por que a Luana nunca conseguiu acessar esta plataforma,
+descobrimos que ELA NÃO TEM LOGIN NENHUM HOJE. Não existe tela de entrada,
+não existe verificação de sessão em NENHUMA rota — /clientes, /alertas,
+/checagem, o dashboard, e todas as rotas de API (/api/clientes, /api/notas,
+/api/alertas) estão completamente abertas pra qualquer pessoa com a URL, sem
+senha nenhuma. Existe uma tabela `usuario_interno` no schema (supabase/
+schema.sql) pensada pra isso, mas ela NUNCA é lida/checada em lugar nenhum
+do código — é uma peça que ficou pela metade. Isto precisa ser corrigido
+antes de qualquer uso real desta plataforma com dado de cliente (valores de
+nota fiscal, contatos de prefeitura).
+
+Este projeto é 100% interno da NEXAIGEN — não tem "papel de cliente" nenhum
+(diferente do nexaigen-educa, que tem cidadão/servidor/gestor/admin). Só tem
+UM tipo de usuário: equipe da própria NEXAIGEN. Sem hierarquia — qualquer
+pessoa da equipe logada pode cadastrar outra.
+
+TAREFA 1 — Tabela e sessão (substituindo `usuario_interno`)
+
+Migração nova: `equipe_nexaigen` (id uuid pk, nome, email unique not null,
+senha_hash not null, senha_temporaria boolean default true, ativo boolean
+default true, criado_em, atualizado_em) e `sessao` (id, equipe_id fk,
+refresh_token_hash, expira_em, criado_em) — refresh token de alta entropia,
+hash sha256, nunca o token puro. Pode DROPAR `usuario_interno` (nunca foi
+usada de verdade em lugar nenhum do app — confirme com uma busca no repo
+antes de remover, documentando o achado) ou deixar como está e só não usar
+mais — decisão sua, documente.
+
+TAREFA 2 — lib/auth.ts (novo, não existe hoje)
+
+Mesmo contrato de robustez já usado no projeto irmão nexaigen-educa (leia o
+arquivo lib/auth.ts de lá como referência de padrão, mas este projeto
+NÃO tem multi-tenant — sem municipio_id, sem papel, é bem mais simples):
+bcrypt custo 12 pra senha, JWT HS256 (`jose`) com 15min de expiração pro
+access token, refresh token de 7 dias com hash sha256 gravado em `sessao`,
+cookies httpOnly (`access_token`/`refresh_token`, secure em produção,
+sameSite lax). Claims do JWT: `sub` (equipe id), `nome`,
+`precisa_trocar_senha`.
+
+Funções esperadas (nomes sugeridos, ajuste se achar melhor nome, mas mantenha
+o comportamento): `hashSenha`, `verificarSenha`, `gerarAccessToken`,
+`gerarRefreshToken`, `hashRefreshToken`, `obterContextoAutenticado` (lê o
+cookie, valida o JWT, devolve `{ equipeId, nome, precisaTrocarSenha } | null`
+— nunca lança, `null` em qualquer falha de validação), `exigirSessao` (helper
+que devolve uma `NextResponse` de 401 pronta se não houver sessão válida,
+mesmo padrão de `exigirPapel` do educa, só sem parâmetro de papel).
+
+TAREFA 3 — Proteger TODAS as rotas existentes
+
+Toda rota de API hoje aberta (`/api/clientes`, `/api/notas`, `/api/notas/[id]/
+verificar`, `/api/alertas`) passa a chamar `exigirSessao(...)` logo no início
+— mesmo padrão de early-return que o educa usa. EXCEÇÃO: `/api/cron/
+verificar-prazos` continua protegida SÓ por CRON_SECRET (é chamada por um
+agendador externo, não por uma pessoa logada — não mexer nessa proteção).
+
+Toda página existente (`/clientes`, `/alertas`, `/checagem`, a página raiz
+`/` se ela mostrar dado) precisa checar sessão do lado do servidor (Server
+Component lendo o cookie via `obterContextoAutenticado`, redirecionando pra
+`/login` se não houver sessão) — mesmo padrão de app/admin/(painel)/layout.tsx
+do educa.
+
+TAREFA 4 — Rotas de autenticação
+
+- POST /api/auth/login — email/senha, 401 genérico se e-mail não existe OU
+  senha errada (nunca revela qual dos dois), 403 se `ativo=false`.
+- POST /api/auth/logout — revoga a sessão.
+- POST /api/auth/trocar-senha — obrigatório no primeiro acesso.
+- GET /api/equipe — lista colegas (nome, email, ativo, criado_em — nunca
+  senha_hash). Exige sessão.
+- POST /api/equipe — cadastra colega novo (nome + email), gera senha
+  temporária, devolve na resposta uma única vez. Exige sessão (qualquer
+  colega logado pode cadastrar outro).
+
+TAREFA 5 — Telas
+
+- /login — formulário e-mail/senha. Pode reaproveitar a mesma identidade
+  visual (navy/teal) já usada nos e-mails (lib/emailTemplate.ts) pra manter
+  consistência, mas é uma tela nova, sem componente existente pra copiar
+  neste projeto — capriche num layout simples e limpo, não precisa ser
+  elaborado.
+- /equipe — lista de colegas + formulário pra cadastrar um novo, mostra a
+  senha temporária uma vez após cadastrar.
+- Trocar senha obrigatória no primeiro acesso (`senha_temporaria=true`)
+  redireciona pra uma tela `/trocar-senha` antes de liberar o resto do
+  sistema — mesmo padrão do educa.
+
+TAREFA 6 — Bootstrap da primeira conta
+
+scripts/bootstrap-equipe-nexaigen.ts (usa "pg" direto, lê DATABASE_URL, roda
+uma vez manualmente via `NOME=... EMAIL=... npx tsx --env-file-if-exists=.env
+--env-file-if-exists=.env.local scripts/bootstrap-equipe-nexaigen.ts`),
+recusa se o e-mail já existir, gera senha temporária e imprime no console.
+Documente no cabeçalho que é rodado UMA VEZ pela Luana — depois disso, toda
+conta nova vem da tela /equipe.
+
+VERIFICAÇÃO ESPERADA
+
+- npx tsc --noEmit limpo (não existe eslint funcional neste projeto — usar
+  `next build` como substituto de lint/typecheck, mesmo achado já documentado
+  no CLAUDE.md).
+- npm run test — cubra lib/auth.ts (hash/verificação de senha, geração de
+  token, exigirSessao com sessão válida/inválida/ausente/expirada).
+- Teste cobrindo que TODA rota de API antes aberta agora devolve 401 sem
+  sessão (isto é o ponto mais importante desta rodada — não deixe passar sem
+  esse teste).
+- `next build` compila sem erro.
+- Confirme manualmente (documente no relatório) que /api/cron/
+  verificar-prazos continua funcionando só com CRON_SECRET, sem exigir
+  sessão de equipe (o agendador externo não tem como logar).
+
+RISCOS/PENDÊNCIAS — reporte no final, como sempre. Pontos que já identifico:
+(1) confirmar que `usuario_interno`/Supabase Auth realmente nunca foi usada
+em nenhuma rota antes de decidir removê-la; (2) nenhuma migração de conta
+existente é necessária (não havia nenhuma conta real usável antes desta
+rodada); (3) depois de aplicado, a Luana vai rodar o script de bootstrap uma
+vez pra criar a primeira conta dela.

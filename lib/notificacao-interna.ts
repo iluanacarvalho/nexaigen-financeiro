@@ -35,6 +35,14 @@ function escaparHtml(texto: string): string {
   return texto.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
+// Mesmo endereço citado no rodapé dos e-mails ao cliente
+// (lib/notificacaoCliente.ts#EMAIL_CONTATO) — pedido explícito da Luana:
+// TODO e-mail de alerta do financeiro leva esse contato no rodapé, não só
+// os que vão pro cliente externo. Duplicado aqui (não importado do outro
+// arquivo) de propósito: são dois módulos independentes, mesmo padrão já
+// usado por escaparHtml acima.
+const EMAIL_CONTATO = "financeiro@nexaigen.com.br";
+
 export interface AlertaParaNotificar {
   tipo: string;
   clienteNome: string;
@@ -94,7 +102,7 @@ export async function notificarTimeDeCobranca(alerta: AlertaParaNotificar): Prom
       </tr>
     </table>
   `;
-  const html = montarEmailHtml({ produto: "NEXAIGEN", corpoHtml });
+  const html = montarEmailHtml({ produto: "NEXAIGEN", corpoHtml, rodape: EMAIL_CONTATO });
 
   try {
     const resend = new Resend(apiKey);

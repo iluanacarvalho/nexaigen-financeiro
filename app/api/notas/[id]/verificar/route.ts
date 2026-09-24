@@ -3,33 +3,48 @@
 // aqui. Isso alimenta tanto o histórico (evento_verificacao) quanto o
 // estado real da nota (data_atesto / data_pagamento), e resolve alertas
 // que não fazem mais sentido.
+//
+// Rodada de correção de achado crítico de segurança — mesmo raciocínio
+// de app/api/clientes/route.ts: exigirSessao(), supabaseAdmin(). Achado
+// ADICIONAL nesta rota especificamente: `verificado_por` vinha do CORPO
+// da requisição (`z.string().uuid().optional()`, nunca validado contra
+// quem de fato chamou) — qualquer um podia dizer que foi outra pessoa
+// que verificou. Agora vem SEMPRE de contexto.equipeId (a própria sessão
+// autenticada), nunca mais aceito no corpo — mesmo princípio já aplicado
+// em toda rota administrativa do projeto irmão nexaigen-educa (nunca
+// confiar em identidade vinda do cliente quando existe uma sessão real
+// pra derivar isso).
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { supabaseServer } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/server";
+import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
 
 const VerificacaoSchema = z.object({
   resultado: z.enum(["sem_atesto_ainda", "atestada", "paga", "erro_acesso_portal"]),
   data_evento: z.string().optional(), // data em que o atesto/pagamento realmente ocorreu, se souber
-  observacao: z.string().optional(),
-  verificado_por: z.string().uuid().optional()
+  observacao: z.string().optional()
 });
 
 // UPGRADE Next.js 16: `params` de route handlers dinâmicos (aqui, [id]) virou
 // Promise a partir do Next 15 — precisa dar await antes de usar.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const contexto = await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value);
+  const negado = exigirSessao(contexto);
+  if (negado) return negado;
+
   const parsed = VerificacaoSchema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ erro: "Dados inválidos", detalhes: parsed.error.flatten() }, { status: 400 });
 
   const { id } = await params;
-  const supabase = await supabaseServer();
-  const { resultado, data_evento, observacao, verificado_por } = parsed.data;
+  const supabase = supabaseAdmin();
+  const { resultado, data_evento, observacao } = parsed.data;
 
   await supabase.from("evento_verificacao").insert({
     nota_fiscal_id: id,
     resultado,
     observacao,
-    verificado_por: verificado_por ?? null
+    verificado_por: contexto!.equipeId
   });
 
   if (resultado === "atestada") {

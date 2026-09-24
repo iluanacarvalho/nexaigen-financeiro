@@ -6,21 +6,15 @@ export const metadata: Metadata = {
   description: "Controle interno de contratos, notas fiscais e cobrança"
 };
 
+// Rodada de correção de achado crítico de segurança: a nav (com links pra
+// todo dado real) morava aqui, então aparecia até em /login — movida pra
+// app/NavBar.tsx, renderizada só dentro do shell protegido
+// (app/(protegido)/layout.tsx). Este layout raiz fica só com o
+// <html>/<body>, comum a TODAS as páginas (protegidas ou não).
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR">
-      <body>
-        <nav className="border-b bg-white px-6 py-3">
-          <div className="mx-auto flex max-w-5xl items-center gap-6 text-sm">
-            <span className="font-bold text-navy">NEXAIGEN Financeiro</span>
-            <a href="/" className="text-slate-600 hover:text-navy">Dashboard</a>
-            <a href="/checagem" className="text-slate-600 hover:text-navy">Fila de Checagem</a>
-            <a href="/clientes" className="text-slate-600 hover:text-navy">Clientes</a>
-            <a href="/alertas" className="text-slate-600 hover:text-navy">Alertas de Cobrança</a>
-          </div>
-        </nav>
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

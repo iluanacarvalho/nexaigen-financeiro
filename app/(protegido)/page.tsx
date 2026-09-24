@@ -1,7 +1,13 @@
-import { supabaseServer } from "@/lib/supabase/server";
+// Rodada de correção de achado crítico de segurança — supabaseAdmin()
+// no lugar de supabaseServer() (RLS nunca autoriza um login que não
+// passa pelo Supabase Auth; ver comentário completo em
+// app/api/clientes/route.ts). A checagem de sessão em si já roda em
+// app/(protegido)/layout.tsx, antes desta página renderizar.
+
+import { supabaseAdmin } from "@/lib/supabase/server";
 
 export default async function Dashboard() {
-  const supabase = await supabaseServer();
+  const supabase = supabaseAdmin();
   const { data: notas } = await supabase.from("nota_fiscal").select("status, valor");
   const { data: alertas } = await supabase.from("alerta_cobranca").select("tipo").neq("status", "resolvido");
 

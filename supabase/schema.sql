@@ -10,14 +10,68 @@
 create extension if not exists "pgcrypto";
 
 -- ---------------------------------------------------------------------
--- 1. USUÁRIO INTERNO (equipe da NEXAIGEN)
+-- 1. EQUIPE NEXAIGEN (login próprio) — substitui `usuario_interno`
 -- ---------------------------------------------------------------------
-create table if not exists usuario_interno (
-  id uuid primary key references auth.users (id) on delete cascade,
+-- ACHADO CRÍTICO DE SEGURANÇA (rodada de correção): `usuario_interno` era
+-- pensada pra guardar quem é da equipe, mas NUNCA foi lida/checada em
+-- lugar nenhum do código da aplicação — confirmado por busca no repo
+-- inteiro (grep por "usuario_interno" em app/**, lib/** antes desta
+-- rodada: zero ocorrências fora deste próprio arquivo). Toda rota de API
+-- (/api/clientes, /api/notas, /api/alertas) e toda página estava
+-- COMPLETAMENTE aberta, sem verificação de sessão nenhuma — o mecanismo
+-- de auth planejado (Supabase Auth + `usuario_interno` + RLS via
+-- `auth.uid()`) nunca foi de fato conectado a um fluxo de login real
+-- (não existia tela de login nem chamada a `supabase.auth.signIn*` em
+-- lugar nenhum do projeto).
+--
+-- Substituído por login PRÓPRIO (bcrypt + JWT via `lib/auth.ts`, mesmo
+-- espírito do login de equipe do projeto irmão nexaigen-educa, mas SEM
+-- multi-tenant — este projeto só tem um tipo de usuário, sem papel, sem
+-- hierarquia: qualquer pessoa da equipe logada pode cadastrar outra).
+-- `equipe_nexaigen` guarda a própria credencial (`senha_hash`, nunca em
+-- texto puro) — diferente de `usuario_interno`, que dependia inteiramente
+-- do Supabase Auth (nenhuma senha própria, só o vínculo com `auth.users`)
+-- e por isso nunca funcionou sozinha.
+create table if not exists equipe_nexaigen (
+  id uuid primary key default gen_random_uuid(),
   nome text not null,
-  papel text not null check (papel in ('operacao', 'cobranca', 'admin')),
-  created_at timestamptz not null default now()
+  email text not null constraint equipe_nexaigen_email_unico unique,
+  senha_hash text not null,
+  -- true por padrão: toda conta nasce de POST /api/equipe ou do bootstrap
+  -- (scripts/bootstrap-equipe-nexaigen.ts) com senha GERADA, nunca
+  -- escolhida pela própria pessoa na criação — força troca no primeiro
+  -- acesso (ver lib/auth.ts#trocarSenha).
+  senha_temporaria boolean not null default true,
+  -- Epoch em milissegundos (não um contador incremental) — trocar a senha
+  -- grava Date.now() aqui, o que garante um valor estritamente MAIOR e
+  -- DIFERENTE de qualquer token já emitido antes, sem precisar de uma
+  -- leitura prévia pra incrementar com segurança (o cliente supabase-js
+  -- não faz `set x = x + 1` atomicamente sem uma function/RPC dedicada,
+  -- que este projeto não tem — usar um timestamp evita essa necessidade
+  -- por construção, não é só um capricho). Ver lib/auth.ts#obterContextoAutenticado:
+  -- um access token cujo token_version não bate mais com o valor atual no
+  -- banco é tratado como inválido, mesmo ainda dentro dos 15min de vida
+  -- do JWT — é o que faz "trocar a senha" invalidar de verdade um token
+  -- já emitido, não só sessões futuras.
+  token_version bigint not null default 1,
+  ativo boolean not null default true,
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz not null default now()
 );
+
+-- Mesmo formato/contrato de lib/repositorios/sessao.ts do nexaigen-educa
+-- — refresh token de alta entropia, só o HASH sha256 gravado, nunca o
+-- token puro.
+create table if not exists sessao (
+  id uuid primary key default gen_random_uuid(),
+  equipe_id uuid not null references equipe_nexaigen (id) on delete cascade,
+  refresh_token_hash text not null,
+  criado_em timestamptz not null default now(),
+  expira_em timestamptz not null,
+  revogado_em timestamptz
+);
+create index if not exists idx_sessao_equipe on sessao (equipe_id);
+create unique index if not exists idx_sessao_refresh_token_hash on sessao (refresh_token_hash);
 
 -- ---------------------------------------------------------------------
 -- 2. CLIENTE (prefeitura contratante da NEXAIGEN)
@@ -93,7 +147,7 @@ create trigger calcular_data_limite
 create table if not exists evento_verificacao (
   id uuid primary key default gen_random_uuid(),
   nota_fiscal_id uuid not null references nota_fiscal (id) on delete cascade,
-  verificado_por uuid references usuario_interno (id),
+  verificado_por uuid references equipe_nexaigen (id),
   data_verificacao timestamptz not null default now(),
   resultado text not null check (resultado in ('sem_atesto_ainda', 'atestada', 'paga', 'erro_acesso_portal')),
   observacao text
@@ -111,7 +165,7 @@ create table if not exists alerta_cobranca (
   ),
   gerado_em timestamptz not null default now(),
   status text not null default 'pendente' check (status in ('pendente', 'em_andamento', 'resolvido')),
-  atribuido_a uuid references usuario_interno (id),
+  atribuido_a uuid references equipe_nexaigen (id),
   resolvido_em timestamptz,
   observacao text
 );
@@ -123,27 +177,81 @@ create unique index if not exists uq_alerta_ativo
   on alerta_cobranca (nota_fiscal_id, tipo)
   where status <> 'resolvido';
 
+-- ---------------------------------------------------------------------
+-- REMOÇÃO de `usuario_interno` (achado crítico de segurança) — precisa
+-- rodar AQUI, depois de cliente_prefeitura/nota_fiscal/evento_verificacao/
+-- alerta_cobranca já criadas acima (rodar isto antes delas existirem, num
+-- banco novo do zero, falha: "relation does not exist" ao tentar
+-- dropar/recriar as policies e FKs que as referenciam — achado real,
+-- verificado rodando este arquivo do zero contra um Postgres limpo antes
+-- de considerar esta migração pronta).
+-- ---------------------------------------------------------------------
+
+-- Remove as policies que dependem de `usuario_interno` ANTES de dropar a
+-- tabela — uma policy referenciando uma tabela inexistente na sua
+-- subquery quebraria toda leitura/escrita nas 4 tabelas abaixo (a
+-- dependência de uma policy não é uma dependência formal do Postgres,
+-- `drop table ... cascade` sozinho NÃO limpa isso). Repetir este bloco
+-- num banco onde a tabela já foi removida é seguro (`if exists`).
+drop policy if exists equipe_acessa_clientes on cliente_prefeitura;
+drop policy if exists equipe_acessa_notas on nota_fiscal;
+drop policy if exists equipe_acessa_verificacoes on evento_verificacao;
+drop policy if exists equipe_acessa_alertas on alerta_cobranca;
+drop policy if exists usuario_ve_proprio_perfil on usuario_interno;
+
+-- `cascade` também remove as 2 constraints de FK que apontavam pra cá
+-- (evento_verificacao.verificado_por, alerta_cobranca.atribuido_a) — as
+-- COLUNAS em si continuam existindo (mesmo tipo uuid), só ficam sem FK
+-- até serem repontadas pra equipe_nexaigen logo abaixo. Confirmado antes
+-- de remover: nenhuma rota da aplicação nunca leu/escreveu
+-- `usuario_interno` (só existia aqui, no schema) — não é dado real de
+-- ninguém sendo perdido.
+drop table if exists usuario_interno cascade;
+
+-- Repontando as 2 FKs pra equipe_nexaigen — agora que existe uma
+-- identidade real por trás de "quem verificou"/"quem está cuidando deste
+-- alerta". `add constraint` não tem `if not exists` no Postgres, daí o
+-- guard manual (torna este arquivo seguro de rodar de novo contra um
+-- banco que já foi atualizado).
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'evento_verificacao_verificado_por_fkey') then
+    alter table evento_verificacao
+      add constraint evento_verificacao_verificado_por_fkey foreign key (verificado_por) references equipe_nexaigen (id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'alerta_cobranca_atribuido_a_fkey') then
+    alter table alerta_cobranca
+      add constraint alerta_cobranca_atribuido_a_fkey foreign key (atribuido_a) references equipe_nexaigen (id);
+  end if;
+end $$;
+
 -- =====================================================================
--- RLS — mono-tenant, mas ainda assim restrito a usuários autenticados
--- da própria equipe (não é um sistema público).
--- =====================================================================
+-- RLS — desde a rodada de correção do achado crítico, o controle de
+-- acesso REAL é a sessão da aplicação (lib/auth.ts#exigirSessao em toda
+-- rota, verificado num Server Component em toda página — ver cada
+-- app/**/route.ts e app/**/layout.tsx), não mais RLS/auth.uid(): este
+-- projeto nunca estabelece uma sessão do Supabase Auth (não existe
+-- `supabase.auth.signIn*` em lugar nenhum do código, login é 100% via
+-- JWT próprio), então `auth.uid()` é SEMPRE null pra qualquer chamada
+-- feita pela aplicação. Todas as rotas agora usam supabaseAdmin()
+-- (service_role, ignora RLS por definição) em vez de supabaseServer()
+-- (chave anon, RLS-gated) — exatamente o mesmo client que
+-- /api/cron/verificar-prazos já usava, pelo mesmo motivo (não há sessão
+-- de usuário de verdade pra RLS avaliar).
+--
+-- RLS continua HABILITADA nas 4 tabelas de negócio, agora SEM NENHUMA
+-- policy — deliberado, não uma lacuna: isso faz RLS negar por padrão
+-- (fail closed) qualquer chamada hipotética que algum dia use a chave
+-- anon/authenticated (ex.: um script futuro, um bug que troque
+-- supabaseAdmin() por supabaseServer() sem querer) — só service_role
+-- (que ignora RLS) consegue ler/escrever essas tabelas, hoje ou no
+-- futuro, mesmo sem nenhuma policy escrita aqui.
 alter table cliente_prefeitura enable row level security;
 alter table nota_fiscal enable row level security;
 alter table evento_verificacao enable row level security;
 alter table alerta_cobranca enable row level security;
-alter table usuario_interno enable row level security;
 
-create policy equipe_acessa_clientes on cliente_prefeitura
-  for all using (auth.uid() in (select id from usuario_interno));
-
-create policy equipe_acessa_notas on nota_fiscal
-  for all using (auth.uid() in (select id from usuario_interno));
-
-create policy equipe_acessa_verificacoes on evento_verificacao
-  for all using (auth.uid() in (select id from usuario_interno));
-
-create policy equipe_acessa_alertas on alerta_cobranca
-  for all using (auth.uid() in (select id from usuario_interno));
-
-create policy usuario_ve_proprio_perfil on usuario_interno
-  for select using (auth.uid() = id);
+-- Mesma postura de fail-closed pras 2 tabelas novas — só service_role
+-- (usado exclusivamente por lib/auth.ts) toca aqui, nunca a chave anon.
+alter table equipe_nexaigen enable row level security;
+alter table sessao enable row level security;

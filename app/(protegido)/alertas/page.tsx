@@ -1,9 +1,29 @@
+// Rodada de correção de achado crítico de segurança — ACHADO ADICIONAL
+// nesta página específica: getAlertas() fazia self-fetch pra própria
+// /api/alertas (fetch(`${base}/api/alertas`)) SEM encaminhar o cookie de
+// sessão — depois que aquela rota passou a exigir exigirSessao(), esse
+// self-fetch sempre devolveria 401 (Server Components não repassam
+// cookies automaticamente pra uma URL absoluta, mesmo achado já
+// documentado no CLAUDE.md do projeto irmão nexaigen-educa). Em vez de
+// remontar o header Cookie manualmente, esta página passou a consultar
+// supabaseAdmin() DIRETO — mesmo padrão que app/(protegido)/page.tsx
+// (dashboard) já usava — evitando o problema por completo em vez de só
+// contorná-lo. A checagem de sessão de verdade continua sendo o layout
+// do grupo protegido (app/(protegido)/layout.tsx), que já rodou antes
+// desta página renderizar.
+
+import { supabaseAdmin } from "@/lib/supabase/server";
+
 async function getAlertas() {
-  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3001";
-  const res = await fetch(`${base}/api/alertas`, { cache: "no-store" });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data.alertas ?? [];
+  const supabase = supabaseAdmin();
+  const { data } = await supabase
+    .from("alerta_cobranca")
+    .select(
+      "*, nota:nota_fiscal_id ( numero_nf, valor, data_limite_pagamento, cliente:cliente_id ( nome, uf, contato_email, contato_telefone ) )"
+    )
+    .neq("status", "resolvido")
+    .order("gerado_em", { ascending: false });
+  return data ?? [];
 }
 
 const LABEL_TIPO: Record<string, string> = {

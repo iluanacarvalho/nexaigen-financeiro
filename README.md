@@ -6,7 +6,13 @@ escala — o objetivo é sustentar centenas/milhares de contratos com uma equipe
 manual e tudo o mais automatizado.
 
 **Verificado nesta sessão:** `npm install`, `tsc --noEmit` (zero erros) e `next build` compilaram e
-geraram as 11 páginas/rotas com sucesso.
+geraram as 17 páginas/rotas com sucesso.
+
+**ACHADO CRÍTICO DE SEGURANÇA, CORRIGIDO — leia antes de usar com dado real.** Até a rodada de
+login próprio (ver Seção 7), esta plataforma não tinha autenticação nenhuma: toda rota de API e
+toda página estavam completamente abertas a qualquer pessoa com a URL, sem senha nenhuma. Isso
+está corrigido — mas se você está lendo isto num checkout antigo ou branch antiga, NÃO use com
+dado de cliente real sem confirmar que `lib/auth.ts`/`equipe_nexaigen` já existem.
 
 ---
 
@@ -36,13 +42,15 @@ Os limiares (20 dias, 5 dias, 60 dias) estão em `lib/prazos.ts` — mude ali se
 |---|---|---|
 | Cálculo de prazos e diagnóstico de status | `lib/prazos.ts` | ✅ Funções puras, fácil de testar |
 | Cálculo automático de data-limite (+30 dias) | `supabase/schema.sql` (trigger) | ✅ No banco, não depende da aplicação lembrar de calcular |
-| Cadastro de clientes (prefeituras) | `app/clientes`, `app/api/clientes` | ✅ |
+| Cadastro de clientes (prefeituras) | `app/(protegido)/clientes`, `app/api/clientes` | ✅ |
 | Emissão/registro de nota fiscal | `app/api/notas` | ✅ (a emissão real via API de NFS-e — Focus NFe/Nuvem Fiscal/eNotas — é TODO, ver Seção 3) |
-| Fila de checagem manual do atesto | `app/checagem`, `app/api/notas/[id]/verificar` | ✅ |
+| Fila de checagem manual do atesto | `app/(protegido)/checagem`, `app/api/notas/[id]/verificar` | ✅ |
 | Job diário de recálculo + alertas | `app/api/cron/verificar-prazos` | ✅ (precisa ser agendado — ver Seção 4) |
 | Notificação ao time de cobrança | `lib/notificacao-interna.ts` | ✅ E-mail transacional via Resend, HTML (canal único — falta só configurar `RESEND_API_KEY`) |
 | E-mail automático pro contato da prefeitura cliente (4 estágios, tom institucional, BCC pro time interno) | `lib/notificacaoCliente.ts` | ✅ Só na transição de estado (ver Seção 6) |
-| Dashboard e lista de alertas | `app/page.tsx`, `app/alertas` | ✅ |
+| Dashboard e lista de alertas | `app/(protegido)/page.tsx`, `app/(protegido)/alertas` | ✅ |
+| Login da equipe NEXAIGEN (bcrypt + JWT, sem papel/hierarquia) | `lib/auth.ts`, `app/login`, `app/api/auth/*` | ✅ Toda rota/página protegida (ver Seção 7) |
+| Gestão da própria equipe (listar/cadastrar colega) | `app/(protegido)/equipe`, `app/api/equipe` | ✅ Qualquer colega logado pode cadastrar outro |
 
 ## 3. O que falta antes de produção (TODO explícito)
 
@@ -66,13 +74,16 @@ supabase init
 supabase start
 ```
 
-Copie as chaves impressas pelo `supabase start` para `.env.local` (baseado em `.env.example`), cole
-`supabase/schema.sql` no SQL Editor do Studio local (`http://127.0.0.1:54323`), crie um usuário de
-teste e um registro em `usuario_interno`.
+Copie as chaves impressas pelo `supabase start` para `.env.local` (baseado em `.env.example`,
+inclui `JWT_SECRET` desde a rodada de login), cole `supabase/schema.sql` no SQL Editor do Studio
+local (`http://127.0.0.1:54323`).
 
 ```bash
 npm run dev   # roda na porta 3001 (o nexaigen-educa usa a 3000 — dá pra rodar os dois juntos)
 ```
+
+Sem login nenhum ainda cadastrado, acesse `/login` e vai dar 401 — rode o bootstrap (Seção 7) pra
+criar a primeira conta antes de usar a plataforma.
 
 ## 5. Agendando o job diário (produção)
 
@@ -130,3 +141,49 @@ foi necessária nenhuma migração para este recurso. Se ficar vazio pra algum c
 e-mail simplesmente não é enviado pra aquele cliente (`console.warn`, nunca lança) — vale
 conferir que todo cliente ativo tem esse campo preenchido antes de confiar no recurso em
 produção.
+
+## 7. Login da equipe NEXAIGEN — achado crítico de segurança, corrigido
+
+Até esta rodada, esta plataforma não tinha login nenhum: `usuario_interno` (pensada pra isso)
+nunca foi lida/checada em nenhuma rota — confirmado por busca no repo inteiro antes de decidir
+removê-la (zero ocorrências fora de `supabase/schema.sql`). Toda API e toda página estavam
+completamente abertas.
+
+**Um tipo de usuário só, sem papel/hierarquia.** Diferente do nexaigen-educa (que vende o produto
+a cada prefeitura, com papéis cidadão/servidor/gestor/admin), este projeto é 100% interno — só
+existe "equipe NEXAIGEN". Qualquer pessoa já logada pode cadastrar outra (`POST /api/equipe`), sem
+aprovação nem papel especial.
+
+**`equipe_nexaigen`/`sessao`** (substituem `usuario_interno`, dropada — `drop table ... cascade`,
+as 2 FKs que apontavam pra lá — `evento_verificacao.verificado_por`, `alerta_cobranca.atribuido_a`
+— foram repontadas pra `equipe_nexaigen`) — bcrypt custo 12 pra senha, JWT HS256 (`jose`) 15min de
+access token, refresh token de 7 dias com hash sha256 gravado em `sessao`, cookies httpOnly. Ver
+`lib/auth.ts` pro contrato completo (mesmo espírito do `lib/auth.ts` do nexaigen-educa, mas sem
+multi-tenant).
+
+**`supabaseServer()` (chave anon, RLS-gated) foi REMOVIDA — toda rota usa `supabaseAdmin()`
+(service_role) agora.** Não é estético: este login nunca estabelece uma sessão do Supabase Auth,
+então `auth.uid()` é sempre `null` — a RLS bloquearia toda consulta feita com a chave anon,
+mesmo de uma pessoa realmente logada no sistema. `exigirSessao()` é o controle de acesso real
+agora; RLS continua habilitada nas tabelas de negócio, mas sem nenhuma policy (nega tudo por
+padrão pra qualquer chave que não seja service_role — defesa em profundidade, não o mecanismo
+principal).
+
+**Bootstrap da primeira conta** (script separado, `scripts/bootstrap-equipe-nexaigen.ts` — usa
+`supabaseAdmin()`, não "pg" direto: este projeto nunca teve conexão Postgres crua, só Supabase):
+
+```bash
+NOME="Seu Nome" EMAIL="voce@nexaigen.com.br" \
+  npx tsx --env-file-if-exists=.env --env-file-if-exists=.env.local \
+  scripts/bootstrap-equipe-nexaigen.ts
+```
+
+Depois da primeira conta, toda conta nova vem de `/equipe` (sessão já logada) — o script nunca
+precisa rodar de novo.
+
+**Verificação desta rodada**: `npm run test` (66 testes, incluindo `app/api/protecao-rotas.test.ts`
+— confirma que TODA rota antes aberta agora exige sessão, 401 sem cookie, e que
+`/api/cron/verificar-prazos` continua funcionando só com `CRON_SECRET`), `tsc --noEmit` limpo,
+`next build` compila. `supabase/schema.sql` testado de verdade contra um Postgres 16 limpo (via
+Docker, sem Supabase) rodando o arquivo duas vezes seguidas — aplica sem erro num banco novo e é
+idempotente rodado de novo num banco já migrado.
