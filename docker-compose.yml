@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nexaigen
+      POSTGRES_PASSWORD: nexaigen_dev_local
+      POSTGRES_DB: nexaigen_financeiro
+    ports:
+      # 5435, não 5434 — o nexaigen-educa já usa 5434 no compose dele;
+      # portas diferentes deixam os dois Postgres locais rodarem ao mesmo
+      # tempo sem colidir.
+      - "5435:5432"
+    volumes:
+      - nexaigen_financeiro_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexaigen -d nexaigen_financeiro"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  nexaigen_financeiro_postgres_data:

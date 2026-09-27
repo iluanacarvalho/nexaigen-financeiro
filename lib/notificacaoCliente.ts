@@ -23,25 +23,28 @@
 // mesmo aviso todo dia pra uma prefeitura tende a ser ruim pra relação
 // com o cliente). NENHUMA coluna nova de controle
 // (`ultimo_alerta_cliente_enviado` ou similar) foi criada pra isso — o
-// mecanismo que já existe em supabase/schema.sql já resolve isso de
-// graça: `alerta_cobranca` tem um índice único parcial
+// mecanismo que já existe em db/migrations/0001_initial.sql já resolve
+// isso de graça: `alerta_cobranca` tem um índice único parcial
 // (`uq_alerta_ativo`, nota_fiscal_id+tipo, where status <> 'resolvido'),
-// e app/api/cron/verificar-prazos já faz upsert com `ignoreDuplicates:
-// true` nessa tabela. Isso significa que o upsert só retorna uma linha
-// quando ela foi REALMENTE inserida agora (primeira vez que aquele tipo
-// de alerta aparece pra aquela nota, ou reaparece depois de já ter sido
-// resolvido) — rodar o job duas vezes no mesmo dia (ou todo dia
-// seguinte, enquanto a nota continuar no mesmo estágio) faz o upsert
-// ignorar silenciosamente a segunda tentativa, sem inserir linha nova.
-// app/api/cron/verificar-prazos já usava exatamente esse sinal (upsert
-// retornou linha vs. não retornou) pra decidir quando chamar
-// notificarTimeDeCobranca (só no tipo atraso_60_dias, historicamente) —
-// esta rodada só estende a MESMA checagem, já existente, pra também
-// chamar notificarClientePrefeitura nos 4 tipos. Ver o comentário no
-// próprio route.ts. Reaproveitar esse sinal em vez de inventar uma coluna
-// nova evita duas fontes de verdade que poderiam divergir (ex.: alerta
-// marcado "resolvido" manualmente mas a coluna de controle não
-// resetada).
+// e app/api/cron/verificar-prazos já faz `insert ... on conflict
+// (nota_fiscal_id, tipo) where status <> 'resolvido' do nothing
+// returning id` nessa tabela (Postgres direto desde a rodada de migração
+// de infraestrutura — antes disso era um upsert Supabase com
+// `ignoreDuplicates: true`, mesmo efeito). Isso significa que o
+// RETURNING só traz uma linha quando ela foi REALMENTE inserida agora
+// (primeira vez que aquele tipo de alerta aparece pra aquela nota, ou
+// reaparece depois de já ter sido resolvido) — rodar o job duas vezes no
+// mesmo dia (ou todo dia seguinte, enquanto a nota continuar no mesmo
+// estágio) faz o `on conflict` ignorar silenciosamente a segunda
+// tentativa, sem inserir linha nova. app/api/cron/verificar-prazos já
+// usava exatamente esse sinal (RETURNING trouxe linha vs. não trouxe)
+// pra decidir quando chamar notificarTimeDeCobranca (só no tipo
+// atraso_60_dias, historicamente) — esta rodada só estende a MESMA
+// checagem, já existente, pra também chamar notificarClientePrefeitura
+// nos 4 tipos. Ver o comentário no próprio route.ts. Reaproveitar esse
+// sinal em vez de inventar uma coluna nova evita duas fontes de verdade
+// que poderiam divergir (ex.: alerta marcado "resolvido" manualmente mas
+// a coluna de controle não resetada).
 //
 // BCC obrigatório: TODO e-mail que sai em nome da empresa para o cliente
 // vai também, em cópia oculta (nunca CC visível pro cliente — a

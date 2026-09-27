@@ -1,24 +1,21 @@
-// Rodada de correção de achado crítico de segurança — supabaseAdmin()
-// no lugar de supabaseServer() (RLS nunca autoriza um login que não
-// passa pelo Supabase Auth; ver comentário completo em
-// app/api/clientes/route.ts). A checagem de sessão em si já roda em
+// Postgres direto via lib/db.ts desde a rodada de migração de
+// infraestrutura (Supabase → pg). A checagem de sessão em si já roda em
 // app/(protegido)/layout.tsx, antes desta página renderizar.
 
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { query } from "@/lib/db";
 
 export default async function Dashboard() {
-  const supabase = supabaseAdmin();
-  const { data: notas } = await supabase.from("nota_fiscal").select("status, valor");
-  const { data: alertas } = await supabase.from("alerta_cobranca").select("tipo").neq("status", "resolvido");
+  const notas = await query<{ status: string; valor: string }>(`select status, valor from nota_fiscal`);
+  const alertas = await query<{ tipo: string }>(`select tipo from alerta_cobranca where status <> 'resolvido'`);
 
   const contagem: Record<string, number> = {};
   let valorEmAberto = 0;
-  for (const n of notas ?? []) {
+  for (const n of notas) {
     contagem[n.status] = (contagem[n.status] ?? 0) + 1;
     if (n.status !== "paga" && n.status !== "cancelada") valorEmAberto += Number(n.valor);
   }
 
-  const alertasCriticos = (alertas ?? []).filter((a) => a.tipo === "atraso_60_dias").length;
+  const alertasCriticos = alertas.filter((a) => a.tipo === "atraso_60_dias").length;
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">

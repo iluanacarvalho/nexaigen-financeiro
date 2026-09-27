@@ -4,20 +4,17 @@
 // estado real da nota (data_atesto / data_pagamento), e resolve alertas
 // que não fazem mais sentido.
 //
-// Rodada de correção de achado crítico de segurança — mesmo raciocínio
-// de app/api/clientes/route.ts: exigirSessao(), supabaseAdmin(). Achado
-// ADICIONAL nesta rota especificamente: `verificado_por` vinha do CORPO
-// da requisição (`z.string().uuid().optional()`, nunca validado contra
-// quem de fato chamou) — qualquer um podia dizer que foi outra pessoa
-// que verificou. Agora vem SEMPRE de contexto.equipeId (a própria sessão
-// autenticada), nunca mais aceito no corpo — mesmo princípio já aplicado
-// em toda rota administrativa do projeto irmão nexaigen-educa (nunca
-// confiar em identidade vinda do cliente quando existe uma sessão real
-// pra derivar isso).
+// Exige sessão (lib/auth.ts#exigirSessao) desde a rodada de correção do
+// achado crítico de segurança — `verificado_por` vem SEMPRE de
+// contexto.equipeId (a sessão autenticada), nunca aceito no corpo da
+// requisição (achado daquela rodada: antes vinha de
+// `z.string().uuid().optional()` no corpo, sem checar contra quem de
+// fato chamou). Postgres direto via lib/db.ts desde a rodada de migração
+// de infraestrutura (Supabase → pg).
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { query } from "@/lib/db";
 import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
 
 const VerificacaoSchema = z.object({
@@ -37,39 +34,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!parsed.success) return NextResponse.json({ erro: "Dados inválidos", detalhes: parsed.error.flatten() }, { status: 400 });
 
   const { id } = await params;
-  const supabase = supabaseAdmin();
   const { resultado, data_evento, observacao } = parsed.data;
 
-  await supabase.from("evento_verificacao").insert({
-    nota_fiscal_id: id,
-    resultado,
-    observacao,
-    verificado_por: contexto!.equipeId
-  });
+  await query(
+    `insert into evento_verificacao (nota_fiscal_id, resultado, observacao, verificado_por) values ($1, $2, $3, $4)`,
+    [id, resultado, observacao ?? null, contexto!.equipeId]
+  );
 
   if (resultado === "atestada") {
-    await supabase
-      .from("nota_fiscal")
-      .update({ data_atesto: data_evento ?? new Date().toISOString().slice(0, 10), status: "atestada" })
-      .eq("id", id);
-    await supabase
-      .from("alerta_cobranca")
-      .update({ status: "resolvido", resolvido_em: new Date().toISOString() })
-      .eq("nota_fiscal_id", id)
-      .eq("tipo", "sem_atesto_prolongado")
-      .neq("status", "resolvido");
+    const dataEvento = data_evento ?? new Date().toISOString().slice(0, 10);
+    await query(`update nota_fiscal set data_atesto = $1, status = 'atestada' where id = $2`, [dataEvento, id]);
+    await query(
+      `update alerta_cobranca set status = 'resolvido', resolvido_em = now()
+       where nota_fiscal_id = $1 and tipo = 'sem_atesto_prolongado' and status <> 'resolvido'`,
+      [id]
+    );
   }
 
   if (resultado === "paga") {
-    await supabase
-      .from("nota_fiscal")
-      .update({ data_pagamento: data_evento ?? new Date().toISOString().slice(0, 10), status: "paga" })
-      .eq("id", id);
-    await supabase
-      .from("alerta_cobranca")
-      .update({ status: "resolvido", resolvido_em: new Date().toISOString() })
-      .eq("nota_fiscal_id", id)
-      .neq("status", "resolvido");
+    const dataEvento = data_evento ?? new Date().toISOString().slice(0, 10);
+    await query(`update nota_fiscal set data_pagamento = $1, status = 'paga' where id = $2`, [dataEvento, id]);
+    await query(`update alerta_cobranca set status = 'resolvido', resolvido_em = now() where nota_fiscal_id = $1 and status <> 'resolvido'`, [
+      id
+    ]);
   }
 
   return NextResponse.json({ ok: true });

@@ -1,21 +1,25 @@
-// TESTE MAIS IMPORTANTE desta rodada (achado crítico de segurança):
-// confirma que TODA rota de API que estava completamente aberta antes
-// desta rodada agora devolve 401 sem sessão — e nunca sequer chega a
-// tocar o banco (supabaseAdmin mockado pra LANÇAR se for chamado,
-// provando que exigirSessao() barra ANTES de qualquer consulta, não só
-// que a resposta final aparenta estar certa). Também confirma que
+// TESTE MAIS IMPORTANTE do projeto (achado crítico de segurança):
+// confirma que TODA rota de API que estava completamente aberta antes da
+// rodada de login agora devolve 401 sem sessão — e nunca sequer chega a
+// tocar o banco (`query` mockada pra LANÇAR se for chamada, provando que
+// exigirSessao() barra ANTES de qualquer consulta, não só que a resposta
+// final aparenta estar certa). Também confirma que
 // /api/cron/verificar-prazos continua funcionando SÓ com CRON_SECRET,
 // sem exigir sessão nenhuma (é chamada por um agendador externo, não por
 // uma pessoa logada).
+//
+// RODADA DE MIGRAÇÃO DE INFRAESTRUTURA: mocka @/lib/db (`query`) em vez
+// de @/lib/supabase/server (`supabaseAdmin`) — mesma garantia de antes,
+// só o alvo do mock muda.
 
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { supabaseAdminMock } = vi.hoisted(() => ({
-  supabaseAdminMock: vi.fn(() => {
-    throw new Error("supabaseAdmin() NUNCA deveria ser chamado sem sessão válida.");
+const { queryMock } = vi.hoisted(() => ({
+  queryMock: vi.fn(() => {
+    throw new Error("query() NUNCA deveria ser chamada sem sessão válida.");
   })
 }));
-vi.mock("@/lib/supabase/server", () => ({ supabaseAdmin: supabaseAdminMock }));
+vi.mock("@/lib/db", () => ({ query: queryMock }));
 
 // Cron continua com seu próprio mock de notificação (mesmo padrão do
 // teste dedicado daquela rota) — não é o alvo deste arquivo, só precisa
@@ -40,7 +44,7 @@ function reqSemSessao(url: string, method: string): NextRequest {
 }
 
 beforeEach(() => {
-  supabaseAdminMock.mockClear();
+  queryMock.mockClear();
 });
 
 describe("achado crítico de segurança — toda rota antes aberta agora exige sessão (401 sem cookie)", () => {
@@ -53,10 +57,10 @@ describe("achado crítico de segurança — toda rota antes aberta agora exige s
     ["GET /api/alertas", () => alertasGet(reqSemSessao("/api/alertas", "GET"))],
     ["GET /api/equipe", () => equipeGet(reqSemSessao("/api/equipe", "GET"))],
     ["POST /api/equipe", () => equipePost(reqSemSessao("/api/equipe", "POST"))]
-  ])("%s — 401, nunca chama supabaseAdmin()", async (_descricao, chamar) => {
+  ])("%s — 401, nunca chama query()", async (_descricao, chamar) => {
     const res = await chamar();
     expect(res.status).toBe(401);
-    expect(supabaseAdminMock).not.toHaveBeenCalled();
+    expect(queryMock).not.toHaveBeenCalled();
   });
 });
 
@@ -76,16 +80,16 @@ describe("/api/cron/verificar-prazos — NÃO afetado por esta rodada (segredo e
   it("sem CRON_SECRET no header — 401 (comportamento já existente, não uma regressão desta rodada)", async () => {
     const res = await cronPost(new NextRequest("http://localhost:3001/api/cron/verificar-prazos", { method: "POST" }));
     expect(res.status).toBe(401);
-    expect(supabaseAdminMock).not.toHaveBeenCalled();
+    expect(queryMock).not.toHaveBeenCalled();
   });
 
   it("com Authorization: Bearer CRON_SECRET — passa direto da checagem de autorização pro banco, SEM PRECISAR de sessão de equipe nenhuma", async () => {
-    // supabaseAdmin mockado pra LANÇAR (ver topo do arquivo) — usado aqui
-    // como sinal: se a chamada chega a invocar supabaseAdmin(), é porque
-    // passou pela única barreira de autorização desta rota (CRON_SECRET)
-    // sem passar por exigirSessao()/obterContextoAutenticado() em nenhum
-    // momento — uma rota que exigisse sessão de equipe teria devolvido um
-    // 401 "Não autenticado" (resposta normal, sem exceção) muito antes de
+    // `query` mockada pra LANÇAR (ver topo do arquivo) — usado aqui como
+    // sinal: se a chamada chega a invocar query(), é porque passou pela
+    // única barreira de autorização desta rota (CRON_SECRET) sem passar
+    // por exigirSessao()/obterContextoAutenticado() em nenhum momento —
+    // uma rota que exigisse sessão de equipe teria devolvido um 401 "Não
+    // autenticado" (resposta normal, sem exceção) muito antes de
     // qualquer chamada ao banco.
     await expect(
       cronPost(
@@ -94,7 +98,7 @@ describe("/api/cron/verificar-prazos — NÃO afetado por esta rodada (segredo e
           headers: { Authorization: `Bearer ${SEGREDO}` }
         })
       )
-    ).rejects.toThrow("supabaseAdmin() NUNCA deveria ser chamado sem sessão válida.");
-    expect(supabaseAdminMock).toHaveBeenCalled();
+    ).rejects.toThrow("query() NUNCA deveria ser chamada sem sessão válida.");
+    expect(queryMock).toHaveBeenCalled();
   });
 });

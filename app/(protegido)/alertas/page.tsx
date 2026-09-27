@@ -1,29 +1,30 @@
-// Rodada de correção de achado crítico de segurança — ACHADO ADICIONAL
-// nesta página específica: getAlertas() fazia self-fetch pra própria
-// /api/alertas (fetch(`${base}/api/alertas`)) SEM encaminhar o cookie de
-// sessão — depois que aquela rota passou a exigir exigirSessao(), esse
-// self-fetch sempre devolveria 401 (Server Components não repassam
-// cookies automaticamente pra uma URL absoluta, mesmo achado já
-// documentado no CLAUDE.md do projeto irmão nexaigen-educa). Em vez de
-// remontar o header Cookie manualmente, esta página passou a consultar
-// supabaseAdmin() DIRETO — mesmo padrão que app/(protegido)/page.tsx
-// (dashboard) já usava — evitando o problema por completo em vez de só
-// contorná-lo. A checagem de sessão de verdade continua sendo o layout
-// do grupo protegido (app/(protegido)/layout.tsx), que já rodou antes
-// desta página renderizar.
+// Consulta o banco DIRETO (não self-fetch da própria /api/alertas) —
+// decisão de uma rodada anterior (correção de achado crítico de
+// segurança): um Server Component fazendo self-fetch pra própria API não
+// repassa o cookie de sessão automaticamente, o que quebraria assim que
+// aquela rota passou a exigir sessão. Postgres direto via lib/db.ts desde
+// a rodada de migração de infraestrutura (Supabase → pg) — mesma query
+// (com o mesmo JOIN triplo) de app/api/alertas/route.ts, ver o comentário
+// completo lá sobre o `json_build_object` aninhado.
 
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { query } from "@/lib/db";
 
 async function getAlertas() {
-  const supabase = supabaseAdmin();
-  const { data } = await supabase
-    .from("alerta_cobranca")
-    .select(
-      "*, nota:nota_fiscal_id ( numero_nf, valor, data_limite_pagamento, cliente:cliente_id ( nome, uf, contato_email, contato_telefone ) )"
-    )
-    .neq("status", "resolvido")
-    .order("gerado_em", { ascending: false });
-  return data ?? [];
+  return query(
+    `select
+       a.*,
+       json_build_object(
+         'numero_nf', nf.numero_nf,
+         'valor', nf.valor,
+         'data_limite_pagamento', nf.data_limite_pagamento,
+         'cliente', json_build_object('nome', c.nome, 'uf', c.uf, 'contato_email', c.contato_email, 'contato_telefone', c.contato_telefone)
+       ) as nota
+     from alerta_cobranca a
+     join nota_fiscal nf on nf.id = a.nota_fiscal_id
+     join cliente_prefeitura c on c.id = nf.cliente_id
+     where a.status <> 'resolvido'
+     order by a.gerado_em desc`
+  );
 }
 
 const LABEL_TIPO: Record<string, string> = {

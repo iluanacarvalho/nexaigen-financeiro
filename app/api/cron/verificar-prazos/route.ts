@@ -8,26 +8,32 @@
 // quando a env var CRON_SECRET está configurada no projeto Vercel — ver
 // https://vercel.com/docs/cron-jobs/manage-cron-jobs#securing-cron-jobs
 // POST fica disponível para disparo manual/teste com o mesmo header.
+// PROTEGIDA SÓ POR CRON_SECRET, nunca por sessão de equipe — quem chama
+// isto é um agendador externo, que não tem como logar (ver
+// app/api/protecao-rotas.test.ts, que confirma explicitamente que esta
+// rota nunca passa por exigirSessao()).
 //
 // E-MAIL AO CLIENTE (rodada de "e-mails bem lindos e cobrança automática"):
 // notificarClientePrefeitura (lib/notificacaoCliente.ts) é chamada pros 4
-// tipos de alerta, sempre que `alertaData` vier truthy — ou seja, só
-// quando o upsert em alerta_cobranca abaixo REALMENTE inseriu uma linha
-// nova. Isso é o mecanismo INTEIRO da regra "só na transição de estado,
-// nunca todo dia enquanto o estado persistir" (decisão de produto da
-// Luana) — reaproveitando o índice único parcial `uq_alerta_ativo`
-// (nota_fiscal_id+tipo, where status <> 'resolvido') que já existia pra
-// dar idempotência ao alerta em si. Rodar o job duas vezes no mesmo dia
-// (ou todo dia seguinte, enquanto o tipo de alerta não mudar) faz o
-// upsert ignorar a segunda tentativa silenciosamente (`ignoreDuplicates:
-// true`), então `alertaData` vem null e nenhum e-mail novo é disparado —
-// nenhuma coluna de controle extra (`ultimo_alerta_cliente_enviado` ou
-// similar) foi necessária. Ver o comentário completo em
+// tipos de alerta, sempre que o upsert abaixo REALMENTE inseriu uma linha
+// nova (`returning id` só traz linha quando o INSERT de fato aconteceu —
+// uma linha ignorada por conflito com `on conflict ... do nothing` nunca
+// aparece no RETURNING, mesmo efeito de `ignoreDuplicates: true` +
+// `.maybeSingle()` do Supabase antes desta rodada de migração de
+// infraestrutura). Isso é o mecanismo INTEIRO da regra "só na transição
+// de estado, nunca todo dia enquanto o estado persistir" (decisão de
+// produto da Luana) — reaproveitando o índice único parcial
+// `uq_alerta_ativo` (nota_fiscal_id+tipo, where status <> 'resolvido')
+// que já existia pra dar idempotência ao alerta em si. Rodar o job duas
+// vezes no mesmo dia (ou todo dia seguinte, enquanto o tipo de alerta não
+// mudar) faz o `on conflict ... do nothing` ignorar a segunda tentativa
+// silenciosamente, sem devolver linha, e o e-mail ao cliente simplesmente
+// não é chamado de novo. Ver o comentário completo em
 // lib/notificacaoCliente.ts.
 
 import { timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { query } from "@/lib/db";
 import { diagnosticarNota } from "@/lib/prazos";
 import { notificarTimeDeCobranca } from "@/lib/notificacao-interna";
 import { notificarClientePrefeitura } from "@/lib/notificacaoCliente";
@@ -51,6 +57,18 @@ function segredosIguais(a: string, b: string): boolean {
   return timingSafeEqual(bufA, bufB);
 }
 
+interface NotaLinha {
+  id: string;
+  cliente_id: string;
+  numero_nf: string | null;
+  valor: string;
+  data_emissao: string;
+  data_atesto: string | null;
+  data_limite_pagamento: string | null;
+  status: string;
+  cliente: { nome: string; contato_email: string | null };
+}
+
 async function executar(req: NextRequest) {
   if (!process.env.CRON_SECRET) {
     console.error("CRON_SECRET não configurado — recusando execução do job.");
@@ -63,20 +81,18 @@ async function executar(req: NextRequest) {
     return NextResponse.json({ erro: "Não autorizado." }, { status: 401 });
   }
 
-  const supabase = supabaseAdmin();
-
-  const { data: notas, error } = await supabase
-    .from("nota_fiscal")
-    .select(
-      "id, cliente_id, numero_nf, valor, data_emissao, data_atesto, data_limite_pagamento, status, cliente:cliente_id ( nome, contato_email )"
-    )
-    .not("status", "in", "(paga,cancelada)");
-
-  if (error) return NextResponse.json({ erro: error.message }, { status: 500 });
+  const notas = await query<NotaLinha>(
+    `select
+       nf.id, nf.cliente_id, nf.numero_nf, nf.valor, nf.data_emissao, nf.data_atesto, nf.data_limite_pagamento, nf.status,
+       json_build_object('nome', c.nome, 'contato_email', c.contato_email) as cliente
+     from nota_fiscal nf
+     join cliente_prefeitura c on c.id = nf.cliente_id
+     where nf.status not in ('paga', 'cancelada')`
+  );
 
   const resultado = { processadas: 0, alertasCriados: 0, statusAtualizados: 0 };
 
-  for (const nota of notas ?? []) {
+  for (const nota of notas) {
     resultado.processadas += 1;
 
     const diagnostico = diagnosticarNota({
@@ -89,40 +105,43 @@ async function executar(req: NextRequest) {
 
     const novoStatus = mapearStatus(diagnostico.statusDerivado);
     if (novoStatus !== nota.status) {
-      await supabase.from("nota_fiscal").update({ status: novoStatus }).eq("id", nota.id);
+      await query(`update nota_fiscal set status = $1 where id = $2`, [novoStatus, nota.id]);
       resultado.statusAtualizados += 1;
     }
 
     if (diagnostico.deveGerarAlerta) {
-      const { error: alertaError, data: alertaData } = await supabase
-        .from("alerta_cobranca")
-        .upsert(
-          { nota_fiscal_id: nota.id, tipo: diagnostico.deveGerarAlerta, status: "pendente" },
-          { onConflict: "nota_fiscal_id,tipo", ignoreDuplicates: true }
-        )
-        .select("id")
-        .maybeSingle();
+      // `on conflict (nota_fiscal_id, tipo) where status <> 'resolvido'`
+      // tem que bater EXATAMENTE com o predicado do índice único parcial
+      // uq_alerta_ativo (db/migrations/0001_initial.sql) — é assim que o
+      // Postgres identifica qual índice este ON CONFLICT está mirando.
+      const criados = await query<{ id: string }>(
+        `insert into alerta_cobranca (nota_fiscal_id, tipo, status)
+         values ($1, $2, 'pendente')
+         on conflict (nota_fiscal_id, tipo) where status <> 'resolvido' do nothing
+         returning id`,
+        [nota.id, diagnostico.deveGerarAlerta]
+      );
 
-      if (!alertaError && alertaData) {
+      if (criados.length > 0) {
         resultado.alertasCriados += 1;
         if (diagnostico.deveGerarAlerta === "atraso_60_dias") {
           await notificarTimeDeCobranca({
             tipo: diagnostico.deveGerarAlerta,
-            clienteNome: (nota.cliente as any)?.nome ?? "—",
+            clienteNome: nota.cliente?.nome ?? "—",
             numeroNf: nota.numero_nf,
-            valor: nota.valor,
+            valor: Number(nota.valor),
             diasDeAtraso: diagnostico.diasDeAtraso
           });
         }
         // Os 4 tipos, sempre — ver comentário de topo do arquivo sobre
-        // por que `alertaData` truthy já é a própria checagem de
+        // por que `criados.length > 0` já é a própria checagem de
         // "transição de estado" (nenhuma coluna de controle extra).
         await notificarClientePrefeitura({
           tipo: diagnostico.deveGerarAlerta,
-          clienteNome: (nota.cliente as any)?.nome ?? "—",
-          contatoEmail: (nota.cliente as any)?.contato_email ?? null,
+          clienteNome: nota.cliente?.nome ?? "—",
+          contatoEmail: nota.cliente?.contato_email ?? null,
           numeroNf: nota.numero_nf,
-          valor: nota.valor,
+          valor: Number(nota.valor),
           dataVencimento: nota.data_limite_pagamento
         });
       }

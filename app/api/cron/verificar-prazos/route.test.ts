@@ -2,19 +2,25 @@
 // estado, nunca todo dia enquanto o estado persistir" (decisão de
 // produto da Luana, ver lib/notificacaoCliente.ts) — o caso de borda
 // pedido explicitamente: o job rodando duas vezes seguidas (mesmo
-// "dia") não pode duplicar o envio. supabaseAdmin/notificarTimeDeCobranca/
+// "dia") não pode duplicar o envio. `query`/notificarTimeDeCobranca/
 // notificarClientePrefeitura são todos mockados — este teste não toca
 // banco nem Resend de verdade, só verifica a ORQUESTRAÇÃO da rota.
+//
+// RODADA DE MIGRAÇÃO DE INFRAESTRUTURA: mocka @/lib/db (`query`) em vez
+// de @/lib/supabase/server (`supabaseAdmin`) — a fake abaixo distingue a
+// consulta pelo TEXTO do SQL (não mais por nome de tabela via
+// `.from(tabela)`, que não existe mais nesta API), mas cobre exatamente
+// os mesmos 4 cenários de antes, sem nenhum caso removido.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { supabaseAdminMock, notificarTimeMock, notificarClienteMock } = vi.hoisted(() => ({
-  supabaseAdminMock: vi.fn(),
+const { queryMock, notificarTimeMock, notificarClienteMock } = vi.hoisted(() => ({
+  queryMock: vi.fn(),
   notificarTimeMock: vi.fn(),
   notificarClienteMock: vi.fn()
 }));
 
-vi.mock("@/lib/supabase/server", () => ({ supabaseAdmin: supabaseAdminMock }));
+vi.mock("@/lib/db", () => ({ query: queryMock }));
 vi.mock("@/lib/notificacao-interna", () => ({ notificarTimeDeCobranca: notificarTimeMock }));
 vi.mock("@/lib/notificacaoCliente", () => ({ notificarClientePrefeitura: notificarClienteMock }));
 
@@ -47,7 +53,7 @@ const NOTA_VENCIDA = {
   id: "nota-1",
   cliente_id: "cliente-1",
   numero_nf: "NF-9999",
-  valor: 3200,
+  valor: "3200.00", // numeric vem como string do driver "pg" (e já vinha como algo que o cron converte com Number())
   data_emissao: isoHaDias(70),
   data_atesto: DATA_ATESTO,
   data_limite_pagamento: DATA_LIMITE,
@@ -55,26 +61,21 @@ const NOTA_VENCIDA = {
   cliente: { nome: "Prefeitura Municipal de Exemplo", contato_email: "financeiro@exemplo.pr.gov.br" }
 };
 
-function criarSupabaseFake(opts: { notas: any[]; alertaResultado: { id: string } | null }) {
-  const alertaBuilder: any = {
-    select: () => alertaBuilder,
-    upsert: () => alertaBuilder,
-    maybeSingle: () => Promise.resolve({ data: opts.alertaResultado, error: null })
-  };
-  const notaBuilder: any = {
-    select: () => notaBuilder,
-    not: () => Promise.resolve({ data: opts.notas, error: null }),
-    update: () => notaBuilder,
-    eq: () => Promise.resolve({ error: null })
-  };
-  return {
-    from: (tabela: string) => (tabela === "alerta_cobranca" ? alertaBuilder : notaBuilder)
-  };
+// Distingue a consulta pelo texto do SQL — mesmo espírito do builder fake
+// por tabela de antes, só que a "tabela" agora é reconhecida por um
+// trecho característico da própria query.
+function criarQueryFake(opts: { notas: any[]; alertaResultado: { id: string } | null }) {
+  return vi.fn((sql: string) => {
+    if (sql.includes("from nota_fiscal nf")) return Promise.resolve(opts.notas);
+    if (sql.includes("update nota_fiscal set status")) return Promise.resolve([]);
+    if (sql.includes("insert into alerta_cobranca")) return Promise.resolve(opts.alertaResultado ? [opts.alertaResultado] : []);
+    return Promise.resolve([]);
+  });
 }
 
 beforeEach(() => {
   process.env.CRON_SECRET = SEGREDO;
-  supabaseAdminMock.mockReset();
+  queryMock.mockReset();
   notificarTimeMock.mockReset().mockResolvedValue(undefined);
   notificarClienteMock.mockReset().mockResolvedValue(true);
 });
@@ -85,8 +86,8 @@ afterEach(() => {
 });
 
 describe("POST /api/cron/verificar-prazos — e-mail ao cliente só na transição de estado", () => {
-  it("primeira execução — alerta_cobranca upsert insere linha nova (transição) — dispara e-mail ao cliente", async () => {
-    supabaseAdminMock.mockReturnValue(criarSupabaseFake({ notas: [NOTA_VENCIDA], alertaResultado: { id: "alerta-1" } }));
+  it("primeira execução — insert em alerta_cobranca traz linha nova no RETURNING (transição) — dispara e-mail ao cliente", async () => {
+    queryMock.mockImplementation(criarQueryFake({ notas: [NOTA_VENCIDA], alertaResultado: { id: "alerta-1" } }));
 
     const res = await POST(requisicao());
     expect(res.status).toBe(200);
@@ -108,12 +109,13 @@ describe("POST /api/cron/verificar-prazos — e-mail ao cliente só na transiç�
     expect(notificarTimeMock).not.toHaveBeenCalled();
   });
 
-  it("segunda execução (mesmo estágio, job rodando de novo) — upsert ignora duplicata (ignoreDuplicates), NÃO dispara e-mail de novo", async () => {
-    // Simula o que o Supabase real devolve quando o upsert bate no
-    // índice único parcial uq_alerta_ativo e ignora silenciosamente: a
-    // linha já existe, nada novo é inserido, .maybeSingle() não retorna
-    // a linha ignorada.
-    supabaseAdminMock.mockReturnValue(criarSupabaseFake({ notas: [NOTA_VENCIDA], alertaResultado: null }));
+  it("segunda execução (mesmo estágio, job rodando de novo) — on conflict do nothing não devolve linha, NÃO dispara e-mail de novo", async () => {
+    // Simula o que o RETURNING devolve quando o insert bate no índice
+    // único parcial uq_alerta_ativo e é ignorado (`on conflict ... do
+    // nothing`): nenhuma linha no array — mesmo efeito de
+    // `ignoreDuplicates: true` + `.maybeSingle() === null` do Supabase
+    // antes da migração de infraestrutura.
+    queryMock.mockImplementation(criarQueryFake({ notas: [NOTA_VENCIDA], alertaResultado: null }));
 
     const res = await POST(requisicao());
     expect(res.status).toBe(200);
@@ -125,11 +127,11 @@ describe("POST /api/cron/verificar-prazos — e-mail ao cliente só na transiç�
   });
 
   it("duas execuções em sequência, primeira cria e a segunda não duplica — cenário completo do caso de borda pedido", async () => {
-    supabaseAdminMock.mockReturnValueOnce(criarSupabaseFake({ notas: [NOTA_VENCIDA], alertaResultado: { id: "alerta-1" } }));
+    queryMock.mockImplementation(criarQueryFake({ notas: [NOTA_VENCIDA], alertaResultado: { id: "alerta-1" } }));
     await POST(requisicao());
     expect(notificarClienteMock).toHaveBeenCalledTimes(1);
 
-    supabaseAdminMock.mockReturnValueOnce(criarSupabaseFake({ notas: [NOTA_VENCIDA], alertaResultado: null }));
+    queryMock.mockImplementation(criarQueryFake({ notas: [NOTA_VENCIDA], alertaResultado: null }));
     await POST(requisicao());
     expect(notificarClienteMock).toHaveBeenCalledTimes(1); // continua 1, não foi pra 2
   });
@@ -141,7 +143,7 @@ describe("POST /api/cron/verificar-prazos — e-mail ao cliente só na transiç�
       data_atesto: isoHaDias(95), // limite = atesto+30 = 65 dias atrás -> 65 dias de atraso, >= 60
       data_limite_pagamento: isoHaDias(65)
     };
-    supabaseAdminMock.mockReturnValue(criarSupabaseFake({ notas: [notaCritica], alertaResultado: { id: "alerta-2" } }));
+    queryMock.mockImplementation(criarQueryFake({ notas: [notaCritica], alertaResultado: { id: "alerta-2" } }));
 
     await POST(requisicao());
 

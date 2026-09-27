@@ -14,6 +14,11 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["**/*.test.ts"]
+    include: ["**/*.test.ts"],
+    // *.integration.test.ts precisa de Postgres real (docker compose up -d
+    // && npm run migrate) — roda só via `npm run test:integration`
+    // (vitest.integration.config.ts), nunca aqui. Mesmo padrão do projeto
+    // irmão nexaigen-educa/vitest.config.ts.
+    exclude: ["**/node_modules/**", "**/*.integration.test.ts"]
   }
 });

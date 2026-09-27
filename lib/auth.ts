@@ -1,12 +1,4 @@
-// Autenticação própria da equipe NEXAIGEN — ACHADO CRÍTICO DE SEGURANÇA
-// (rodada de correção): este projeto nunca teve login nenhum. `usuario_interno`
-// (supabase/schema.sql) foi pensada pra isso mas NUNCA foi lida/checada em
-// nenhuma rota — confirmado por busca no repo inteiro antes desta rodada
-// (zero ocorrências de "usuario_interno" fora do próprio schema.sql).
-// Toda rota de API e toda página estavam completamente abertas, sem
-// verificação de sessão nenhuma. Ver o comentário na Seção 1 de
-// supabase/schema.sql pro raciocínio completo de por que `usuario_interno`
-// foi removida (nunca usada) em favor de `equipe_nexaigen`.
+// Autenticação própria da equipe NEXAIGEN.
 //
 // Mesmo contrato de robustez do login de equipe do projeto irmão
 // nexaigen-educa (bcrypt custo 12, JWT HS256 15min de access token via
@@ -18,25 +10,29 @@
 // checar, só "existe sessão válida ou não" (exigirSessao, abaixo).
 //
 // SEM camada de repositório (diferente do nexaigen-educa): este projeto
-// nunca teve uma — toda rota já chama `supabaseServer()`/`supabaseAdmin()`
-// direto (ver app/api/**/route.ts existentes). Este arquivo segue o MESMO
-// padrão, chamando `supabaseAdmin()` diretamente pra equipe_nexaigen/sessao,
-// em vez de introduzir uma camada nova só pra este recurso.
+// nunca teve uma — toda rota já chama `query()`/`withTransaction()`
+// direto (ver app/api/**/route.ts). Este arquivo segue o MESMO padrão.
 //
-// `supabaseAdmin()` (service_role, ignora RLS), não `supabaseServer()`
-// (chave anon, RLS-gated) — decisão necessária, não estética: este login é
-// 100% independente do Supabase Auth (nunca chama `supabase.auth.signIn*`),
-// então `auth.uid()` é sempre null nas policies de RLS. Usar a chave anon
-// aqui faria toda leitura/escrita de equipe_nexaigen/sessao ser barrada
-// pela própria RLS (que agora nega tudo por padrão, ver schema.sql) —
-// o controle de acesso real passa a ser exigirSessao(), chamado em toda
-// rota, não mais RLS.
+// RODADA DE MIGRAÇÃO DE INFRAESTRUTURA: Postgres direto via "pg"
+// (lib/db.ts), não mais Supabase — pedido explícito da Luana, mesma
+// arquitetura do nexaigen-educa. É uma migração de banco, não de
+// comportamento: os mesmos dados, as mesmas condições, os mesmos
+// resultados — só COMO a query roda que muda. Erros de banco antes vinham
+// como `{data, error}` (Supabase); agora um erro de SQL de verdade
+// (conexão caída, sintaxe, etc.) LANÇA uma exceção — diferença aceita
+// (documentada no relatório desta rodada): um erro genuíno de banco vira
+// um 500 real agora, em vez de ser confundido com "credencial inválida"/
+// "conta não encontrada" como podia acontecer antes. Nenhuma mudança pro
+// caminho feliz nem pros casos de negócio (conta inexistente, senha
+// errada, conta inativa, token_version divergente) — só esse detalhe de
+// erro de infraestrutura genuíno, que na prática nunca era exercitado
+// (nem pelos testes, que sempre mockam a camada de banco).
 
 import { randomBytes, createHash } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "./supabase/server";
+import { query } from "./db";
 
 const CUSTO_BCRYPT = 12;
 const DURACAO_ACCESS_TOKEN = "15m";
@@ -86,16 +82,11 @@ export interface ClaimsAccessToken {
   sub: string; // equipe_nexaigen.id
   nome: string;
   precisa_trocar_senha: boolean;
-  // Claim ADICIONAL, além dos 3 pedidos — decisão desta rodada, não do
-  // pedido original: sem isto, trocar a senha só revogaria o REFRESH
-  // token (sessao), mas um access token já emitido continuaria "válido"
-  // criptograficamente pelo resto dos seus 15min de vida, mesmo depois de
-  // uma troca de senha forçada por suspeita de comprometimento — mesmo
-  // gap que motivou token_version no nexaigen-educa. Dado que este
-  // projeto guarda dado financeiro/contato real de cliente e a própria
-  // razão desta rodada é "prioridade máxima, corrigir antes de qualquer
-  // uso real", pareceu errado deixar esse gap por não estar explicitamente
-  // listado no pedido.
+  // Claim ADICIONAL, além dos 3 originalmente pedidos (sub/nome/
+  // precisa_trocar_senha) — sem isto, trocar a senha só revogaria o
+  // REFRESH token (sessao), mas um access token já emitido continuaria
+  // "válido" criptograficamente pelo resto dos seus 15min de vida, mesmo
+  // depois de uma troca de senha forçada por suspeita de comprometimento.
   token_version: number;
 }
 
@@ -146,7 +137,7 @@ export function gerarRefreshToken(): string {
  * sha256, não bcrypt: o refresh token já nasce com 256 bits de entropia
  * (crypto.randomBytes), diferente de uma senha escolhida por humano — não
  * precisa de um hash lento/salgado. sha256 também permite localizar a
- * sessão por igualdade direta (`.eq("refresh_token_hash", ...)`), o que
+ * sessão por igualdade direta (`where refresh_token_hash = $1`), o que
  * bcrypt não permitiria sem comparar contra toda sessão ativa uma a uma.
  */
 export function hashRefreshToken(token: string): string {
@@ -182,22 +173,17 @@ export interface ContextoAutenticado {
 
 /**
  * Recebe o access token já extraído (mesmo contrato de
- * obterContextoAutenticado() do nexaigen-educa) — DECISÃO desta rodada:
- * mesmo este projeto não tendo middleware/proxy.ts, receber o token como
- * parâmetro (em vez de chamar `next/headers#cookies()` internamente) foi
- * escolhido de propósito por testabilidade. `cookies()` só funciona dentro
- * de um contexto de requisição real do Next.js (Route Handler/Server
- * Component em execução) — chamar esta função direto de um teste unitário
- * (vitest puro, sem o runtime do Next.js) lançaria "cookies was called
- * outside a request scope" antes mesmo de chegar na lógica que o teste
- * quer exercitar. Recebendo o token pronto, cada chamador extrai do jeito
- * que tiver disponível (Route Handler: `req.cookies.get(...)`; Server
- * Component: `(await cookies()).get(...)`) e a função em si vira 100%
- * testável passando uma string direto.
+ * obterContextoAutenticado() do nexaigen-educa) — receber o token como
+ * parâmetro (em vez de ler `next/headers#cookies()` internamente) é por
+ * testabilidade: `cookies()` só funciona dentro de um contexto de
+ * requisição real do Next.js. Cada chamador extrai do jeito que tiver
+ * disponível (Route Handler: `req.cookies.get(...)`; Server Component:
+ * `(await cookies()).get(...)`).
  *
- * NUNCA lança — qualquer falha de validação (token ausente/inválido/
- * expirado, conta não encontrada, conta inativa, token_version
- * divergente) devolve null.
+ * NUNCA lança por CONDIÇÃO DE NEGÓCIO (token ausente/inválido/expirado,
+ * conta não encontrada, conta inativa, token_version divergente sempre
+ * devolvem null) — um erro de infraestrutura genuíno do Postgres (conexão
+ * caída etc.) ainda pode lançar, propagando pra quem chamou.
  */
 export async function obterContextoAutenticado(accessToken: string | undefined | null): Promise<ContextoAutenticado | null> {
   if (!accessToken) return null;
@@ -205,16 +191,14 @@ export async function obterContextoAutenticado(accessToken: string | undefined |
   const claims = await verificarAccessToken(accessToken);
   if (!claims) return null;
 
-  const supabase = supabaseAdmin();
-  const { data, error } = await supabase
-    .from("equipe_nexaigen")
-    .select("token_version, ativo")
-    .eq("id", claims.sub)
-    .maybeSingle();
-
-  if (error || !data) return null;
-  if (!data.ativo) return null;
-  if (data.token_version !== claims.token_version) return null;
+  const linhas = await query<{ token_version: number; ativo: boolean }>(
+    `select token_version, ativo from equipe_nexaigen where id = $1`,
+    [claims.sub]
+  );
+  const conta = linhas[0];
+  if (!conta) return null;
+  if (!conta.ativo) return null;
+  if (conta.token_version !== claims.token_version) return null;
 
   return { equipeId: claims.sub, nome: claims.nome, precisaTrocarSenha: claims.precisa_trocar_senha };
 }
@@ -260,19 +244,15 @@ export interface ResultadoTrocaSenha {
 
 /**
  * Invalida TODO access token já emitido (grava um token_version novo,
- * Date.now() — ver o comentário em supabase/schema.sql sobre por que um
- * timestamp em vez de um incremento) e revoga toda sessão (refresh token)
- * ativa — força novo login em todos os dispositivos, não só no atual.
+ * Date.now() — ver o comentário em db/migrations/0001_initial.sql sobre
+ * por que um timestamp em vez de um incremento) e revoga toda sessão
+ * (refresh token) ativa — força novo login em todos os dispositivos, não
+ * só no atual.
  */
 export async function trocarSenha(equipeId: string, senhaAtual: string, novaSenha: string): Promise<ResultadoTrocaSenha> {
-  const supabase = supabaseAdmin();
-
-  const { data: conta, error: erroBusca } = await supabase
-    .from("equipe_nexaigen")
-    .select("senha_hash")
-    .eq("id", equipeId)
-    .maybeSingle();
-  if (erroBusca || !conta) return { sucesso: false, erro: "Conta não encontrada." };
+  const linhas = await query<{ senha_hash: string }>(`select senha_hash from equipe_nexaigen where id = $1`, [equipeId]);
+  const conta = linhas[0];
+  if (!conta) return { sucesso: false, erro: "Conta não encontrada." };
 
   const senhaAtualOk = await verificarSenha(senhaAtual, conta.senha_hash);
   if (!senhaAtualOk) return { sucesso: false, erro: "Senha atual incorreta." };
@@ -280,18 +260,20 @@ export async function trocarSenha(equipeId: string, senhaAtual: string, novaSenh
   const novoHash = await hashSenha(novaSenha);
   const novoTokenVersion = Date.now();
 
-  const { error: erroUpdate } = await supabase
-    .from("equipe_nexaigen")
-    .update({
-      senha_hash: novoHash,
-      senha_temporaria: false,
-      token_version: novoTokenVersion,
-      atualizado_em: new Date().toISOString()
-    })
-    .eq("id", equipeId);
-  if (erroUpdate) return { sucesso: false, erro: "Não foi possível trocar a senha. Tente novamente." };
+  try {
+    await query(
+      `update equipe_nexaigen set senha_hash = $1, senha_temporaria = false, token_version = $2, atualizado_em = now() where id = $3`,
+      [novoHash, novoTokenVersion, equipeId]
+    );
+  } catch {
+    // Mesmo fallback que o Supabase já tinha pra esta atualização
+    // específica falhar (`{error}` != null) — na prática, sem constraint
+    // nenhuma nos campos atualizados aqui, é uma condição essencialmente
+    // inatingível, mas preservada por completude.
+    return { sucesso: false, erro: "Não foi possível trocar a senha. Tente novamente." };
+  }
 
-  await supabase.from("sessao").update({ revogado_em: new Date().toISOString() }).eq("equipe_id", equipeId).is("revogado_em", null);
+  await query(`update sessao set revogado_em = now() where equipe_id = $1 and revogado_em is null`, [equipeId]);
 
   return { sucesso: true };
 }

@@ -10,13 +10,15 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "migrate": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/migrate.ts",
     "bootstrap-equipe-nexaigen": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/bootstrap-equipe-nexaigen.ts"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.112.4",
     "bcryptjs": "^3.0.3",
     "jose": "^6.2.10",
     "next": "16.3.3",
+    "pg": "^8.23.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "resend": "^6.24.0",
@@ -25,6 +27,7 @@
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20.14.0",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
     "autoprefixer": "^10.4.20",

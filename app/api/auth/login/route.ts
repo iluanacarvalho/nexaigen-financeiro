@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { query } from "@/lib/db";
 import {
   DURACAO_REFRESH_TOKEN_MS,
   NOME_COOKIE_ACCESS,
@@ -25,6 +25,15 @@ const LoginSchema = z.object({
 
 const ERRO_GENERICO = { erro: "E-mail ou senha inválidos." } as const;
 
+interface ContaLinha {
+  id: string;
+  nome: string;
+  senha_hash: string;
+  senha_temporaria: boolean;
+  token_version: number;
+  ativo: boolean;
+}
+
 export async function POST(req: NextRequest) {
   const parsed = LoginSchema.safeParse(await req.json());
   if (!parsed.success) {
@@ -32,14 +41,13 @@ export async function POST(req: NextRequest) {
   }
   const { email, senha } = parsed.data;
 
-  const supabase = supabaseAdmin();
-  const { data: conta, error } = await supabase
-    .from("equipe_nexaigen")
-    .select("id, nome, senha_hash, senha_temporaria, token_version, ativo")
-    .eq("email", email.trim().toLowerCase())
-    .maybeSingle();
+  const linhas = await query<ContaLinha>(
+    `select id, nome, senha_hash, senha_temporaria, token_version, ativo from equipe_nexaigen where email = $1`,
+    [email.trim().toLowerCase()]
+  );
+  const conta = linhas[0];
 
-  if (error || !conta || !(await verificarSenha(senha, conta.senha_hash))) {
+  if (!conta || !(await verificarSenha(senha, conta.senha_hash))) {
     return NextResponse.json(ERRO_GENERICO, { status: 401 });
   }
 
@@ -54,11 +62,11 @@ export async function POST(req: NextRequest) {
     tokenVersion: conta.token_version
   });
   const refreshToken = gerarRefreshToken();
-  await supabase.from("sessao").insert({
-    equipe_id: conta.id,
-    refresh_token_hash: hashRefreshToken(refreshToken),
-    expira_em: new Date(Date.now() + DURACAO_REFRESH_TOKEN_MS).toISOString()
-  });
+  await query(`insert into sessao (equipe_id, refresh_token_hash, expira_em) values ($1, $2, $3)`, [
+    conta.id,
+    hashRefreshToken(refreshToken),
+    new Date(Date.now() + DURACAO_REFRESH_TOKEN_MS).toISOString()
+  ]);
 
   const resposta = NextResponse.json({
     nome: conta.nome,

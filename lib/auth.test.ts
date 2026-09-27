@@ -1,16 +1,22 @@
-// Testes unitários do login da equipe NEXAIGEN (rodada de correção de
-// achado crítico de segurança) — mesmo padrão de mock já estabelecido em
-// app/api/cron/verificar-prazos/route.test.ts: mocka @/lib/supabase/server
-// (supabaseAdmin), nunca toca banco real. JWT_SECRET setado direto (mesmo
-// padrão de lib/auth.test.ts do projeto irmão nexaigen-educa) — não
-// precisa de nenhuma infraestrutura externa pra rodar.
+// Testes unitários do login da equipe NEXAIGEN — mocka @/lib/db (a função
+// `query`), nunca toca banco real. JWT_SECRET setado direto (mesmo padrão
+// de lib/auth.test.ts do projeto irmão nexaigen-educa) — não precisa de
+// nenhuma infraestrutura externa pra rodar.
+//
+// RODADA DE MIGRAÇÃO DE INFRAESTRUTURA: antes mockava @/lib/supabase/server
+// (supabaseAdmin) com um builder fluente fake — agora mocka `query`
+// diretamente (uma função simples que devolve um array de linhas), mais
+// direto de configurar por teste. TODOS os casos de teste anteriores
+// (sucesso, erro, ausência de sessão, conta inativa, token_version
+// divergente etc.) foram preservados — é a cobertura da lógica de
+// negócio, que não muda nesta rodada.
 
 process.env.JWT_SECRET = process.env.JWT_SECRET ?? "chave-de-teste-jwt-apenas-unitario";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { supabaseAdminMock } = vi.hoisted(() => ({ supabaseAdminMock: vi.fn() }));
-vi.mock("@/lib/supabase/server", () => ({ supabaseAdmin: supabaseAdminMock }));
+const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }));
+vi.mock("@/lib/db", () => ({ query: queryMock }));
 
 import { SignJWT } from "jose";
 import {
@@ -26,38 +32,8 @@ import {
   type ContextoAutenticado
 } from "./auth";
 
-// --- Fake Supabase client — mesmo idioma de app/api/cron/verificar-prazos/route.test.ts:
-// builder fluente por tabela, cada teste configura o que precisa via
-// mockReturnValue/mockResolvedValue nos pontos que realmente usa. ---
-function criarSupabaseFake(overrides: {
-  equipeMaybeSingle?: any;
-  equipeUpdateResult?: { error: any } | null;
-  sessaoUpdateResult?: { error: any } | null;
-}) {
-  const equipeBuilder: any = {
-    select: () => equipeBuilder,
-    eq: () => equipeBuilder,
-    update: () => equipeBuilder,
-    maybeSingle: () => Promise.resolve(overrides.equipeMaybeSingle ?? { data: null, error: null })
-  };
-  // update().eq() precisa resolver pro resultado configurado — como select/eq
-  // acima retornam o mesmo builder, o "eq" final do update também passa por
-  // aqui; resolvido via then() pra funcionar tanto com quanto sem await direto.
-  equipeBuilder.then = (resolve: any) => resolve(overrides.equipeUpdateResult ?? { error: null });
-
-  const sessaoBuilder: any = {
-    update: () => sessaoBuilder,
-    eq: () => sessaoBuilder,
-    is: () => Promise.resolve(overrides.sessaoUpdateResult ?? { error: null })
-  };
-
-  return {
-    from: (tabela: string) => (tabela === "sessao" ? sessaoBuilder : equipeBuilder)
-  };
-}
-
 beforeEach(() => {
-  supabaseAdminMock.mockReset();
+  queryMock.mockReset();
 });
 
 describe("hashSenha / verificarSenha", () => {
@@ -128,12 +104,12 @@ describe("obterContextoAutenticado — sessão válida/inválida/ausente/expirad
   it("token ausente (undefined/null) — devolve null, nunca consulta o banco", async () => {
     expect(await obterContextoAutenticado(undefined)).toBeNull();
     expect(await obterContextoAutenticado(null)).toBeNull();
-    expect(supabaseAdminMock).not.toHaveBeenCalled();
+    expect(queryMock).not.toHaveBeenCalled();
   });
 
   it("token com assinatura inválida — devolve null, nunca consulta o banco", async () => {
     expect(await obterContextoAutenticado("lixo.nao.valido")).toBeNull();
-    expect(supabaseAdminMock).not.toHaveBeenCalled();
+    expect(queryMock).not.toHaveBeenCalled();
   });
 
   it("token expirado — devolve null", async () => {
@@ -147,34 +123,28 @@ describe("obterContextoAutenticado — sessão válida/inválida/ausente/expirad
 
   it("token válido mas conta não encontrada no banco — devolve null", async () => {
     const token = await gerarAccessToken({ equipeId: "equipe-apagada", nome: "Fulano", precisaTrocarSenha: false, tokenVersion: 1 });
-    supabaseAdminMock.mockReturnValue(criarSupabaseFake({ equipeMaybeSingle: { data: null, error: null } }));
+    queryMock.mockResolvedValue([]);
 
     expect(await obterContextoAutenticado(token)).toBeNull();
   });
 
   it("token válido mas conta inativa — devolve null", async () => {
     const token = await gerarAccessToken({ equipeId: "equipe-1", nome: "Luana", precisaTrocarSenha: false, tokenVersion: 1 });
-    supabaseAdminMock.mockReturnValue(
-      criarSupabaseFake({ equipeMaybeSingle: { data: { token_version: 1, ativo: false }, error: null } })
-    );
+    queryMock.mockResolvedValue([{ token_version: 1, ativo: false }]);
 
     expect(await obterContextoAutenticado(token)).toBeNull();
   });
 
   it("token válido mas token_version não bate com o banco (senha trocada/sessão revogada em outro lugar) — devolve null", async () => {
     const token = await gerarAccessToken({ equipeId: "equipe-1", nome: "Luana", precisaTrocarSenha: false, tokenVersion: 1 });
-    supabaseAdminMock.mockReturnValue(
-      criarSupabaseFake({ equipeMaybeSingle: { data: { token_version: 999, ativo: true }, error: null } })
-    );
+    queryMock.mockResolvedValue([{ token_version: 999, ativo: true }]);
 
     expect(await obterContextoAutenticado(token)).toBeNull();
   });
 
   it("token válido, conta ativa, token_version bate — devolve o contexto completo", async () => {
     const token = await gerarAccessToken({ equipeId: "equipe-1", nome: "Luana Carvalho", precisaTrocarSenha: true, tokenVersion: 3 });
-    supabaseAdminMock.mockReturnValue(
-      criarSupabaseFake({ equipeMaybeSingle: { data: { token_version: 3, ativo: true }, error: null } })
-    );
+    queryMock.mockResolvedValue([{ token_version: 3, ativo: true }]);
 
     const contexto = await obterContextoAutenticado(token);
     expect(contexto).toEqual({ equipeId: "equipe-1", nome: "Luana Carvalho", precisaTrocarSenha: true });
@@ -211,25 +181,49 @@ describe("trocarSenha", () => {
   const CONTA_ID = "equipe-1";
 
   it("conta não encontrada — sucesso false, nunca atualiza nada", async () => {
-    supabaseAdminMock.mockReturnValue(criarSupabaseFake({ equipeMaybeSingle: { data: null, error: null } }));
+    queryMock.mockResolvedValue([]);
 
     const resultado = await trocarSenha(CONTA_ID, "qualquer", "NovaSenha123");
     expect(resultado).toEqual({ sucesso: false, erro: "Conta não encontrada." });
+    // Só a leitura foi chamada — nenhum update em equipe_nexaigen/sessao.
+    expect(queryMock).toHaveBeenCalledTimes(1);
   });
 
   it("senha atual incorreta — sucesso false, nunca atualiza nada", async () => {
     const hashReal = await hashSenha("SenhaCerta123");
-    supabaseAdminMock.mockReturnValue(criarSupabaseFake({ equipeMaybeSingle: { data: { senha_hash: hashReal }, error: null } }));
+    queryMock.mockResolvedValue([{ senha_hash: hashReal }]);
 
     const resultado = await trocarSenha(CONTA_ID, "SenhaErrada999", "NovaSenha123");
     expect(resultado).toEqual({ sucesso: false, erro: "Senha atual incorreta." });
+    expect(queryMock).toHaveBeenCalledTimes(1);
   });
 
-  it("senha atual correta — sucesso true", async () => {
+  it("senha atual correta — sucesso true, grava novo hash + token_version + revoga sessões", async () => {
     const hashReal = await hashSenha("SenhaCerta123");
-    supabaseAdminMock.mockReturnValue(criarSupabaseFake({ equipeMaybeSingle: { data: { senha_hash: hashReal }, error: null } }));
+    // 1ª chamada: select senha_hash. 2ª: update equipe_nexaigen. 3ª: update sessao.
+    queryMock
+      .mockResolvedValueOnce([{ senha_hash: hashReal }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
 
     const resultado = await trocarSenha(CONTA_ID, "SenhaCerta123", "NovaSenha456");
     expect(resultado).toEqual({ sucesso: true });
+    expect(queryMock).toHaveBeenCalledTimes(3);
+
+    const [sqlUpdateEquipe, paramsUpdateEquipe] = queryMock.mock.calls[1];
+    expect(sqlUpdateEquipe).toContain("update equipe_nexaigen");
+    expect(paramsUpdateEquipe[2]).toBe(CONTA_ID); // id no where
+
+    const [sqlUpdateSessao, paramsUpdateSessao] = queryMock.mock.calls[2];
+    expect(sqlUpdateSessao).toContain("update sessao");
+    expect(paramsUpdateSessao[0]).toBe(CONTA_ID);
+  });
+
+  it("erro de infraestrutura genuíno ao atualizar equipe_nexaigen — sucesso false com mensagem de fallback (nunca lança)", async () => {
+    const hashReal = await hashSenha("SenhaCerta123");
+    queryMock.mockResolvedValueOnce([{ senha_hash: hashReal }]).mockRejectedValueOnce(new Error("conexão caiu"));
+
+    const resultado = await trocarSenha(CONTA_ID, "SenhaCerta123", "NovaSenha456");
+    expect(resultado).toEqual({ sucesso: false, erro: "Não foi possível trocar a senha. Tente novamente." });
   });
 });

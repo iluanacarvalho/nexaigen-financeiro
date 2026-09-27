@@ -1,11 +1,12 @@
 // Gestão da própria equipe NEXAIGEN — GET lista colegas, POST cadastra um
 // colega novo. Exige sessão válida nos dois métodos (exigirSessao) — SEM
 // hierarquia: qualquer pessoa já logada pode cadastrar outra (não existe
-// "papel" nesta identidade, ver lib/auth.ts).
+// "papel" nesta identidade, ver lib/auth.ts). Postgres direto via
+// lib/db.ts desde a rodada de migração de infraestrutura (Supabase → pg).
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { query } from "@/lib/db";
 import { NOME_COOKIE_ACCESS, exigirSessao, gerarSenhaTemporaria, hashSenha, obterContextoAutenticado } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
@@ -13,22 +14,20 @@ export async function GET(req: NextRequest) {
   const negado = exigirSessao(contexto);
   if (negado) return negado;
 
-  const supabase = supabaseAdmin();
-  // NUNCA senha_hash — select explícito de colunas, não "*", pra este
-  // campo estruturalmente não poder vazar na resposta.
-  const { data, error } = await supabase
-    .from("equipe_nexaigen")
-    .select("id, nome, email, ativo, criado_em")
-    .order("criado_em", { ascending: true });
-
-  if (error) return NextResponse.json({ erro: error.message }, { status: 500 });
-  return NextResponse.json({ colegas: data });
+  // NUNCA senha_hash — select explícito de colunas, não "select *", pra
+  // este campo estruturalmente não poder vazar na resposta.
+  const colegas = await query(`select id, nome, email, ativo, criado_em from equipe_nexaigen order by criado_em asc`);
+  return NextResponse.json({ colegas });
 }
 
 const CadastrarColegaSchema = z.object({
   nome: z.string().trim().min(2, "Informe o nome completo."),
   email: z.string().trim().email("E-mail inválido.")
 });
+
+// Nome EXATO da constraint (db/migrations/0001_initial.sql) — comparação
+// por IGUALDADE, nunca substring, na checagem de corrida do 23505 abaixo.
+const CONSTRAINT_EMAIL_DUPLICADO = "equipe_nexaigen_email_unico";
 
 export async function POST(req: NextRequest) {
   const contexto = await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value);
@@ -42,13 +41,11 @@ export async function POST(req: NextRequest) {
   const { nome, email } = parsed.data;
   const emailNormalizado = email.toLowerCase();
 
-  const supabase = supabaseAdmin();
-
-  // Checagem antecipada — mensagem clara em vez de deixar o erro de
-  // constraint única do Postgres (23505) ser o único jeito de saber o
-  // que houve.
-  const { data: existente } = await supabase.from("equipe_nexaigen").select("id").eq("email", emailNormalizado).maybeSingle();
-  if (existente) {
+  // Checagem antecipada — mensagem clara antes do catch de 23505 abaixo
+  // (que continua existindo pra uma corrida genuína entre esta leitura e
+  // o INSERT).
+  const existentes = await query(`select id from equipe_nexaigen where email = $1`, [emailNormalizado]);
+  if (existentes.length > 0) {
     return NextResponse.json({ erro: "Já existe uma conta de equipe com este e-mail." }, { status: 400 });
   }
 
@@ -58,26 +55,31 @@ export async function POST(req: NextRequest) {
   const senhaTemporaria = gerarSenhaTemporaria();
   const senhaHash = await hashSenha(senhaTemporaria);
 
-  const { data: novoColega, error } = await supabase
-    .from("equipe_nexaigen")
-    .insert({ nome, email: emailNormalizado, senha_hash: senhaHash })
-    .select("id")
-    .single();
-
-  if (error) {
-    // Corrida genuína entre a checagem antecipada e o INSERT (código 23505
-    // = unique_violation) — mesma mensagem clara, nunca um 500 cru.
-    if (error.code === "23505") {
-      return NextResponse.json({ erro: "Já existe uma conta de equipe com este e-mail." }, { status: 400 });
+  try {
+    const linhas = await query<{ id: string }>(
+      `insert into equipe_nexaigen (nome, email, senha_hash) values ($1, $2, $3) returning id`,
+      [nome, emailNormalizado, senhaHash]
+    );
+    return NextResponse.json({
+      id: linhas[0].id,
+      nome,
+      email: emailNormalizado,
+      senhaTemporaria,
+      aviso: "Guarde esta senha — ela não será mostrada de novo. Passe-a para o colega; será exigida a troca no primeiro acesso em /login."
+    });
+  } catch (erro) {
+    // Corrida genuína entre a checagem antecipada e o INSERT — o driver
+    // "pg" expõe o MESMO código de erro Postgres que o Supabase já
+    // repassava (`erro.code === "23505"` pra unique_violation; confirmado
+    // lendo a documentação do driver "pg" — o campo `code` vem direto do
+    // protocolo do Postgres, não é uma tradução própria de nenhum dos dois
+    // clientes, então o formato é idêntico nos dois).
+    if (erro && typeof erro === "object" && "code" in erro && erro.code === "23505") {
+      const constraint = "constraint" in erro ? String((erro as { constraint?: unknown }).constraint) : "";
+      if (constraint === CONSTRAINT_EMAIL_DUPLICADO) {
+        return NextResponse.json({ erro: "Já existe uma conta de equipe com este e-mail." }, { status: 400 });
+      }
     }
-    return NextResponse.json({ erro: error.message }, { status: 500 });
+    throw erro;
   }
-
-  return NextResponse.json({
-    id: novoColega.id,
-    nome,
-    email: emailNormalizado,
-    senhaTemporaria,
-    aviso: "Guarde esta senha — ela não será mostrada de novo. Passe-a para o colega; será exigida a troca no primeiro acesso em /login."
-  });
 }

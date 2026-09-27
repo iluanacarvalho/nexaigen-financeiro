@@ -1,0 +1,235 @@
+CONTEXTO
+
+Hoje o nexaigen-financeiro usa Supabase (supabaseAdmin(), service_role) como
+único acesso a banco — decisão original do projeto. A Luana pediu
+explicitamente pra trocar isso por Postgres direto (biblioteca "pg" +
+DATABASE_URL), EXATAMENTE como o projeto irmão nexaigen-educa já faz — ela
+quer os dois projetos com a mesma arquitetura de banco, sem depender de um
+projeto Supabase configurado à parte (o que já causou um bloqueio real: um
+projeto Supabase antigo, esquecido, com a URL nunca preenchida em
+.env.local, impedindo o primeiro login de funcionar).
+
+Esta é uma migração de INFRAESTRUTURA, não de funcionalidade — nenhuma
+lógica de negócio, contrato de resposta de API, nome de campo, status code
+ou comportamento visível muda. O objetivo é trocar COMO o dado é lido/
+escrito, nunca O QUE cada rota faz. Onde houver dúvida entre "manter
+comportamento idêntico" e "aproveitar pra melhorar algo", preserve o
+comportamento idêntico e documente a melhoria como pendência no relatório
+final, não implemente sem perguntar.
+
+Leia lib/db.ts e db/migrations/*.sql do projeto irmão nexaigen-educa
+(repositório ao lado deste) como referência de padrão — mesma disciplina:
+pool cacheado em globalThis, função query() parametrizada ($1, $2...),
+withTransaction() pra atomicidade, nunca interpolar valor na string SQL.
+Este projeto é mono-tenant e mais simples (sem multi-tenant, sem camada de
+repositórios separada por convenção própria) — não precisa replicar a regra
+de "só lib/repositorios/** importa pg" do educa se não fizer sentido aqui,
+mas o RESTO do padrão (pool, query parametrizada, transação) deve ser
+idêntico.
+
+TAREFA 1 — Dependências
+
+- Adicionar "pg" e "@types/pg" (dependencies/devDependencies).
+- Remover "@supabase/supabase-js" do package.json (não sobra nenhum uso
+  depois desta rodada).
+
+TAREFA 2 — lib/db.ts (novo arquivo)
+
+Mesmo contrato de lib/db.ts do nexaigen-educa: Pool cacheado em
+globalThis (evita vazar conexão em hot-reload do Next dev), função
+`query<T>(sql, params, executor?)` e `withTransaction(fn)`. Pode omitir o
+type parser de timestamptz do educa se não for necessário aqui (avalie
+lendo os tipos usados nas interfaces atuais de lib/auth.ts e nas rotas —
+document a decisão).
+
+TAREFA 3 — Migração SQL (nova, banco do zero — sem histórico Supabase)
+
+Como este é um banco NOVO (nunca existiu de fato com dado real, confirmado
+antes — ninguém nunca conseguiu logar), NÃO precisa replicar a dança de
+"criar → dropar usuario_interno → repontar FK" que existe em
+supabase/schema.sql (aquele arquivo documenta uma migração incremental de
+um banco Supabase que já existia; aqui não existe banco anterior a
+preservar). Crie diretamente o schema FINAL desejado, mesmo formato de
+db/migrations/0001_*.sql do nexaigen-educa (arquivo numerado, plain SQL,
+comentado):
+
+- `equipe_nexaigen` (id uuid pk default gen_random_uuid(), nome, email
+  unique via constraint nomeada `equipe_nexaigen_email_unico`, senha_hash,
+  senha_temporaria boolean not null default true, token_version bigint not
+  null default 1, ativo boolean not null default true, criado_em,
+  atualizado_em) — mesmas colunas/defaults de supabase/schema.sql Seção 1,
+  só sem a prosa sobre a migração incremental (não se aplica mais).
+- `sessao` (id, equipe_id fk cascade, refresh_token_hash, criado_em,
+  expira_em, revogado_em) + índice em equipe_id + índice único em
+  refresh_token_hash.
+- `cliente_prefeitura`, `nota_fiscal` (+ trigger
+  `trg_calcular_data_limite`/`calcular_data_limite`), `evento_verificacao`,
+  `alerta_cobranca` (+ índice único parcial `uq_alerta_ativo`) — MESMAS
+  colunas/constraints/checks/índices/trigger de supabase/schema.sql, seções
+  2 a 5, sem nenhuma mudança de comportamento. O trigger em particular
+  precisa continuar funcionando IDENTICO (data_limite_pagamento =
+  data_atesto + 30 dias, recalculado em insert/update).
+- SEM RLS/policies — RLS/`auth.uid()` é um conceito específico do
+  Supabase (separação anon key vs. service_role key); um Postgres acessado
+  só via DATABASE_URL da própria aplicação não tem esse conceito, e a
+  aplicação já não confia em RLS há uma rodada (o controle de acesso real
+  sempre foi `lib/auth.ts#exigirSessao()`, chamado em toda rota). Não
+  recrie nada equivalente a RLS aqui — seria teatro de segurança sem
+  nenhuma chave "menos privilegiada" pra proteger contra.
+- `create extension if not exists "pgcrypto"` continua necessário (mesmo
+  gen_random_uuid()).
+
+Depois de criar a migração, crie `scripts/migrate.ts` (mesmo padrão de
+nexaigen-educa: lê DATABASE_URL, roda as migrações em ordem, idempotente) e
+`docker-compose.yml` pra Postgres local (mesmo formato do compose do
+educa: postgres:16, usuário/senha/porta de dev — ESCOLHA uma porta
+DIFERENTE de 5434 (já usada pelo compose do nexaigen-educa) pra os dois
+projetos poderem rodar Postgres local ao mesmo tempo sem colidir — sugestão:
+5435. Adicione o script `"migrate"` ao package.json (mesmo padrão
+`tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/migrate.ts`).
+
+TAREFA 4 — Reescrever todo acesso a dado
+
+Todo arquivo abaixo importa `supabaseAdmin` de `@/lib/supabase/server` hoje
+— trocar por `query`/`withTransaction` de `@/lib/db`, preservando
+exatamente o mesmo filtro/ordenação/campo retornado que a chamada Supabase
+já fazia:
+
+- `lib/auth.ts` — TODAS as consultas a equipe_nexaigen/sessao
+  (obterContextoAutenticado, trocarSenha). Atenção especial ao
+  `token_version` (bigint, `Date.now()` na troca de senha — comportamento
+  já documentado no arquivo, não muda) e ao fato de que
+  `obterContextoAutenticado` recebe o token como parâmetro (não lê cookies
+  internamente) — isso continua igual, é só a consulta ao banco que muda.
+- `app/api/auth/login/route.ts` — SELECT em equipe_nexaigen por email,
+  INSERT em sessao.
+- `app/api/auth/logout/route.ts` — UPDATE em sessao (revogar por hash).
+- `app/api/clientes/route.ts` — SELECT/INSERT em cliente_prefeitura.
+- `app/api/notas/route.ts` — SELECT (com join em cliente_prefeitura pros
+  campos nome/uf/sistema_portal/portal_url) + filtro opcional por status,
+  INSERT em nota_fiscal.
+- `app/api/notas/[id]/verificar/route.ts` — INSERT em evento_verificacao,
+  UPDATE em nota_fiscal, UPDATE em alerta_cobranca (resolver alertas) —
+  ver o comentário já existente no arquivo sobre `verificado_por` vir
+  sempre de `contexto.equipeId`, isso não muda.
+- `app/api/alertas/route.ts` — SELECT com join duplo (alerta_cobranca →
+  nota_fiscal → cliente_prefeitura) trazendo numero_nf/valor/
+  data_limite_pagamento/nome/uf/contato_email/contato_telefone — a
+  consulta Supabase usa sintaxe de embed aninhado
+  (`nota:nota_fiscal_id ( ..., cliente:cliente_id ( ... ) )`); em SQL puro
+  isso é um JOIN de 3 tabelas — monte o SELECT trazendo os mesmos campos,
+  na mesma forma aninhada no JSON de resposta (o frontend espera
+  `alerta.nota.cliente.nome` etc. — não mude o formato da resposta, só
+  como ela é montada).
+- `app/api/equipe/route.ts` — SELECT (nunca senha_hash — mantenha o select
+  explícito de colunas, nunca `select *`), checagem de e-mail duplicado
+  antecipada + INSERT com tratamento do erro de constraint única
+  (Postgres real: `error.code === "23505"`, mesmo código que Supabase
+  repassa — confirme que o driver "pg" expõe o mesmo `.code` no objeto de
+  erro; se o formato for diferente, ajuste a checagem e documente).
+- `app/(protegido)/page.tsx` (dashboard) — SELECT em nota_fiscal e
+  alerta_cobranca pra contagens/agregados.
+- `app/(protegido)/alertas/page.tsx` — mesmo SELECT com join de
+  app/api/alertas/route.ts (ver o comentário já existente no arquivo sobre
+  por que esta página consulta o banco direto em vez de fazer self-fetch
+  da própria API).
+- `app/api/cron/verificar-prazos/route.ts` — o mais delicado: hoje faz
+  SELECT com join em cliente_prefeitura (nome, contato_email) filtrando
+  `status not in (paga, cancelada)`, depois pra cada nota calcula o
+  diagnóstico (lib/prazos.ts, função pura, NÃO MEXER), atualiza o status
+  se mudou, e faz um upsert em alerta_cobranca com `onConflict:
+  "nota_fiscal_id,tipo", ignoreDuplicates: true` retornando o id só quando
+  REALMENTE inseriu uma linha nova (é assim que a regra "e-mail só na
+  transição de estado, nunca repetido todo dia" funciona — ver o comentário
+  grande no topo do arquivo, não mude essa lógica). Em SQL puro, o
+  equivalente é `insert into alerta_cobranca (...) values (...) on
+  conflict (nota_fiscal_id, tipo) where status <> 'resolvido' do nothing
+  returning id` — confirme que bate com o índice único parcial
+  `uq_alerta_ativo` já criado na migração (mesma condição `where`), e que
+  `returning id` só traz uma linha quando o INSERT realmente aconteceu
+  (uma linha ignorada por conflito não aparece no RETURNING — é esse
+  comportamento que substitui o `ignoreDuplicates: true` + `.maybeSingle()`
+  de hoje).
+- `scripts/bootstrap-equipe-nexaigen.ts` — reescrever pra usar "pg" direto
+  (lê DATABASE_URL), MESMO padrão de scripts/seed.ts do nexaigen-educa —
+  agora faz sentido usar "pg" aqui, diferente da rodada anterior (prompt-02)
+  em que o projeto ainda era 100% Supabase e essa base "pg + DATABASE_URL"
+  não existia em lugar nenhum do projeto.
+- Apague `lib/supabase/` inteiro (só sobra `server.ts` depois da rodada
+  anterior — confirme que nada mais importa daquele diretório antes de
+  apagar).
+
+TAREFA 5 — Variáveis de ambiente
+
+.env.example: remover `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+`SUPABASE_SERVICE_ROLE_KEY`; adicionar `DATABASE_URL` (mesmo formato de
+comentário do nexaigen-educa: valor de exemplo pro Postgres local do
+docker-compose novo, nota sobre produção usar a connection string real do
+provedor escolhido). Documentar em CLAUDE.md/README o novo fluxo de banco
+local (docker compose up -d && npm run migrate), substituindo o trecho
+atual que fala de `supabase init && supabase start`.
+
+TAREFA 6 — Testes
+
+Todo teste que hoje mocka `@/lib/supabase/server` (lib/auth.test.ts,
+app/api/protecao-rotas.test.ts, app/api/cron/verificar-prazos/route.test.ts)
+precisa mockar `@/lib/db` (a função `query`, e `withTransaction` se algum
+caminho passar a usar transação) em vez disso — mesmo espírito do mock
+atual (builder fake que resolve com os dados configurados por teste), só
+trocando o alvo. Preserve TODOS os casos de teste já existentes (sucesso,
+erro, ausência de sessão, conta inativa, token_version divergente, etc.)
+— são a cobertura da lógica de negócio, que não muda nesta rodada.
+
+Em `app/api/protecao-rotas.test.ts` especificamente: o mock hoje FAZ
+`supabaseAdmin` lançar erro se for chamado sem sessão (prova de que
+`exigirSessao()` barra ANTES de tocar o banco) — mantenha exatamente essa
+garantia, só que mockando `query`/`withTransaction` de `@/lib/db` pra
+lançar nas mesmas condições.
+
+ADICIONAL (novo nesta rodada): dado que este projeto nunca teve nenhum
+teste de integração contra Postgres real (só mocks unitários), e que a
+lógica do job de cron (upsert condicional + trigger de data_limite) é
+exatamente o tipo de coisa que um mock pode disfarçar um erro de SQL real,
+adicione pelo menos um arquivo de teste de integração (mesmo padrão do
+nexaigen-educa: sobe contra um Postgres real via
+`docker compose up -d && npm run migrate && npm run test:integration`,
+usando um script `vitest.integration.config.ts` + comando `test:integration`
+no package.json, mesmo formato do educa) cobrindo:
+  - o trigger `calcular_data_limite` (inserir/atualizar nota_fiscal com
+    data_atesto e confirmar que data_limite_pagamento = data_atesto + 30
+    dias, calculado pelo PRÓPRIO banco);
+  - o índice único parcial `uq_alerta_ativo` de verdade (duas tentativas
+    de INSERT do mesmo alerta ativo, confirmar que só a primeira retorna
+    linha no RETURNING);
+  - um fluxo completo de POST /api/cron/verificar-prazos contra dado real
+    (nota vencida → gera alerta → chamar de novo no mesmo dia → não gera
+    alerta duplicado nem manda e-mail de novo — mocking só a camada de
+    envio de e-mail, lib/notificacao-interna.ts/lib/notificacaoCliente.ts,
+    nunca o banco).
+
+VERIFICAÇÃO ESPERADA
+
+- npx tsc --noEmit limpo.
+- npm run build (next build) compila sem erro.
+- npm run test (unitário) — toda a suíte atual continua passando com os
+  mocks trocados pra @/lib/db, nenhum caso removido.
+- npm run test:integration (novo) passando contra o Postgres local do
+  docker-compose novo.
+- Confirme manualmente (documente no relatório) que
+  GET/POST /api/cron/verificar-prazos continua funcionando só com
+  CRON_SECRET (nenhuma mudança nessa rota além de trocar Supabase por pg
+  internamente) — reconfirme com o MESMO teste que já existe pra isso
+  (app/api/protecao-rotas.test.ts).
+- Rode a suíte completa de dados de teste manualmente uma vez, do zero,
+  contra o Postgres local (docker compose up -d && npm run migrate),
+  confirmando visualmente que criar cliente → criar nota → verificar
+  atesto → rodar o cron → ver alerta aparecer em /alertas funciona ponta a
+  ponta (não precisa ser automatizado, é uma checagem manual pra este
+  relatório).
+
+RISCOS/PENDÊNCIAS — reporte no final, como sempre. Ponto que já identifico:
+como não existe (e nunca existiu) dado real em produção neste projeto, não
+há nenhuma migração de dado a fazer — é seguro tratar isso como "banco
+novo, do zero", mas confirme isso mais uma vez antes de finalizar (Luana
+mencionou que só existe um projeto Supabase antigo, nunca usado de fato —
+confirme que não há necessidade de exportar nada de lá).
