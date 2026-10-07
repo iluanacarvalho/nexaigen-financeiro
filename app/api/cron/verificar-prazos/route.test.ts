@@ -14,15 +14,20 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { queryMock, notificarTimeMock, notificarClienteMock } = vi.hoisted(() => ({
+const { queryMock, notificarTimeMock, notificarClienteMock, alertarErroSistemaMock } = vi.hoisted(() => ({
   queryMock: vi.fn(),
   notificarTimeMock: vi.fn(),
-  notificarClienteMock: vi.fn()
+  notificarClienteMock: vi.fn(),
+  alertarErroSistemaMock: vi.fn()
 }));
 
 vi.mock("@/lib/db", () => ({ query: queryMock }));
 vi.mock("@/lib/notificacao-interna", () => ({ notificarTimeDeCobranca: notificarTimeMock }));
 vi.mock("@/lib/notificacaoCliente", () => ({ notificarClientePrefeitura: notificarClienteMock }));
+// Rodada de alerta de falha de sistema: route.ts agora chama
+// alertarErroSistema quando CRON_SECRET está ausente — mockado aqui pra
+// não precisar de Postgres real neste teste puro.
+vi.mock("@/lib/alertaErroSistema", () => ({ alertarErroSistema: alertarErroSistemaMock }));
 
 import { NextRequest } from "next/server";
 import { POST } from "./route";
@@ -78,6 +83,7 @@ beforeEach(() => {
   queryMock.mockReset();
   notificarTimeMock.mockReset().mockResolvedValue(undefined);
   notificarClienteMock.mockReset().mockResolvedValue(true);
+  alertarErroSistemaMock.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -151,5 +157,17 @@ describe("POST /api/cron/verificar-prazos — e-mail ao cliente só na transiç�
     expect(notificarTimeMock.mock.calls[0][0].tipo).toBe("atraso_60_dias");
     expect(notificarClienteMock).toHaveBeenCalledTimes(1);
     expect(notificarClienteMock.mock.calls[0][0].tipo).toBe("atraso_60_dias");
+  });
+});
+
+describe("POST /api/cron/verificar-prazos — CRON_SECRET ausente (rodada de alerta de falha de sistema)", () => {
+  it("devolve 401 e alerta falha de sistema (categoria job_verificar_prazos), nunca toca o banco", async () => {
+    delete process.env.CRON_SECRET;
+
+    const res = await POST(requisicao());
+
+    expect(res.status).toBe(401);
+    expect(queryMock).not.toHaveBeenCalled();
+    expect(alertarErroSistemaMock).toHaveBeenCalledWith("job_verificar_prazos", expect.any(String));
   });
 });

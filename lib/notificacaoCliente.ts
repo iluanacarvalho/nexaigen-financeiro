@@ -64,6 +64,7 @@
 import { Resend } from "resend";
 import { montarEmailHtml } from "./emailTemplate";
 import type { TipoAlerta } from "./tipos";
+import { alertarErroSistema } from "./alertaErroSistema";
 
 // clienteNome/numeroNf vêm de dado cadastrado (cliente_prefeitura.nome,
 // nota_fiscal.numero) — este e-mail sai em nome da empresa direto pra
@@ -95,6 +96,18 @@ function comTimeout<T>(promessa: Promise<T>, ms: number): Promise<T> {
     promessa,
     new Promise<T>((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))
   ]);
+}
+
+/**
+ * Múltiplos destinatários via vírgula no BCC (mesmo tratamento dado a
+ * ALERTA_SISTEMA_EMAILS_DESTINO em lib/alertaErroSistema.ts) — o time de
+ * cobrança pode ter mais de uma pessoa recebendo cópia oculta.
+ */
+function dividirEmails(valor: string): string[] {
+  return valor
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean);
 }
 
 function formatarMoeda(valor: number): string {
@@ -185,11 +198,19 @@ export async function notificarClientePrefeitura(dados: DadosNotificacaoCliente)
 
   if (!apiKey) {
     console.warn("RESEND_API_KEY não configurada — e-mail ao cliente não enviado.");
+    // Item 6 do escopo desta rodada: config ausente é falha de SISTEMA —
+    // categoria "resend_cliente".
+    await alertarErroSistema("resend_cliente", "RESEND_API_KEY não configurada.");
     return false;
   }
 
   if (!dados.contatoEmail) {
     console.warn(`cliente_prefeitura sem contato_email configurado (${dados.clienteNome}) — e-mail ao cliente não enviado.`);
+    // Deliberadamente SEM alertarErroSistema aqui — isso é dado cadastral
+    // faltando de um cliente específico (contato_email de
+    // cliente_prefeitura), não uma falha de sistema. Pedido explícito da
+    // rodada: fica de fora, candidato a aparecer num relatório de
+    // qualidade de cadastro no futuro, não um alerta de sistema agora.
     return false;
   }
 
@@ -211,7 +232,7 @@ export async function notificarClientePrefeitura(dados: DadosNotificacaoCliente)
         // não estiver configurada (mesma postura "opcional em runtime" já
         // usada por lib/notificacao-interna.ts — a ausência dela não pode
         // bloquear o e-mail ao cliente em si).
-        ...(bcc ? { bcc } : {}),
+        ...(bcc ? { bcc: dividirEmails(bcc) } : {}),
         subject: conteudo.assunto,
         html
       }),
@@ -220,12 +241,14 @@ export async function notificarClientePrefeitura(dados: DadosNotificacaoCliente)
 
     if (error) {
       console.warn(`Falha ao enviar e-mail ao cliente (${dados.clienteNome}) via Resend — código: ${error.name}.`);
+      await alertarErroSistema("resend_cliente", `Erro da API do Resend ao enviar e-mail ao cliente (${dados.clienteNome}) — código: ${error.name}.`);
       return false;
     }
 
     return true;
   } catch (erro) {
     const motivo = erro instanceof Error && erro.message === "timeout" ? "timeout" : "erro de rede";
+    await alertarErroSistema("resend_cliente", `Falha (${motivo}) ao enviar e-mail ao cliente (${dados.clienteNome}) via Resend.`);
     console.warn(`Falha ao enviar e-mail ao cliente (${dados.clienteNome}) via Resend — ${motivo}.`);
     return false;
   }

@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function FilaChecagemPage() {
   const [notas, setNotas] = useState<any[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [enviandoArquivoId, setEnviandoArquivoId] = useState<string | null>(null);
+  const [erroArquivoId, setErroArquivoId] = useState<{ id: string; mensagem: string } | null>(null);
+  const inputsArquivo = useRef<Record<string, HTMLInputElement | null>>({});
 
   async function carregar() {
     setCarregando(true);
@@ -25,6 +28,31 @@ export default function FilaChecagemPage() {
       body: JSON.stringify({ resultado })
     });
     carregar();
+  }
+
+  async function anexarArquivo(notaId: string, arquivo: File) {
+    setErroArquivoId(null);
+    setEnviandoArquivoId(notaId);
+    const formData = new FormData();
+    formData.set("arquivo", arquivo);
+    const res = await fetch(`/api/notas/${notaId}/arquivo`, { method: "POST", body: formData });
+    setEnviandoArquivoId(null);
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setErroArquivoId({ id: notaId, mensagem: data?.erro ?? "Não foi possível anexar o PDF." });
+      return;
+    }
+    carregar();
+  }
+
+  async function abrirNotaFiscal(notaId: string) {
+    const res = await fetch(`/api/notas/${notaId}/arquivo`);
+    if (!res.ok) {
+      setErroArquivoId({ id: notaId, mensagem: "Não foi possível abrir o PDF — tente novamente." });
+      return;
+    }
+    const { url } = await res.json();
+    window.open(url, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -53,6 +81,36 @@ export default function FilaChecagemPage() {
                   Abrir portal da prefeitura →
                 </a>
               )}
+              <div className="mt-1 flex items-center gap-2">
+                {n.arquivo_pdf_nome ? (
+                  <button onClick={() => abrirNotaFiscal(n.id)} className="text-sm text-teal underline">
+                    📄 Ver nota fiscal
+                  </button>
+                ) : (
+                  <span className="text-sm text-slate-400">Sem PDF anexado</span>
+                )}
+                <input
+                  ref={(el) => {
+                    inputsArquivo.current[n.id] = el;
+                  }}
+                  type="file"
+                  accept="application/pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const arquivo = e.target.files?.[0];
+                    if (arquivo) anexarArquivo(n.id, arquivo);
+                    e.target.value = "";
+                  }}
+                />
+                <button
+                  onClick={() => inputsArquivo.current[n.id]?.click()}
+                  disabled={enviandoArquivoId === n.id}
+                  className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  {enviandoArquivoId === n.id ? "Enviando..." : n.arquivo_pdf_nome ? "Trocar PDF" : "Anexar PDF"}
+                </button>
+              </div>
+              {erroArquivoId && erroArquivoId.id === n.id && <p className="mt-1 text-xs text-red-600">{erroArquivoId.mensagem}</p>}
             </div>
             <div className="flex gap-2">
               <button

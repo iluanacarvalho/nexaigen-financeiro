@@ -7,6 +7,19 @@ vi.mock("resend", () => ({
   })
 }));
 
+// lib/alertaErroSistema.ts importa lib/db.ts (pg real) — sem mockar aqui,
+// este teste puro quebraria na importação assim que notificacaoCliente.ts
+// passasse a chamar alertarErroSistema (rodada de alerta de falha de
+// sistema). Mesmo raciocínio de lib/notificacao-interna.test.ts.
+//
+// vi.hoisted (não `const` solto): vi.mock() é hoisted pro TOPO do
+// arquivo, antes de QUALQUER outro statement — um `const` comum
+// referenciado na factory lançaria "Cannot access before initialization".
+const { alertarErroSistemaMock } = vi.hoisted(() => ({
+  alertarErroSistemaMock: vi.fn().mockResolvedValue(undefined)
+}));
+vi.mock("./alertaErroSistema", () => ({ alertarErroSistema: alertarErroSistemaMock }));
+
 import { notificarClientePrefeitura } from "./notificacaoCliente";
 
 const ENV_ORIGINAL = {
@@ -35,6 +48,7 @@ function configurarEnvCompleto() {
 beforeEach(() => {
   sendMock.mockReset();
   sendMock.mockResolvedValue({ data: { id: "email-fake-id" }, error: null });
+  alertarErroSistemaMock.mockClear();
 });
 
 afterEach(() => {
@@ -58,20 +72,22 @@ const BASE = {
 const TERMOS_PROIBIDOS = ["protestar", "protesto", "acionar", "medidas legais", "medida legal", "jurídic", "cartório", "negativa"];
 
 describe("notificarClientePrefeitura — RESEND_API_KEY ausente", () => {
-  it("não chama o client do Resend, nunca lança, devolve false", async () => {
+  it("não chama o client do Resend, nunca lança, devolve false, alerta falha de sistema (categoria resend_cliente)", async () => {
     limparEnv();
 
     await expect(notificarClientePrefeitura({ ...BASE, tipo: "vencido" })).resolves.toBe(false);
     expect(sendMock).not.toHaveBeenCalled();
+    expect(alertarErroSistemaMock).toHaveBeenCalledWith("resend_cliente", expect.any(String));
   });
 });
 
 describe("notificarClientePrefeitura — contatoEmail ausente", () => {
-  it("não chama o client do Resend, nunca lança, devolve false (mesmo com RESEND_API_KEY presente)", async () => {
+  it("não chama o client do Resend, nunca lança, devolve false (mesmo com RESEND_API_KEY presente) — e NUNCA alerta falha de sistema, é dado cadastral faltando, não falha técnica", async () => {
     configurarEnvCompleto();
 
     await expect(notificarClientePrefeitura({ ...BASE, tipo: "vencido", contatoEmail: null })).resolves.toBe(false);
     expect(sendMock).not.toHaveBeenCalled();
+    expect(alertarErroSistemaMock).not.toHaveBeenCalled();
   });
 });
 
@@ -92,7 +108,7 @@ describe.each([
 
     expect(payload.from).toBe("alertas@nexaigen.com.br");
     expect(payload.to).toBe(BASE.contatoEmail);
-    expect(payload.bcc).toBe("financeiro@nexaigen.com.br");
+    expect(payload.bcc).toEqual(["financeiro@nexaigen.com.br"]);
     expect(payload.cc).toBeUndefined();
     expect(payload.subject).toContain(trechoAssuntoEsperado);
     expect(payload.html).toContain(BASE.numeroNf);
@@ -148,19 +164,33 @@ describe("notificarClientePrefeitura — BCC ausente", () => {
   });
 });
 
+describe("notificarClientePrefeitura — BCC com múltiplos e-mails", () => {
+  it("COBRANCA_EMAIL_DESTINO com múltiplos e-mails separados por vírgula — todos viram destinatários do BCC", async () => {
+    configurarEnvCompleto();
+    process.env.COBRANCA_EMAIL_DESTINO = "financeiro@nexaigen.com.br, cobranca@nexaigen.com.br ,  outra@nexaigen.com.br";
+
+    await notificarClientePrefeitura({ ...BASE, tipo: "vencido" });
+
+    const payload = sendMock.mock.calls[0][0];
+    expect(payload.bcc).toEqual(["financeiro@nexaigen.com.br", "cobranca@nexaigen.com.br", "outra@nexaigen.com.br"]);
+  });
+});
+
 describe("notificarClientePrefeitura — falhas de envio", () => {
-  it("erro devolvido pela API do Resend (error != null) — devolve false, nunca lança", async () => {
+  it("erro devolvido pela API do Resend (error != null) — devolve false, nunca lança, alerta falha de sistema (categoria resend_cliente)", async () => {
     configurarEnvCompleto();
     sendMock.mockResolvedValue({ data: null, error: { message: "chave inválida", statusCode: 401, name: "invalid_api_key" } });
 
     await expect(notificarClientePrefeitura({ ...BASE, tipo: "vencido" })).resolves.toBe(false);
+    expect(alertarErroSistemaMock).toHaveBeenCalledWith("resend_cliente", expect.any(String));
   });
 
-  it("exceção lançada pelo client (rede) — devolve false, nunca lança", async () => {
+  it("exceção lançada pelo client (rede) — devolve false, nunca lança, alerta falha de sistema", async () => {
     configurarEnvCompleto();
     sendMock.mockRejectedValue(new Error("erro de rede simulado"));
 
     await expect(notificarClientePrefeitura({ ...BASE, tipo: "vencido" })).resolves.toBe(false);
+    expect(alertarErroSistemaMock).toHaveBeenCalledWith("resend_cliente", expect.any(String));
   });
 
   it("timeout — aborta depois de 5s e devolve false, nunca lança", async () => {

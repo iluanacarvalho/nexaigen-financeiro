@@ -31,6 +31,7 @@ import { NextRequest } from "next/server";
 import { GET as clientesGet, POST as clientesPost } from "./clientes/route";
 import { GET as notasGet, POST as notasPost } from "./notas/route";
 import { POST as verificarPost } from "./notas/[id]/verificar/route";
+import { GET as arquivoGet, POST as arquivoPost } from "./notas/[id]/arquivo/route";
 import { GET as alertasGet } from "./alertas/route";
 import { GET as equipeGet, POST as equipePost } from "./equipe/route";
 import { POST as cronPost } from "./cron/verificar-prazos/route";
@@ -54,6 +55,8 @@ describe("achado crítico de segurança — toda rota antes aberta agora exige s
     ["GET /api/notas", () => notasGet(reqSemSessao("/api/notas", "GET"))],
     ["POST /api/notas", () => notasPost(reqSemSessao("/api/notas", "POST"))],
     ["POST /api/notas/[id]/verificar", () => verificarPost(reqSemSessao("/api/notas/nota-1/verificar", "POST"), { params: Promise.resolve({ id: "nota-1" }) })],
+    ["POST /api/notas/[id]/arquivo", () => arquivoPost(reqSemSessao("/api/notas/nota-1/arquivo", "POST"), { params: Promise.resolve({ id: "nota-1" }) })],
+    ["GET /api/notas/[id]/arquivo", () => arquivoGet(reqSemSessao("/api/notas/nota-1/arquivo", "GET"), { params: Promise.resolve({ id: "nota-1" }) })],
     ["GET /api/alertas", () => alertasGet(reqSemSessao("/api/alertas", "GET"))],
     ["GET /api/equipe", () => equipeGet(reqSemSessao("/api/equipe", "GET"))],
     ["POST /api/equipe", () => equipePost(reqSemSessao("/api/equipe", "POST"))]

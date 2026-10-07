@@ -117,3 +117,39 @@ describe("índice único parcial uq_alerta_ativo — Postgres real", () => {
     await query(`delete from nota_fiscal where id = $1`, [notaId]);
   });
 });
+
+describe("colunas arquivo_pdf_chave/arquivo_pdf_nome (0002_nota_fiscal_arquivo_pdf.sql) — Postgres real", () => {
+  it("nascem nulas, e persistem depois de um UPDATE (mesma escrita que POST /api/notas/[id]/arquivo faz)", async () => {
+    const criadas = await query<{ arquivo_pdf_chave: string | null; arquivo_pdf_nome: string | null }>(
+      `insert into nota_fiscal (cliente_id, competencia, valor) values ($1, current_date, 900)
+       returning arquivo_pdf_chave, arquivo_pdf_nome`,
+      [clienteId]
+    );
+    expect(criadas[0].arquivo_pdf_chave).toBeNull();
+    expect(criadas[0].arquivo_pdf_nome).toBeNull();
+
+    const notaId = (
+      await query<{ id: string }>(`select id from nota_fiscal where cliente_id = $1 order by created_at desc limit 1`, [clienteId])
+    )[0].id;
+
+    const chave = `financeiro/notas-fiscais/${notaId}/NF-e_teste.pdf`;
+    const atualizadas = await query<{ arquivo_pdf_chave: string; arquivo_pdf_nome: string }>(
+      `update nota_fiscal set arquivo_pdf_chave = $1, arquivo_pdf_nome = $2 where id = $3
+       returning arquivo_pdf_chave, arquivo_pdf_nome`,
+      [chave, "NF-e teste.pdf", notaId]
+    );
+    expect(atualizadas[0].arquivo_pdf_chave).toBe(chave);
+    expect(atualizadas[0].arquivo_pdf_nome).toBe("NF-e teste.pdf");
+
+    // Lido de volta numa consulta separada — confirma persistência real,
+    // não só o RETURNING da própria escrita.
+    const relidas = await query<{ arquivo_pdf_chave: string; arquivo_pdf_nome: string }>(
+      `select arquivo_pdf_chave, arquivo_pdf_nome from nota_fiscal where id = $1`,
+      [notaId]
+    );
+    expect(relidas[0].arquivo_pdf_chave).toBe(chave);
+    expect(relidas[0].arquivo_pdf_nome).toBe("NF-e teste.pdf");
+
+    await query(`delete from nota_fiscal where id = $1`, [notaId]);
+  });
+});

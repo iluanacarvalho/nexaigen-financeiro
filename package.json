@@ -15,6 +15,9 @@
     "bootstrap-equipe-nexaigen": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/bootstrap-equipe-nexaigen.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1131.0",
+    "@aws-sdk/s3-request-presigner": "^3.1131.0",
+    "@smithy/node-http-handler": "^4.12.1",
     "bcryptjs": "^3.0.3",
     "jose": "^6.2.10",
     "next": "16.3.3",

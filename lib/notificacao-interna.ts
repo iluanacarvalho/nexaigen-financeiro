@@ -24,6 +24,7 @@
 
 import { Resend } from "resend";
 import { montarEmailHtml } from "./emailTemplate";
+import { alertarErroSistema } from "./alertaErroSistema";
 
 // clienteNome/numeroNf vêm de dado cadastrado (cliente_prefeitura.nome,
 // nota_fiscal.numero) — hoje sempre digitado pela própria equipe da
@@ -67,6 +68,18 @@ function comTimeout<T>(promessa: Promise<T>, ms: number): Promise<T> {
   ]);
 }
 
+/**
+ * Múltiplos destinatários via vírgula (mesmo tratamento dado a
+ * ALERTA_SISTEMA_EMAILS_DESTINO em lib/alertaErroSistema.ts) — o time de
+ * cobrança pode ter mais de uma pessoa recebendo este alerta.
+ */
+function dividirEmails(valor: string): string[] {
+  return valor
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean);
+}
+
 export async function notificarTimeDeCobranca(alerta: AlertaParaNotificar): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   const destino = process.env.COBRANCA_EMAIL_DESTINO;
@@ -76,6 +89,10 @@ export async function notificarTimeDeCobranca(alerta: AlertaParaNotificar): Prom
     console.warn(
       "RESEND_API_KEY ou COBRANCA_EMAIL_DESTINO não configurados — alerta gravado no banco, mas nenhuma notificação foi enviada."
     );
+    // Item 6 do escopo desta rodada: configuração ausente aqui é uma
+    // falha de SISTEMA (env var faltando), não dado cadastral de um
+    // cliente específico — categoria "resend_interno".
+    await alertarErroSistema("resend_interno", "RESEND_API_KEY ou COBRANCA_EMAIL_DESTINO não configurados.");
     return;
   }
 
@@ -106,15 +123,20 @@ export async function notificarTimeDeCobranca(alerta: AlertaParaNotificar): Prom
 
   try {
     const resend = new Resend(apiKey);
-    const { error } = await comTimeout(resend.emails.send({ from: remetente, to: destino, subject: assunto, html }), TIMEOUT_ALERTA_MS);
+    const { error } = await comTimeout(
+      resend.emails.send({ from: remetente, to: dividirEmails(destino), subject: assunto, html }),
+      TIMEOUT_ALERTA_MS
+    );
 
     if (error) {
       // Nunca loga o corpo completo do erro — só o nome do código,
       // suficiente pra triagem.
       console.error(`Falha ao enviar notificação via Resend — código: ${error.name}.`);
+      await alertarErroSistema("resend_interno", `Erro da API do Resend ao notificar time de cobrança — código: ${error.name}.`);
     }
   } catch (erro) {
     const motivo = erro instanceof Error && erro.message === "timeout" ? "timeout" : "erro de rede";
     console.error(`Falha ao enviar notificação via Resend — ${motivo}, alerta gravado no banco mas notificação não confirmada.`);
+    await alertarErroSistema("resend_interno", `Falha (${motivo}) ao notificar time de cobrança via Resend.`);
   }
 }

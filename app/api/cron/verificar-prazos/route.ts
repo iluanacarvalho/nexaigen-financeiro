@@ -37,6 +37,7 @@ import { query } from "@/lib/db";
 import { diagnosticarNota } from "@/lib/prazos";
 import { notificarTimeDeCobranca } from "@/lib/notificacao-interna";
 import { notificarClientePrefeitura } from "@/lib/notificacaoCliente";
+import { alertarErroSistema } from "@/lib/alertaErroSistema";
 
 export async function GET(req: NextRequest) {
   return executar(req);
@@ -72,6 +73,10 @@ interface NotaLinha {
 async function executar(req: NextRequest) {
   if (!process.env.CRON_SECRET) {
     console.error("CRON_SECRET não configurado — recusando execução do job.");
+    // Falha de sistema real: sem isto, o job diário inteiro para de
+    // rodar (nenhuma nota é verificada, nenhum alerta/notificação sai)
+    // até alguém notar manualmente — categoria "job_verificar_prazos".
+    await alertarErroSistema("job_verificar_prazos", "CRON_SECRET não configurado — o job diário de verificação de prazos está sendo recusado.");
     return NextResponse.json({ erro: "Não autorizado." }, { status: 401 });
   }
 
