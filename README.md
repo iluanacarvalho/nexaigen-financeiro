@@ -5,12 +5,17 @@ notas fiscais, checagem de atesto e escalonamento automático de cobrança. Pens
 escala — o objetivo é sustentar centenas/milhares de contratos com uma equipe pequena de checagem
 manual e tudo o mais automatizado.
 
-**Verificado nesta sessão (rodada de migração de infraestrutura Supabase → Postgres direto):**
-`npm install`, `tsc --noEmit` (zero erros), `next build` (17 páginas/rotas geradas), `npm run test`
-(73 testes unitários, banco mockado), `npm run test:integration` (6 testes novos contra Postgres
-real — trigger `calcular_data_limite`, índice único parcial `uq_alerta_ativo`, fluxo completo do
-cron) e um passo a passo manual completo contra o Postgres local real (login → trocar senha →
-criar cliente → criar nota → atestar → rodar cron → ver o alerta em `/api/alertas`) — ver Seção 8.
+**Verificado nesta sessão (rodada mais recente: upload de PDF da nota fiscal — Seção 9):**
+`tsc --noEmit` (zero erros), `next build` (agora 17 rotas, incluindo `POST`/`GET
+/api/notas/[id]/arquivo`), `npm run test` (**98 testes unitários**, banco e armazenamento de
+objetos mockados), `npm run test:integration` (**7 testes** contra Postgres real, incluindo a
+persistência das colunas novas `arquivo_pdf_chave`/`arquivo_pdf_nome`), e checagem manual contra
+servidor real + Postgres local (upload/download reais via `curl`, incluindo o caso sem
+`RAILWAY_BUCKET_*` configurado — 502 gracioso, nunca uma exceção). Rodada anterior (migração de
+infraestrutura Supabase → Postgres direto): `npm install`, `next build` (17 páginas/rotas),
+`npm run test` (73 testes), `npm run test:integration` (6 testes) e um passo a passo manual
+completo (login → trocar senha → criar cliente → criar nota → atestar → rodar cron → ver o alerta
+em `/api/alertas`) — ver Seção 8.
 
 **ACHADO CRÍTICO DE SEGURANÇA, CORRIGIDO — leia antes de usar com dado real.** Até a rodada de
 login próprio (ver Seção 7), esta plataforma não tinha autenticação nenhuma: toda rota de API e
@@ -265,3 +270,87 @@ preserve e documente"):**
 - Nenhuma otimização de performance foi tentada nesta rodada (era migração de infraestrutura, não
   de funcionalidade) — não há `scripts/teste-carga-*` para este projeto ainda, ao contrário do
   `nexaigen-educa`; fica como possível pendência futura se o volume de notas/clientes crescer.
+
+## 9. Upload do PDF da nota fiscal
+
+Pedido da Luana: guardar o PDF da NF-e junto do registro de cada nota. Este sistema não emite
+NF-e — ela já é emitida fora (prefeitura/contador) — só guarda o arquivo. `lib/armazenamentoObjetos.ts`
+foi **reaproveitado tal e qual** do projeto irmão `nexaigen-educa` (mesmo módulo, mesmas env vars
+`RAILWAY_BUCKET_*`, mesmo contrato de robustez — nunca lança, sempre `false`/`null` em falha) — não
+existia nenhuma rodada anterior de upload de PDF neste projeto (contrato de cliente ou qualquer
+outro), então não havia um segundo módulo pra evitar duplicar; este é o primeiro.
+
+**`0002_nota_fiscal_arquivo_pdf.sql`** adiciona `arquivo_pdf_chave`/`arquivo_pdf_nome` (ambos
+nulos até o primeiro anexo) — só metadados; o arquivo em si vai pro bucket privado, nunca pro
+Postgres.
+
+**`POST`/`GET /api/notas/[id]/arquivo`** exigem sessão (`exigirSessao`, mesmo padrão de toda outra
+rota deste projeto). O upload valida, nesta ordem: nota existe (404) → `Content-Type ===
+"application/pdf"` (400) → tamanho ≤ 10MB (400) → **assinatura real do arquivo** (`%PDF-` nos 5
+primeiros bytes, 400 se não bater) — só depois disso chama `uploadArquivo()`. Essa checagem de
+assinatura é **mais rigorosa** que o precedente de prestação de contas de convênio em
+`nexaigen-educa` (que só confere Content-Type + extensão do nome do arquivo, nunca o conteúdo
+real) — decisão deliberada, porque o pedido desta rodada especificou explicitamente conferir a
+assinatura, não porque o precedente estivesse errado pro caso dele. O download nunca devolve a
+chave do objeto nem uma URL direta — sempre uma presigned URL de 5 minutos (`gerarUrlDownload`), e
+404 se a nota não tiver PDF anexado.
+
+**Chave do objeto**: `financeiro/notas-fiscais/{notaFiscalId}/{nomeSanitizado}` — uma nota tem no
+máximo um PDF "atual" por vez (diferente do padrão de convênio em `nexaigen-educa`, que usa um
+`uuid` na chave porque um convênio pode ter VÁRIOS anexos ao longo do tempo, um por bimestre).
+Reenviar o PDF de uma nota sobrescreve `arquivo_pdf_chave`/`arquivo_pdf_nome` com a nova chave —
+**pendência conhecida, não implementada**: o objeto anterior fica órfão no bucket (nunca é
+deletado). Bucket privado sem listagem/lifecycle configurado neste round — se isso importar antes
+de virar um volume real de reenvios, a correção é ou (a) reutilizar a MESMA chave sempre (sem o
+nome do arquivo original nela, só um nome fixo tipo `arquivo.pdf`) ou (b) deletar o objeto antigo
+explicitamente antes de gravar o novo; nenhuma das duas foi escolhida sem confirmar com a Luana
+qual comportamento ela prefere (ex.: manter histórico de versões vs. só o PDF mais recente).
+
+**UI**: `app/(protegido)/checagem/page.tsx` — única tela deste projeto que já lista notas fiscais
+individualmente (com uma linha por nota e ações por linha), então foi onde o botão "Anexar/Trocar
+PDF" e o link "📄 Ver nota fiscal" (quando já existe um arquivo) entraram. **Limitação conhecida,
+documentada, não implementada sem perguntar**: essa tela só lista notas com `status =
+'aguardando_atesto'` (é uma fila de checagem, não uma listagem geral) — uma nota já atestada/paga
+não tem hoje NENHUMA tela que a liste individualmente, então seu PDF só pode ser anexado/trocado
+via chamada direta à API depois que ela sai dessa fila. Não existe ainda uma tela "Notas Fiscais"
+que liste todas — construir uma era uma mudança de escopo maior que o pedido desta rodada
+("encontre a tela onde já são listadas"), então ficou de fora; recomendação pra próxima rodada se
+isso for um problema real no dia a dia.
+
+**Verificação real, tudo rodado nesta rodada:**
+- `npx tsc --noEmit` — 0 erros.
+- `npm run build` — compila limpo, rota `/api/notas/[id]/arquivo` aparece na lista de rotas.
+- `npm run test` — **98 testes unitários** (73 de antes + 25 novos): `lib/armazenamentoObjetos.test.ts`
+  (13 casos, adaptado do arquivo homônimo em `nexaigen-educa`, SDK da AWS mockado) +
+  `app/api/notas/[id]/arquivo/route.test.ts` (12 casos: upload válido, nota inexistente,
+  Content-Type errado, assinatura de PDF inválida mesmo com Content-Type correto, arquivo grande
+  demais, armazenamento indisponível [502], corpo não-multipart, campo ausente, e os 4 cenários de
+  download) — mais 2 casos novos em `app/api/protecao-rotas.test.ts` confirmando 401 sem sessão
+  pras duas rotas novas.
+- `npm run test:integration` — **7 testes** (6 de antes + 1 novo): confirma
+  `arquivo_pdf_chave`/`arquivo_pdf_nome` nascendo `null` e persistindo de verdade depois de um
+  `UPDATE`, relidos numa consulta separada (não só o `RETURNING` da própria escrita).
+- **Checagem manual contra servidor real (`next build && next start`) + Postgres local**: login →
+  criar cliente → criar nota → `POST /api/notas/[id]/arquivo` com um PDF de verdade (`%PDF-1.4`
+  real, gerado localmente) — como este ambiente não tem credenciais reais de um bucket Railway
+  configuradas (`RAILWAY_BUCKET_*` vazias, o mesmo estado documentado como aceitável em
+  `nexaigen-educa`), o upload devolveu **502 "Armazenamento indisponível"** — confirmado que isso é
+  uma falha graciosa (nunca uma exceção não tratada) e que **nada foi gravado** em
+  `arquivo_pdf_chave`/`arquivo_pdf_nome` nesse caso (conferido direto no Postgres). Também
+  confirmado nesta checagem real: um arquivo com `Content-Type: application/pdf` mas conteúdo
+  falso é recusado com 400 antes de qualquer tentativa de upload; a mesma chamada sem cookie de
+  sessão devolve 401; `GET` numa nota sem arquivo anexado devolve 404; `GET /api/notas` já retorna
+  as duas colunas novas (via `nf.*`, sem precisar editar aquela rota).
+- **Não verificado nesta rodada, documentado como limitação**: o caminho de SUCESSO real de
+  upload/download (contra um bucket Railway de verdade) não foi exercitado — não há credenciais
+  reais disponíveis neste ambiente. O caminho de sucesso está coberto nos testes unitários (SDK
+  mockado) e é o mesmo módulo já em uso em produção-equivalente pelo `nexaigen-educa` — mas a
+  integração real com um bucket Railway configurado para ESTE projeto ainda precisa ser confirmada
+  manualmente quando as credenciais existirem.
+- **Não verificado nesta rodada, documentado como limitação**: a interface (clicar em "Anexar
+  PDF", ver o rótulo do botão mudar pra "Trocar PDF", ver a mensagem de erro renderizada) não foi
+  conferida visualmente num navegador — a extensão Chrome não estava conectada neste ambiente. A
+  integração API↔UI foi confirmada indiretamente (o formato de dados que a UI consome de `GET
+  /api/notas` já inclui as colunas novas; `tsc`/`next build` confirmam que o JSX compila e os tipos
+  batem) mas não substitui uma conferência visual real — recomendo um teste manual rápido no
+  navegador antes de considerar a UI pronta pra uso.
