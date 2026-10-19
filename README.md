@@ -354,3 +354,41 @@ isso for um problema real no dia a dia.
   /api/notas` já inclui as colunas novas; `tsc`/`next build` confirmam que o JSX compila e os tipos
   batem) mas não substitui uma conferência visual real — recomendo um teste manual rápido no
   navegador antes de considerar a UI pronta pra uso.
+
+## 10. Integração com o nexaigen-educa + contrato da prefeitura
+
+Ao provisionar um município novo no `nexaigen-educa`, o Educa chama **`POST /api/integracao/clientes`**
+aqui pra criar/atualizar o `cliente_prefeitura` correspondente (bancos continuam SEPARADOS — sem SSO,
+sem banco compartilhado). Esta rodada é só o lado Financeiro; o lado Educa (formulário no wizard +
+chamada de saída) é a próxima.
+
+- **Autenticação**: só `Authorization: Bearer <INTEGRACAO_SECRET>`, comparado em tempo constante —
+  mesmo padrão do `CRON_SECRET`, nunca sessão de equipe. É o MESMO valor configurado como
+  `INTEGRACAO_FINANCEIRO_SECRET` no Educa. Segredo ausente no servidor → 401 + alerta de sistema
+  (`alertarErroSistema`, categoria `integracao_educa`); segredo errado → só 401, sem alerta.
+- **Idempotência**: `0004_integracao_educa.sql` adiciona `municipio_id_externo` (uuid do município no
+  Educa, sem FK — bancos diferentes) com índice único parcial (`where ... is not null`). A rota faz
+  `insert ... on conflict ... do update` numa query só: retry do Educa vira UPDATE (`criado: false`),
+  e no UPDATE só os campos enviados mudam (opcional ausente mantém o valor salvo).
+- **Contrato** (opcional, base64 no JSON): base64 válido, ≤10MB decodificado e assinatura `%PDF-` —
+  qualquer falha é 400 (nunca ignorado). Se o upload no bucket falhar, o cliente é salvo mesmo assim,
+  sem contrato, com `avisoContrato` na resposta. Chave `financeiro/contratos-prefeitura/{uuid}/{nome}`.
+- **Uso pela equipe** (sessão): `GET`/`PATCH /api/clientes/[id]` (PATCH só atualiza o que vier;
+  `municipio_id_externo`/`contrato_arquivo_*` não são editáveis por ali), `POST`/`GET
+  /api/clientes/[id]/contrato` (multipart, mesmas regras de PDF; download via presigned URL). Tela
+  `/clientes`: botão Editar, campo Observação, Anexar/Trocar contrato e "Ver contrato".
+- Regras de PDF compartilhadas entre nota fiscal e contrato em `lib/validacaoPdf.ts`; schema zod
+  compartilhado entre as 3 rotas de cliente em `lib/clienteSchema.ts`.
+
+**Pendências conhecidas, não implementadas:**
+- Contrato substituído deixa o objeto antigo órfão no bucket (mesma pendência do PDF da nota fiscal) —
+  um job de limpeza futuro resolveria se isso crescer.
+- Não existe forma de "desvincular" um cliente do município do Educa (limpar `municipio_id_externo`
+  manualmente). Se um município for recriado do zero no Educa **com o mesmo id**, o próximo POST de
+  integração dá UPDATE, não INSERT — correto, mas vale saber. (Um município recriado com id NOVO cria
+  um segundo cliente — o antigo continua lá, vinculado ao id velho.)
+- Não há rate limiter neste projeto (nem proxy/middleware) — a rota de integração não ganhou um. Com
+  um segredo longo e aleatório, força bruta não é um vetor realista; se for desejado, seria um
+  mecanismo novo a decidir à parte.
+- Falha no upload do contrato via integração já é alertada pelo próprio `lib/armazenamentoObjetos.ts`
+  (categoria `railway_bucket`) — não é alertada uma segunda vez como `integracao_educa`.

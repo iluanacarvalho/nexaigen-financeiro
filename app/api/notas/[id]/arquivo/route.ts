@@ -29,20 +29,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
 import * as armazenamentoObjetos from "@/lib/armazenamentoObjetos";
-
-const TAMANHO_MAXIMO_BYTES = 10 * 1024 * 1024; // 10MB
-
-// Assinatura real de um PDF (magic bytes) — "%PDF-" em ASCII.
-const ASSINATURA_PDF = Buffer.from("%PDF-", "ascii");
-
-function assinaturaPdfValida(buffer: Buffer): boolean {
-  return buffer.subarray(0, ASSINATURA_PDF.length).equals(ASSINATURA_PDF);
-}
-
-/** Remove caracteres que não são seguros num path de objeto S3/nome de arquivo. */
-function sanitizarNomeArquivo(nome: string): string {
-  return nome.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-100);
-}
+// Regras de validação do PDF (tamanho/tipo/assinatura) compartilhadas com
+// o contrato da prefeitura (app/api/clientes/[id]/contrato) — ver lib/validacaoPdf.ts.
+import { lerPdfDoFormData, sanitizarNomeArquivo } from "@/lib/validacaoPdf";
 
 interface NotaMinima {
   id: string;
@@ -64,42 +53,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const formData = await req.formData().catch(() => null);
   if (!formData) return NextResponse.json({ erro: "Corpo da requisição precisa ser multipart/form-data." }, { status: 400 });
 
-  const arquivo = formData.get("arquivo");
-  if (!(arquivo instanceof File)) {
-    return NextResponse.json({ erro: "Campo 'arquivo' é obrigatório." }, { status: 400 });
-  }
+  const pdf = await lerPdfDoFormData(formData);
+  if (!pdf.ok) return NextResponse.json({ erro: pdf.erro }, { status: 400 });
+  const { buffer, nome } = pdf;
 
-  if (arquivo.type !== "application/pdf") {
-    return NextResponse.json({ erro: "Tipo de arquivo não aceito — envie um PDF (application/pdf)." }, { status: 400 });
-  }
-
-  if (arquivo.size > TAMANHO_MAXIMO_BYTES) {
-    return NextResponse.json({ erro: `Arquivo muito grande — limite de ${TAMANHO_MAXIMO_BYTES / (1024 * 1024)}MB.` }, { status: 400 });
-  }
-
-  const buffer = Buffer.from(await arquivo.arrayBuffer());
-  if (!assinaturaPdfValida(buffer)) {
-    return NextResponse.json(
-      { erro: "O arquivo enviado não é um PDF válido (assinatura do arquivo não confere com application/pdf)." },
-      { status: 400 }
-    );
-  }
-
-  const nomeSanitizado = sanitizarNomeArquivo(arquivo.name);
+  const nomeSanitizado = sanitizarNomeArquivo(nome);
   const chaveObjeto = `financeiro/notas-fiscais/${notaId}/${nomeSanitizado}`;
 
-  const enviado = await armazenamentoObjetos.uploadArquivo(chaveObjeto, buffer, arquivo.type);
+  const enviado = await armazenamentoObjetos.uploadArquivo(chaveObjeto, buffer, "application/pdf");
   if (!enviado) {
     return NextResponse.json({ erro: "Armazenamento indisponível no momento — tente novamente em instantes." }, { status: 502 });
   }
 
   await query(`update nota_fiscal set arquivo_pdf_chave = $1, arquivo_pdf_nome = $2 where id = $3`, [
     chaveObjeto,
-    arquivo.name,
+    nome,
     notaId
   ]);
 
-  return NextResponse.json({ ok: true, arquivo_pdf_nome: arquivo.name });
+  return NextResponse.json({ ok: true, arquivo_pdf_nome: nome });
 }
 
 interface NotaComArquivo {

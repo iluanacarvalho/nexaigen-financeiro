@@ -26,6 +26,9 @@ vi.mock("@/lib/db", () => ({ query: queryMock }));
 // não quebrar a importação.
 vi.mock("@/lib/notificacao-interna", () => ({ notificarTimeDeCobranca: vi.fn() }));
 vi.mock("@/lib/notificacaoCliente", () => ({ notificarClientePrefeitura: vi.fn() }));
+// A rota de integração alerta falha de banco via alertarErroSistema (que
+// usa query() internamente) — mockado pra não poluir o sinal do queryMock.
+vi.mock("@/lib/alertaErroSistema", () => ({ alertarErroSistema: vi.fn() }));
 
 import { NextRequest } from "next/server";
 import { GET as clientesGet, POST as clientesPost } from "./clientes/route";
@@ -35,6 +38,9 @@ import { GET as arquivoGet, POST as arquivoPost } from "./notas/[id]/arquivo/rou
 import { GET as alertasGet } from "./alertas/route";
 import { GET as equipeGet, POST as equipePost } from "./equipe/route";
 import { POST as cronPost } from "./cron/verificar-prazos/route";
+import { GET as clienteGet, PATCH as clientePatch } from "./clientes/[id]/route";
+import { GET as contratoGet, POST as contratoPost } from "./clientes/[id]/contrato/route";
+import { POST as integracaoPost } from "./integracao/clientes/route";
 
 function reqSemSessao(url: string, method: string): NextRequest {
   return new NextRequest(`http://localhost:3001${url}`, {
@@ -57,6 +63,10 @@ describe("achado crítico de segurança — toda rota antes aberta agora exige s
     ["POST /api/notas/[id]/verificar", () => verificarPost(reqSemSessao("/api/notas/nota-1/verificar", "POST"), { params: Promise.resolve({ id: "nota-1" }) })],
     ["POST /api/notas/[id]/arquivo", () => arquivoPost(reqSemSessao("/api/notas/nota-1/arquivo", "POST"), { params: Promise.resolve({ id: "nota-1" }) })],
     ["GET /api/notas/[id]/arquivo", () => arquivoGet(reqSemSessao("/api/notas/nota-1/arquivo", "GET"), { params: Promise.resolve({ id: "nota-1" }) })],
+    ["GET /api/clientes/[id]", () => clienteGet(reqSemSessao("/api/clientes/cliente-1", "GET"), { params: Promise.resolve({ id: "cliente-1" }) })],
+    ["PATCH /api/clientes/[id]", () => clientePatch(reqSemSessao("/api/clientes/cliente-1", "PATCH"), { params: Promise.resolve({ id: "cliente-1" }) })],
+    ["POST /api/clientes/[id]/contrato", () => contratoPost(reqSemSessao("/api/clientes/cliente-1/contrato", "POST"), { params: Promise.resolve({ id: "cliente-1" }) })],
+    ["GET /api/clientes/[id]/contrato", () => contratoGet(reqSemSessao("/api/clientes/cliente-1/contrato", "GET"), { params: Promise.resolve({ id: "cliente-1" }) })],
     ["GET /api/alertas", () => alertasGet(reqSemSessao("/api/alertas", "GET"))],
     ["GET /api/equipe", () => equipeGet(reqSemSessao("/api/equipe", "GET"))],
     ["POST /api/equipe", () => equipePost(reqSemSessao("/api/equipe", "POST"))]
@@ -103,5 +113,60 @@ describe("/api/cron/verificar-prazos — NÃO afetado por esta rodada (segredo e
       )
     ).rejects.toThrow("query() NUNCA deveria ser chamada sem sessão válida.");
     expect(queryMock).toHaveBeenCalled();
+  });
+});
+
+describe("/api/integracao/clientes — segredo compartilhado com o nexaigen-educa (INTEGRACAO_SECRET), nunca sessão de equipe", () => {
+  const ORIGINAL = process.env.INTEGRACAO_SECRET;
+  const SEGREDO = "segredo-de-teste-integracao";
+  const corpo = JSON.stringify({
+    municipioIdExterno: "6f1c2b0e-5a4d-4c3b-9e8f-1a2b3c4d5e6f",
+    nome: "Prefeitura Teste",
+    uf: "PR",
+    valorMensal: 1000,
+    dataInicioContrato: "2026-10-01"
+  });
+
+  beforeEach(() => {
+    process.env.INTEGRACAO_SECRET = SEGREDO;
+  });
+
+  afterAll(() => {
+    if (ORIGINAL === undefined) delete process.env.INTEGRACAO_SECRET;
+    else process.env.INTEGRACAO_SECRET = ORIGINAL;
+  });
+
+  it("sem Authorization — 401, nunca chama query()", async () => {
+    const res = await integracaoPost(new NextRequest("http://localhost:3001/api/integracao/clientes", { method: "POST", body: corpo }));
+    expect(res.status).toBe(401);
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it("um cookie de sessão de equipe NÃO substitui o segredo — 401, nunca chama query()", async () => {
+    const res = await integracaoPost(
+      new NextRequest("http://localhost:3001/api/integracao/clientes", {
+        method: "POST",
+        headers: { cookie: "access_token=qualquer-coisa" },
+        body: corpo
+      })
+    );
+    expect(res.status).toBe(401);
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it("com Authorization: Bearer INTEGRACAO_SECRET — chega ao banco SEM precisar de sessão de equipe", async () => {
+    // Mesmo sinal usado no teste do cron acima: query() mockada pra lançar
+    // prova que a única barreira atravessada foi o segredo. A rota captura
+    // a exceção (500 + alerta de sistema), então o sinal aqui é o próprio
+    // queryMock ter sido chamado.
+    const res = await integracaoPost(
+      new NextRequest("http://localhost:3001/api/integracao/clientes", {
+        method: "POST",
+        headers: { authorization: `Bearer ${SEGREDO}`, "content-type": "application/json" },
+        body: corpo
+      })
+    );
+    expect(queryMock).toHaveBeenCalled();
+    expect(res.status).toBe(500);
   });
 });
