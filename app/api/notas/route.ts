@@ -26,7 +26,9 @@ const NotaSchema = z.object({
 const SELECT_NOTAS = `
   select
     nf.*,
-    json_build_object('nome', c.nome, 'uf', c.uf, 'sistema_portal', c.sistema_portal, 'portal_url', c.portal_url) as cliente
+    json_build_object('nome', c.nome, 'uf', c.uf, 'sistema_portal', c.sistema_portal, 'portal_url', c.portal_url) as cliente,
+    -- Versão atual do PDF (0005_nota_fiscal_arquivo_versao.sql) — lookup pela chave única, indexada.
+    (select v.versao from nota_fiscal_arquivo_versao v where v.chave = nf.arquivo_pdf_chave) as arquivo_pdf_versao_atual
   from nota_fiscal nf
   join cliente_prefeitura c on c.id = nf.cliente_id
 `;

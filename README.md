@@ -292,19 +292,11 @@ assinatura é **mais rigorosa** que o precedente de prestação de contas de con
 `nexaigen-educa` (que só confere Content-Type + extensão do nome do arquivo, nunca o conteúdo
 real) — decisão deliberada, porque o pedido desta rodada especificou explicitamente conferir a
 assinatura, não porque o precedente estivesse errado pro caso dele. O download nunca devolve a
-chave do objeto nem uma URL direta — sempre uma presigned URL de 5 minutos (`gerarUrlDownload`), e
-404 se a nota não tiver PDF anexado.
+chave do objeto nem uma URL direta, e dá 404 se a nota não tiver PDF anexado. *(Desde a Seção 12 o
+download passa pelo próprio servidor, sem presigned URL.)*
 
-**Chave do objeto**: `financeiro/notas-fiscais/{notaFiscalId}/{nomeSanitizado}` — uma nota tem no
-máximo um PDF "atual" por vez (diferente do padrão de convênio em `nexaigen-educa`, que usa um
-`uuid` na chave porque um convênio pode ter VÁRIOS anexos ao longo do tempo, um por bimestre).
-Reenviar o PDF de uma nota sobrescreve `arquivo_pdf_chave`/`arquivo_pdf_nome` com a nova chave —
-**pendência conhecida, não implementada**: o objeto anterior fica órfão no bucket (nunca é
-deletado). Bucket privado sem listagem/lifecycle configurado neste round — se isso importar antes
-de virar um volume real de reenvios, a correção é ou (a) reutilizar a MESMA chave sempre (sem o
-nome do arquivo original nela, só um nome fixo tipo `arquivo.pdf`) ou (b) deletar o objeto antigo
-explicitamente antes de gravar o novo; nenhuma das duas foi escolhida sem confirmar com a Luana
-qual comportamento ela prefere (ex.: manter histórico de versões vs. só o PDF mais recente).
+**Chave do objeto e substituição**: *superado pela Seção 12* — a pendência do objeto órfão a cada
+reenvio foi resolvida com histórico de versões (decisão: manter todas as versões).
 
 **UI**: `app/(protegido)/checagem/page.tsx` — única tela deste projeto que já lista notas fiscais
 individualmente (com uma linha por nota e ações por linha), então foi onde o botão "Anexar/Trocar
@@ -381,7 +373,7 @@ chamada de saída) é a próxima.
   compartilhado entre as 3 rotas de cliente em `lib/clienteSchema.ts`.
 
 **Pendências conhecidas, não implementadas:**
-- Contrato substituído deixa o objeto antigo órfão no bucket (mesma pendência do PDF da nota fiscal) —
+- Contrato substituído deixa o objeto antigo órfão no bucket (a nota fiscal ganhou histórico de versões na Seção 12; o contrato ainda não) —
   um job de limpeza futuro resolveria se isso crescer.
 - Não existe forma de "desvincular" um cliente do município do Educa (limpar `municipio_id_externo`
   manualmente). Se um município for recriado do zero no Educa **com o mesmo id**, o próximo POST de
@@ -396,3 +388,7 @@ chamada de saída) é a próxima.
 ## 11. Painel financeiro
 
 **`/painel`** (e `GET /api/painel-financeiro`, `?formato=csv` pro CSV): MRR, recebido no mês, a receber (no prazo/vencido/crítico), inadimplência e prazo médio de 12 meses, notas sem atesto há >15 dias, série faturado (por competência) x recebido (por mês de pagamento) e tabela de clientes com situação — cálculo puro em `lib/painelFinanceiro.ts` (centavos inteiros, datas em America/Sao_Paulo, status derivado via `diagnosticarNota` na data de hoje), leitura em `lib/painelFinanceiroRepositorio.ts`.
+
+## 12. Histórico de versões do PDF da nota fiscal
+
+Cada envio de PDF da nota vira uma versão nova em `nota_fiscal_arquivo_versao` (`0005_nota_fiscal_arquivo_versao.sql`, com backfill da v1 das notas legadas): chave própria por envio no bucket, sha256/tamanho/autor/motivo gravados, nunca apaga versão nem objeto; `nota_fiscal.arquivo_pdf_chave/nome` continua apontando pra atual; download por `GET /api/notas/[id]/arquivo?versao=N` (passa pelo servidor), histórico em `GET /api/notas/[id]/arquivo/versoes`, UI na Fila de Checagem.

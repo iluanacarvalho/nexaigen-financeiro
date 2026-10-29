@@ -21,7 +21,7 @@
 // as outras 4 não têm fallback possível.
 //
 // REGRA DURA, mesmo contrato de robustez do módulo original em
-// nexaigen-educa: as duas funções exportadas NUNCA lançam — qualquer
+// nexaigen-educa: todas as funções exportadas NUNCA lançam — qualquer
 // falha (env vars ausentes, erro de rede, erro do S3, timeout) devolve
 // um valor "vazio" (`false`/`null`) com um `console.warn` que NUNCA loga
 // a secret key nem o buffer do arquivo. O timeout é configurado no
@@ -37,7 +37,7 @@
 // módulo (app/api/notas/[id]/arquivo/route.ts) mocka o módulo INTEIRO —
 // não precisa conhecer o SDK.
 
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
 import { alertarErroSistema } from "./alertaErroSistema";
@@ -167,5 +167,54 @@ export async function gerarUrlDownload(chave: string): Promise<string | null> {
     console.warn("Armazenamento de objetos: falha ao gerar URL de download — tente novamente.");
     await alertarErroSistema("railway_bucket", "Falha ao gerar URL de download — ver logs do servidor para detalhe.");
     return null;
+  }
+}
+
+/**
+ * Lê os bytes de um objeto (GetObject) — usado pelo download do PDF da
+ * nota fiscal, que passa PELO servidor (resposta com Content-Disposition/
+ * Content-Type/Cache-Control controlados pela rota, link `<a download>`
+ * real na UI) em vez de redirecionar pra uma presigned URL. NUNCA lança —
+ * qualquer falha (objeto inexistente incluído) devolve `null`.
+ */
+export async function baixarArquivo(chave: string): Promise<Buffer | null> {
+  const config = lerConfigBucket();
+  if (!config) {
+    console.warn("Armazenamento de objetos: RAILWAY_BUCKET_* não configurados por completo — download não realizado.");
+    await alertarErroSistema("railway_bucket", "Variáveis RAILWAY_BUCKET_* não configuradas por completo — download não realizado.");
+    return null;
+  }
+
+  try {
+    const client = criarClient(config);
+    const resposta = await client.send(new GetObjectCommand({ Bucket: config.bucket, Key: chave }));
+    if (!resposta.Body) throw new Error("corpo vazio");
+    return Buffer.from(await resposta.Body.transformToByteArray());
+  } catch {
+    console.warn("Armazenamento de objetos: falha ao baixar arquivo do bucket.");
+    await alertarErroSistema("railway_bucket", "Falha ao baixar arquivo do bucket (download) — ver logs do servidor para detalhe.");
+    return null;
+  }
+}
+
+/**
+ * Apaga um objeto (DeleteObject) — USO ÚNICO E RESTRITO: desfazer um
+ * upload que ACABOU de ser feito quando a gravação correspondente no banco
+ * falhou (sem isso o objeto ficaria órfão, sem nenhuma versão apontando
+ * pra ele). Nunca usado pra apagar uma versão já registrada: histórico de
+ * documento fiscal não se apaga (ver 0005_nota_fiscal_arquivo_versao.sql).
+ * NUNCA lança — devolve false em qualquer falha, sem alertar: quem chama
+ * decide o alerta, porque só ele sabe que sobrou um órfão.
+ */
+export async function removerUploadNaoRegistrado(chave: string): Promise<boolean> {
+  const config = lerConfigBucket();
+  if (!config) return false;
+  try {
+    const client = criarClient(config);
+    await client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: chave }));
+    return true;
+  } catch {
+    console.warn("Armazenamento de objetos: falha ao remover objeto recém-enviado.");
+    return false;
   }
 }

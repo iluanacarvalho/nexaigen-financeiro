@@ -32,6 +32,20 @@ export interface NotaFiscal {
 /** GET /api/notas — nota com o resumo do cliente embutido (json_build_object). */
 export interface NotaComCliente extends NotaFiscal {
   cliente: { nome: string; uf: string; sistema_portal: string | null; portal_url: string | null };
+  /** Número da versão para a qual arquivo_pdf_chave aponta (null sem PDF). */
+  arquivo_pdf_versao_atual: number | null;
+}
+
+/** Uma versão do PDF da nota fiscal (GET /api/notas/[id]/arquivo/versoes). */
+export interface VersaoArquivoNota {
+  versao: number;
+  nome: string;
+  tamanho_bytes: number | null; // nulo só em versão vinda do backfill da migração 0005
+  sha256: string | null; // idem
+  enviado_em: string;
+  enviado_por_nome: string | null; // nulo só no backfill (autor desconhecido)
+  motivo: string | null;
+  atual: boolean;
 }
 
 /** Linha de cliente_prefeitura (GET /api/clientes, `select *`). */

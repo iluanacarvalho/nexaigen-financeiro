@@ -10,7 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@aws-sdk/client-s3", () => ({
   S3Client: vi.fn(),
   PutObjectCommand: vi.fn(),
-  GetObjectCommand: vi.fn()
+  GetObjectCommand: vi.fn(),
+  DeleteObjectCommand: vi.fn()
 }));
 vi.mock("@aws-sdk/s3-request-presigner", () => ({
   getSignedUrl: vi.fn()
@@ -36,10 +37,10 @@ const { alertarErroSistemaMock } = vi.hoisted(() => ({
 }));
 vi.mock("./alertaErroSistema", () => ({ alertarErroSistema: alertarErroSistemaMock }));
 
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
-import { gerarUrlDownload, uploadArquivo } from "./armazenamentoObjetos";
+import { baixarArquivo, gerarUrlDownload, removerUploadNaoRegistrado, uploadArquivo } from "./armazenamentoObjetos";
 
 const ENV_ORIGINAL = {
   bucket: process.env.RAILWAY_BUCKET_NAME,
@@ -267,5 +268,66 @@ describe("gerarUrlDownload", () => {
       }
     }
     warnSpy.mockRestore();
+  });
+});
+
+describe("baixarArquivo", () => {
+  it("armazenamento não configurado — null, nunca chama o SDK, alerta falha de sistema", async () => {
+    limparEnvBucket();
+
+    await expect(baixarArquivo("chave/teste.pdf")).resolves.toBeNull();
+    expect(S3Client).not.toHaveBeenCalled();
+    expect(alertarErroSistemaMock).toHaveBeenCalledWith("railway_bucket", expect.any(String));
+  });
+
+  it("sucesso — devolve os bytes exatos do objeto (GetObject com bucket/chave certos)", async () => {
+    limparEnvBucket();
+    configurarEnvBucketCompleto();
+    const conteudo = Buffer.from("%PDF-1.4 conteúdo da versão");
+    sendMock.mockResolvedValue({ Body: { transformToByteArray: async () => new Uint8Array(conteudo) } });
+
+    const bytes = await baixarArquivo("financeiro/notas-fiscais/n/versoes/u/a.pdf");
+
+    expect(bytes?.equals(conteudo)).toBe(true);
+    expect(GetObjectCommand).toHaveBeenCalledWith({ Bucket: "bucket-de-teste", Key: "financeiro/notas-fiscais/n/versoes/u/a.pdf" });
+  });
+
+  it.each([
+    ["erro do SDK (ex.: NoSuchKey)", () => sendMock.mockRejectedValue(new Error("NoSuchKey"))],
+    ["resposta sem corpo", () => sendMock.mockResolvedValue({})]
+  ])("%s — null, nunca lança, alerta falha de sistema", async (_d, configurar) => {
+    limparEnvBucket();
+    configurarEnvBucketCompleto();
+    configurar();
+
+    await expect(baixarArquivo("chave/teste.pdf")).resolves.toBeNull();
+    expect(alertarErroSistemaMock).toHaveBeenCalledWith("railway_bucket", expect.any(String));
+  });
+});
+
+describe("removerUploadNaoRegistrado", () => {
+  it("sucesso — DeleteObject na chave exata, devolve true", async () => {
+    limparEnvBucket();
+    configurarEnvBucketCompleto();
+    sendMock.mockResolvedValue({});
+
+    await expect(removerUploadNaoRegistrado("financeiro/notas-fiscais/n/versoes/u/a.pdf")).resolves.toBe(true);
+    expect(DeleteObjectCommand).toHaveBeenCalledWith({ Bucket: "bucket-de-teste", Key: "financeiro/notas-fiscais/n/versoes/u/a.pdf" });
+  });
+
+  it("erro do SDK — false, nunca lança, e NÃO alerta (quem chama decide o alerta do órfão)", async () => {
+    limparEnvBucket();
+    configurarEnvBucketCompleto();
+    sendMock.mockRejectedValue(new Error("falha simulada"));
+
+    await expect(removerUploadNaoRegistrado("chave/teste.pdf")).resolves.toBe(false);
+    expect(alertarErroSistemaMock).not.toHaveBeenCalled();
+  });
+
+  it("armazenamento não configurado — false, nunca chama o SDK", async () => {
+    limparEnvBucket();
+
+    await expect(removerUploadNaoRegistrado("chave/teste.pdf")).resolves.toBe(false);
+    expect(S3Client).not.toHaveBeenCalled();
   });
 });
