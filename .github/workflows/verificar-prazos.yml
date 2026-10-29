@@ -1,0 +1,70 @@
+name: Verificar prazos (job diário)
+
+# Agendador do job diário de prazos/cobrança. A hospedagem é Railway, não
+# Vercel — o vercel.json que agendava isto antes nunca dispararia fora da
+# Vercel e foi removido. Este workflow só faz um POST autenticado na rota
+# que já existe (app/api/cron/verificar-prazos) e imprime o resumo que ela
+# devolve (notas avaliadas, alertas criados, e-mails enviados/falhos).
+#
+# Secrets necessários (Settings > Secrets and variables > Actions):
+#   FINANCEIRO_URL — URL pública do Financeiro em produção (ex.: https://financeiro.exemplo.com.br), sem barra no fim
+#   CRON_SECRET    — o MESMO valor de CRON_SECRET configurado no serviço do Railway
+# Sem eles o job "passa" sem efeito, com um aviso — mesmo padrão dos
+# workflows agendados do nexaigen-educa (documentado, nunca uma falha
+# silenciosa nem um vermelho por falta de configuração).
+#
+# Repetir é seguro: a rota é idempotente (alerta não duplica — índice
+# uq_alerta_ativo; e-mail só sai quando o alerta é criado de fato). Por
+# isso até 3 tentativas, mas SÓ em erro transitório (rede/timeout, 5xx,
+# 429) — um 401/400 não se resolve tentando de novo e falha na hora.
+
+on:
+  schedule:
+    # Todo dia às 09:00 UTC (06:00 em Brasília).
+    - cron: "0 9 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  verificar-prazos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /api/cron/verificar-prazos
+        env:
+          FINANCEIRO_URL: ${{ secrets.FINANCEIRO_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$FINANCEIRO_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::warning::FINANCEIRO_URL e/ou CRON_SECRET não configurados nos secrets do repositório — job não executado. Configure em Settings > Secrets and variables > Actions."
+            exit 0
+          fi
+
+          url="${FINANCEIRO_URL%/}/api/cron/verificar-prazos"
+          for tentativa in 1 2 3; do
+            rm -f resposta.json  # nunca imprimir a resposta de uma tentativa anterior como se fosse desta
+            status=$(curl --silent --show-error --output resposta.json --write-out '%{http_code}' \
+              --connect-timeout 10 --max-time 90 \
+              -X POST -H "Authorization: Bearer ${CRON_SECRET}" "$url") || status="000"
+
+            if [ "$status" = "200" ]; then
+              echo "Resumo da execução:"
+              jq . resposta.json 2>/dev/null || cat resposta.json
+              exit 0
+            fi
+
+            echo "Tentativa ${tentativa}/3: HTTP ${status}"
+            case "$status" in
+              000|429|5??)
+                [ "$tentativa" -lt 3 ] && sleep $((tentativa * 20))
+                ;;
+              *)
+                cat resposta.json 2>/dev/null && echo  # quebra de linha: ::error:: só é reconhecido no início da linha
+                echo "::error::A rota respondeu HTTP ${status} — não é erro transitório, sem nova tentativa (confira CRON_SECRET/FINANCEIRO_URL)."
+                exit 1
+                ;;
+            esac
+          done
+
+          cat resposta.json 2>/dev/null && echo
+          echo "::error::Job diário falhou após 3 tentativas (última resposta: HTTP ${status})."
+          exit 1

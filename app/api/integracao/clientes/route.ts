@@ -5,12 +5,16 @@
 // PROTEGIDA SÓ POR INTEGRACAO_SECRET, nunca por sessão de equipe — quem
 // chama é o outro sistema, não uma pessoa logada. Mesmo padrão exato do
 // CRON_SECRET em app/api/cron/verificar-prazos/route.ts (header
-// `Authorization: Bearer <segredo>`, comparação em tempo constante); o
-// valor é o MESMO configurado como INTEGRACAO_FINANCEIRO_SECRET no Educa.
-// app/api/protecao-rotas.test.ts confirma que esta rota nunca passa por
-// exigirSessao(). Não existe rate limiter neste projeto (nem proxy/
-// middleware) — com um segredo longo e aleatório, força bruta não é um
-// vetor realista; ver pendência no README.
+// `Authorization: Bearer <segredo>`, comparação em tempo constante via
+// lib/segredoCompartilhado.ts); o valor é o MESMO configurado como
+// INTEGRACAO_FINANCEIRO_SECRET no Educa. app/api/protecao-rotas.test.ts
+// confirma que esta rota nunca passa por exigirSessao().
+//
+// LIMITES (rodada 07, lib/rateLimit.ts), por IP: 60 requisições/min no
+// total, e 10 falhas de autenticação em 15 min → 429 mesmo com o segredo
+// certo (a tentativa soma ANTES de comparar e é devolvida se o segredo
+// confere — só falha acumula; atômico, sem corrida sob rajada). Resposta
+// de falha é sempre o mesmo 401 genérico.
 //
 // ALERTA DE SISTEMA (lib/alertaErroSistema.ts, categoria
 // "integracao_educa"): INTEGRACAO_SECRET ausente (toda chamada do Educa
@@ -40,29 +44,31 @@
 // `financeiro/contratos-prefeitura/{uuid novo}/{nome sanitizado}` — uuid
 // novo porque o id do cliente ainda não existe na hora do upload.
 
-import { randomUUID, timingSafeEqual } from "crypto";
+import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { IntegracaoClienteSchema } from "@/lib/clienteSchema";
 import * as armazenamentoObjetos from "@/lib/armazenamentoObjetos";
 import { alertarErroSistema } from "@/lib/alertaErroSistema";
 import { TIPO_MIME_PDF, lerPdfDeBase64, sanitizarNomeArquivo } from "@/lib/validacaoPdf";
+import { bearerConfere } from "@/lib/segredoCompartilhado";
+import {
+  LIMITE_INTEGRACAO_FALHA_AUTH,
+  LIMITE_INTEGRACAO_POR_IP,
+  desfazerTentativa,
+  obterIpCliente,
+  registrarTentativa,
+  respostaLimiteExcedido
+} from "@/lib/rateLimit";
 
 const CATEGORIA_ALERTA = "integracao_educa";
 const AVISO_CONTRATO = "não foi possível salvar o contrato anexado";
 
-// Duplicada de app/api/cron/verificar-prazos/route.ts de propósito (não
-// exportável de um route.ts, e pequena demais pra justificar um módulo
-// compartilhado). Buffers de tamanho diferente nunca são iguais e são
-// rejeitados antes de timingSafeEqual (que lança se os tamanhos diferem).
-function segredosIguais(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
-}
-
 export async function POST(req: NextRequest) {
+  const ip = obterIpCliente(req);
+  const porIp = await registrarTentativa(LIMITE_INTEGRACAO_POR_IP, ip);
+  if (!porIp.permitido) return respostaLimiteExcedido(porIp.retryAfterSegundos);
+
   if (!process.env.INTEGRACAO_SECRET) {
     console.error("INTEGRACAO_SECRET não configurado — recusando chamada de integração do Educa.");
     await alertarErroSistema(
@@ -72,10 +78,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ erro: "Não autorizado." }, { status: 401 });
   }
 
-  const auth = req.headers.get("authorization");
-  if (!auth || !segredosIguais(auth, `Bearer ${process.env.INTEGRACAO_SECRET}`)) {
+  const tentativaAuth = await registrarTentativa(LIMITE_INTEGRACAO_FALHA_AUTH, ip);
+  if (!tentativaAuth.permitido) return respostaLimiteExcedido(tentativaAuth.retryAfterSegundos);
+  if (!bearerConfere(req.headers.get("authorization"), process.env.INTEGRACAO_SECRET)) {
     return NextResponse.json({ erro: "Não autorizado." }, { status: 401 });
   }
+  await desfazerTentativa(LIMITE_INTEGRACAO_FALHA_AUTH, ip);
 
   const corpo = await req.json().catch(() => null);
   const parsed = IntegracaoClienteSchema.safeParse(corpo);

@@ -29,6 +29,14 @@ vi.mock("@/lib/notificacaoCliente", () => ({ notificarClientePrefeitura: vi.fn()
 // A rota de integração alerta falha de banco via alertarErroSistema (que
 // usa query() internamente) — mockado pra não poluir o sinal do queryMock.
 vi.mock("@/lib/alertaErroSistema", () => ({ alertarErroSistema: vi.fn() }));
+// Rate limit (rodada 07) também usa o banco — permissivo aqui, pra que o
+// sinal "query() nunca é chamada antes da autorização" continue medindo só
+// o acesso a DADOS das rotas. Os limites em si têm testes próprios.
+vi.mock("@/lib/rateLimit", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/rateLimit")>()),
+  registrarTentativa: vi.fn(async () => ({ permitido: true, contagem: 1, retryAfterSegundos: 60 })),
+  desfazerTentativa: vi.fn(async () => undefined)
+}));
 
 import { NextRequest } from "next/server";
 import { GET as clientesGet, POST as clientesPost } from "./clientes/route";
@@ -43,6 +51,7 @@ import { GET as clienteGet, PATCH as clientePatch } from "./clientes/[id]/route"
 import { GET as contratoGet, POST as contratoPost } from "./clientes/[id]/contrato/route";
 import { POST as integracaoPost } from "./integracao/clientes/route";
 import { GET as painelGet } from "./painel-financeiro/route";
+import { GET as configuracaoStatusGet } from "./configuracao/status/route";
 
 function reqSemSessao(url: string, method: string): NextRequest {
   return new NextRequest(`http://localhost:3001${url}`, {
@@ -73,6 +82,7 @@ describe("achado crítico de segurança — toda rota antes aberta agora exige s
     ["GET /api/clientes/[id]/contrato", () => contratoGet(reqSemSessao("/api/clientes/cliente-1/contrato", "GET"), { params: Promise.resolve({ id: "cliente-1" }) })],
     ["GET /api/alertas", () => alertasGet(reqSemSessao("/api/alertas", "GET"))],
     ["GET /api/painel-financeiro", () => painelGet(reqSemSessao("/api/painel-financeiro", "GET"))],
+    ["GET /api/configuracao/status", () => configuracaoStatusGet(reqSemSessao("/api/configuracao/status", "GET"))],
     ["GET /api/painel-financeiro?formato=csv", () => painelGet(reqSemSessao("/api/painel-financeiro?formato=csv", "GET"))],
     ["GET /api/equipe", () => equipeGet(reqSemSessao("/api/equipe", "GET"))],
     ["POST /api/equipe", () => equipePost(reqSemSessao("/api/equipe", "POST"))]

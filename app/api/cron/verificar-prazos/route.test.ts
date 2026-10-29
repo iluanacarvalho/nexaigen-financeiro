@@ -30,6 +30,7 @@ vi.mock("@/lib/notificacaoCliente", () => ({ notificarClientePrefeitura: notific
 vi.mock("@/lib/alertaErroSistema", () => ({ alertarErroSistema: alertarErroSistemaMock }));
 
 import { NextRequest } from "next/server";
+import * as rota from "./route";
 import { POST } from "./route";
 
 const ENV_ORIGINAL = process.env.CRON_SECRET;
@@ -81,7 +82,7 @@ function criarQueryFake(opts: { notas: (typeof NOTA_VENCIDA)[]; alertaResultado:
 beforeEach(() => {
   process.env.CRON_SECRET = SEGREDO;
   queryMock.mockReset();
-  notificarTimeMock.mockReset().mockResolvedValue(undefined);
+  notificarTimeMock.mockReset().mockResolvedValue(true);
   notificarClienteMock.mockReset().mockResolvedValue(true);
   alertarErroSistemaMock.mockReset().mockResolvedValue(undefined);
 });
@@ -169,5 +170,49 @@ describe("POST /api/cron/verificar-prazos — CRON_SECRET ausente (rodada de ale
     expect(res.status).toBe(401);
     expect(queryMock).not.toHaveBeenCalled();
     expect(alertarErroSistemaMock).toHaveBeenCalledWith("job_verificar_prazos", expect.any(String));
+  });
+});
+
+describe("POST /api/cron/verificar-prazos — autenticação e resumo (rodada 07)", () => {
+  const notaCritica = () => ({ ...NOTA_VENCIDA, id: "nota-3", data_atesto: isoHaDias(95), data_limite_pagamento: isoHaDias(65) });
+
+  it("resumo completo: notas avaliadas, alertas criados, e-mails enviados e limpeza do rate limit", async () => {
+    queryMock.mockImplementation(criarQueryFake({ notas: [notaCritica()], alertaResultado: { id: "alerta-3" } }));
+
+    const res = await POST(requisicao());
+
+    expect(await res.json()).toEqual({
+      notasAvaliadas: 1,
+      statusAtualizados: 1,
+      alertasCriados: 1,
+      emails: { enviados: 2, falhos: 0, semDestinatario: 0 }, // interno (60 dias) + cliente
+      contadoresRateLimitRemovidos: 0
+    });
+    expect(queryMock).toHaveBeenCalledWith(expect.stringContaining("delete from rate_limit_contador"), [], undefined);
+  });
+
+  it("e-mail que não sai conta como falho; cliente sem contato_email conta como semDestinatario (não é falha)", async () => {
+    notificarTimeMock.mockResolvedValue(false);
+    const semContato = { ...notaCritica(), id: "nota-4", cliente: { nome: "Prefeitura Sem Contato", contato_email: null } };
+    queryMock.mockImplementation(criarQueryFake({ notas: [semContato as unknown as typeof NOTA_VENCIDA], alertaResultado: { id: "alerta-4" } }));
+    notificarClienteMock.mockResolvedValue(false);
+
+    const corpo = await (await POST(requisicao())).json();
+
+    expect(corpo.emails).toEqual({ enviados: 0, falhos: 1, semDestinatario: 1 });
+  });
+
+  it.each([
+    ["segredo errado", "Bearer outro-segredo"],
+    ["comprimento muito diferente (não lança)", `Bearer ${"x".repeat(5000)}`],
+    ["sem o prefixo Bearer", SEGREDO]
+  ])("%s — 401, nunca toca o banco", async (_d, header) => {
+    const res = await POST(new NextRequest("http://localhost:3001/api/cron/verificar-prazos", { method: "POST", headers: { Authorization: header } }));
+    expect(res.status).toBe(401);
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it("não existe mais handler GET (o cron da Vercel foi removido; rota que grava em lote só aceita POST)", () => {
+    expect("GET" in rota).toBe(false);
   });
 });

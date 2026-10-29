@@ -76,7 +76,7 @@ describe("notificarTimeDeCobranca — RESEND_API_KEY ausente", () => {
     limparEnv();
     process.env.COBRANCA_EMAIL_DESTINO = "financeiro@nexaigen.com.br";
 
-    await expect(notificarTimeDeCobranca(ALERTA)).resolves.toBeUndefined();
+    await expect(notificarTimeDeCobranca(ALERTA)).resolves.toBe(false);
     expect(sendMock).not.toHaveBeenCalled();
     expect(alertarErroSistemaMock).toHaveBeenCalledWith("resend_interno", expect.any(String));
   });
@@ -87,17 +87,17 @@ describe("notificarTimeDeCobranca — COBRANCA_EMAIL_DESTINO ausente", () => {
     limparEnv();
     process.env.RESEND_API_KEY = "re_teste_fake";
 
-    await expect(notificarTimeDeCobranca(ALERTA)).resolves.toBeUndefined();
+    await expect(notificarTimeDeCobranca(ALERTA)).resolves.toBe(false);
     expect(sendMock).not.toHaveBeenCalled();
     expect(alertarErroSistemaMock).toHaveBeenCalledWith("resend_interno", expect.any(String));
   });
 });
 
 describe("notificarTimeDeCobranca — configuração completa", () => {
-  it("chama emails.send com from/to/assunto/html esperados (HTML, não mais texto puro)", async () => {
+  it("chama emails.send com from/to/assunto/html esperados (HTML, não mais texto puro) e devolve true (enviado)", async () => {
     configurarEnvCompleto();
 
-    await notificarTimeDeCobranca(ALERTA);
+    await expect(notificarTimeDeCobranca(ALERTA)).resolves.toBe(true);
 
     expect(sendMock).toHaveBeenCalledTimes(1);
     const payload = sendMock.mock.calls[0][0];
@@ -126,7 +126,7 @@ describe("notificarTimeDeCobranca — configuração completa", () => {
     configurarEnvCompleto();
     sendMock.mockResolvedValue({ data: null, error: { message: "chave inválida", statusCode: 401, name: "invalid_api_key" } });
 
-    await expect(notificarTimeDeCobranca(ALERTA)).resolves.toBeUndefined();
+    await expect(notificarTimeDeCobranca(ALERTA)).resolves.toBe(false);
     expect(alertarErroSistemaMock).toHaveBeenCalledWith("resend_interno", expect.any(String));
   });
 
@@ -134,7 +134,7 @@ describe("notificarTimeDeCobranca — configuração completa", () => {
     configurarEnvCompleto();
     sendMock.mockRejectedValue(new Error("erro de rede simulado"));
 
-    await expect(notificarTimeDeCobranca(ALERTA)).resolves.toBeUndefined();
+    await expect(notificarTimeDeCobranca(ALERTA)).resolves.toBe(false);
     expect(alertarErroSistemaMock).toHaveBeenCalledWith("resend_interno", expect.any(String));
   });
 

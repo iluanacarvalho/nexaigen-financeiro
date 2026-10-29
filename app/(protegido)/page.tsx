@@ -3,6 +3,7 @@
 // app/(protegido)/layout.tsx, antes desta página renderizar.
 
 import { query } from "@/lib/db";
+import { avisosDeConfiguracao, lerStatusConfiguracao } from "@/lib/statusConfiguracao";
 
 export default async function Dashboard() {
   const notas = await query<{ status: string; valor: string }>(`select status, valor from nota_fiscal`);
@@ -16,10 +17,24 @@ export default async function Dashboard() {
   }
 
   const alertasCriticos = alertas.filter((a) => a.tipo === "atraso_60_dias").length;
+  // Só booleanos do ambiente (nunca valores) — ver lib/statusConfiguracao.ts.
+  const avisosConfiguracao = avisosDeConfiguracao(lerStatusConfiguracao());
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
       <h1 className="mb-6 text-2xl font-bold text-navy">Dashboard Financeiro</h1>
+
+      {avisosConfiguracao.length > 0 && (
+        <section role="alert" className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-semibold">Configuração incompleta — algumas funções não vão funcionar:</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            {avisosConfiguracao.map((aviso) => (
+              <li key={aviso}>{aviso}</li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-amber-800">Peça a quem administra o servidor para preencher essas variáveis (ver .env.example).</p>
+        </section>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-4">
         <Card titulo="Aguardando atesto" valor={contagem["aguardando_atesto"] ?? 0} />
@@ -42,8 +57,8 @@ export default async function Dashboard() {
       </div>
 
       <p className="mt-8 text-xs text-slate-400">
-        Status recalculado automaticamente pelo job diário (/api/cron/verificar-prazos). Ver README para agendar no
-        Vercel Cron.
+        Status recalculado automaticamente pelo job diário (/api/cron/verificar-prazos), agendado pelo GitHub Actions
+        — ver README, Seção 5.
       </p>
     </main>
   );

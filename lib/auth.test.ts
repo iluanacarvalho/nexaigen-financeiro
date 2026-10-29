@@ -227,3 +227,27 @@ describe("trocarSenha", () => {
     expect(resultado).toEqual({ sucesso: false, erro: "Não foi possível trocar a senha. Tente novamente." });
   });
 });
+
+describe("HASH_FANTASMA / verificarSenhaDaConta (login sem vazar existência de e-mail por tempo)", () => {
+  it("o hash fantasma tem o MESMO custo bcrypt das senhas reais (senão o tempo voltaria a diferir)", async () => {
+    const bcrypt = await import("bcryptjs");
+    const { CUSTO_BCRYPT, HASH_FANTASMA } = await import("./auth");
+    expect(bcrypt.getRounds(HASH_FANTASMA)).toBe(CUSTO_BCRYPT);
+  });
+
+  it("conta inexistente (hash null) → false, MAS roda a verificação bcrypt contra o hash fantasma", async () => {
+    const bcrypt = await import("bcryptjs");
+    const { HASH_FANTASMA, verificarSenhaDaConta } = await import("./auth");
+    const espiao = vi.spyOn(bcrypt.default, "compare");
+    await expect(verificarSenhaDaConta("qualquer-senha", null)).resolves.toBe(false);
+    expect(espiao).toHaveBeenCalledWith("qualquer-senha", HASH_FANTASMA);
+    espiao.mockRestore();
+  });
+
+  it("conta existente → resultado real do bcrypt", async () => {
+    const { hashSenha, verificarSenhaDaConta } = await import("./auth");
+    const hash = await hashSenha("senha-certa-1");
+    await expect(verificarSenhaDaConta("senha-certa-1", hash)).resolves.toBe(true);
+    await expect(verificarSenhaDaConta("senha-errada-1", hash)).resolves.toBe(false);
+  });
+});

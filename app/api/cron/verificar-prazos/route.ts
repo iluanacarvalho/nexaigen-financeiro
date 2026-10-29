@@ -3,15 +3,21 @@
 // Idempotente: não duplica alerta do mesmo tipo já em aberto (constraint
 // uq_alerta_ativo no schema garante isso a nível de banco também).
 //
-// Como agendar: Vercel Cron (vercel.json) chama esta rota 1x/dia via GET,
-// e injeta automaticamente o header Authorization: Bearer ${CRON_SECRET}
-// quando a env var CRON_SECRET está configurada no projeto Vercel — ver
-// https://vercel.com/docs/cron-jobs/manage-cron-jobs#securing-cron-jobs
-// POST fica disponível para disparo manual/teste com o mesmo header.
-// PROTEGIDA SÓ POR CRON_SECRET, nunca por sessão de equipe — quem chama
-// isto é um agendador externo, que não tem como logar (ver
-// app/api/protecao-rotas.test.ts, que confirma explicitamente que esta
-// rota nunca passa por exigirSessao()).
+// COMO É AGENDADO (rodada 07 — a hospedagem é Railway, não Vercel; o
+// vercel.json que existia aqui nunca dispararia fora da Vercel e foi
+// removido): .github/workflows/verificar-prazos.yml faz um POST diário
+// (09:00 UTC) nesta rota com `Authorization: Bearer ${CRON_SECRET}` e
+// imprime no log do Actions o resumo devolvido aqui. Só POST — o GET
+// existia só porque o cron da Vercel chama via GET; uma rota que grava
+// em lote não deve responder a GET.
+// PROTEGIDA SÓ POR CRON_SECRET (lib/segredoCompartilhado.ts, tempo
+// constante), nunca por sessão de equipe — quem chama é um agendador
+// externo, que não tem como logar (ver app/api/protecao-rotas.test.ts).
+//
+// RESUMO DEVOLVIDO: notas avaliadas, status atualizados, alertas criados,
+// e-mails (enviados / falhos / pulados por cliente sem contato_email) e
+// contadores de rate limit expirados removidos (limpeza diária de
+// rate_limit_contador, ver lib/rateLimit.ts).
 //
 // E-MAIL AO CLIENTE (rodada de "e-mails bem lindos e cobrança automática"):
 // notificarClientePrefeitura (lib/notificacaoCliente.ts) é chamada pros 4
@@ -31,31 +37,25 @@
 // não é chamado de novo. Ver o comentário completo em
 // lib/notificacaoCliente.ts.
 
-import { timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { diagnosticarNota } from "@/lib/prazos";
 import { notificarTimeDeCobranca } from "@/lib/notificacao-interna";
 import { notificarClientePrefeitura } from "@/lib/notificacaoCliente";
 import { alertarErroSistema } from "@/lib/alertaErroSistema";
-
-export async function GET(req: NextRequest) {
-  return executar(req);
-}
+import { bearerConfere } from "@/lib/segredoCompartilhado";
+import { limparContadoresExpirados } from "@/lib/rateLimit";
 
 export async function POST(req: NextRequest) {
   return executar(req);
 }
 
-// CORREÇÃO DE SEGURANÇA (Análise Técnica, Achado Baixo): comparação em
-// tempo constante — evita timing attack na checagem do CRON_SECRET.
-// Buffers de tamanho diferente nunca são iguais e são rejeitados antes de
-// chegar em timingSafeEqual (que lança exceção se os tamanhos diferem).
-function segredosIguais(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
+interface ResumoVerificacaoPrazos {
+  notasAvaliadas: number;
+  statusAtualizados: number;
+  alertasCriados: number;
+  emails: { enviados: number; falhos: number; semDestinatario: number };
+  contadoresRateLimitRemovidos: number;
 }
 
 interface NotaLinha {
@@ -80,9 +80,7 @@ async function executar(req: NextRequest) {
     return NextResponse.json({ erro: "Não autorizado." }, { status: 401 });
   }
 
-  const auth = req.headers.get("authorization");
-  const esperado = `Bearer ${process.env.CRON_SECRET}`;
-  if (!auth || !segredosIguais(auth, esperado)) {
+  if (!bearerConfere(req.headers.get("authorization"), process.env.CRON_SECRET)) {
     return NextResponse.json({ erro: "Não autorizado." }, { status: 401 });
   }
 
@@ -95,10 +93,20 @@ async function executar(req: NextRequest) {
      where nf.status not in ('paga', 'cancelada')`
   );
 
-  const resultado = { processadas: 0, alertasCriados: 0, statusAtualizados: 0 };
+  const resultado: ResumoVerificacaoPrazos = {
+    notasAvaliadas: 0,
+    statusAtualizados: 0,
+    alertasCriados: 0,
+    emails: { enviados: 0, falhos: 0, semDestinatario: 0 },
+    contadoresRateLimitRemovidos: 0
+  };
+  const contarEmail = (enviado: boolean) => {
+    if (enviado) resultado.emails.enviados += 1;
+    else resultado.emails.falhos += 1;
+  };
 
   for (const nota of notas) {
-    resultado.processadas += 1;
+    resultado.notasAvaliadas += 1;
 
     const diagnostico = diagnosticarNota({
       temAtesto: !!nota.data_atesto,
@@ -130,28 +138,35 @@ async function executar(req: NextRequest) {
       if (criados.length > 0) {
         resultado.alertasCriados += 1;
         if (diagnostico.deveGerarAlerta === "atraso_60_dias") {
-          await notificarTimeDeCobranca({
+          contarEmail(await notificarTimeDeCobranca({
             tipo: diagnostico.deveGerarAlerta,
             clienteNome: nota.cliente?.nome ?? "—",
             numeroNf: nota.numero_nf,
             valor: Number(nota.valor),
             diasDeAtraso: diagnostico.diasDeAtraso
-          });
+          }));
         }
         // Os 4 tipos, sempre — ver comentário de topo do arquivo sobre
         // por que `criados.length > 0` já é a própria checagem de
         // "transição de estado" (nenhuma coluna de controle extra).
-        await notificarClientePrefeitura({
+        const contatoEmail = nota.cliente?.contato_email ?? null;
+        const enviadoAoCliente = await notificarClientePrefeitura({
           tipo: diagnostico.deveGerarAlerta,
           clienteNome: nota.cliente?.nome ?? "—",
-          contatoEmail: nota.cliente?.contato_email ?? null,
+          contatoEmail,
           numeroNf: nota.numero_nf,
           valor: Number(nota.valor),
           dataVencimento: nota.data_limite_pagamento
         });
+        // Cliente sem contato_email cadastrado não é falha de envio — é
+        // cadastro incompleto (lib/notificacaoCliente.ts nem tenta enviar).
+        if (!contatoEmail) resultado.emails.semDestinatario += 1;
+        else contarEmail(enviadoAoCliente);
       }
     }
   }
+
+  resultado.contadoresRateLimitRemovidos = await limparContadoresExpirados();
 
   return NextResponse.json(resultado);
 }

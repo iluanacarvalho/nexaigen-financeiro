@@ -3,6 +3,10 @@
 // senha"). lib/auth.ts#trocarSenha já revoga toda sessão (token_version +
 // sessao) — esta rota só garante que os cookies DESTA resposta também
 // saem limpos, forçando novo login mesmo no dispositivo que fez a troca.
+//
+// LIMITE (rodada 07, lib/rateLimit.ts): 10 tentativas por conta em 15 min
+// → 429. Sem isto, quem estivesse com uma sessão aberta (computador
+// destravado) poderia testar senhas atuais à vontade por esta rota.
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -14,6 +18,7 @@ import {
   opcoesCookieRefreshToken,
   trocarSenha
 } from "@/lib/auth";
+import { LIMITE_TROCAR_SENHA, registrarTentativa, respostaLimiteExcedido } from "@/lib/rateLimit";
 
 // Mínimo razoável, não uma política formal de complexidade — mesmo padrão
 // já usado no projeto irmão nexaigen-educa.
@@ -29,6 +34,9 @@ const TrocarSenhaSchema = z.object({
 export async function POST(req: NextRequest) {
   const contexto = await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value);
   if (!contexto) return NextResponse.json({ erro: "Não autenticado." }, { status: 401 });
+
+  const limite = await registrarTentativa(LIMITE_TROCAR_SENHA, contexto.equipeId);
+  if (!limite.permitido) return respostaLimiteExcedido(limite.retryAfterSegundos);
 
   const parsed = TrocarSenhaSchema.safeParse(await req.json());
   if (!parsed.success) {

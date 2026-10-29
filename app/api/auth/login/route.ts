@@ -2,6 +2,17 @@
 // errada (nunca revela qual dos dois), 403 se a conta estiver inativa.
 // Emite access token (JWT, 15min) + refresh token (7 dias, hash gravado
 // em `sessao`).
+//
+// LIMITE DE TENTATIVAS (rodada 07, lib/rateLimit.ts): 5 falhas em 15 min
+// por e-mail normalizado E por IP → 429 com Retry-After. Toda tentativa
+// soma 1 ANTES de conferir a senha (atômico, sem corrida sob rajada); se
+// a senha confere, o contador do e-mail é zerado e a tentativa do IP é
+// devolvida — só falha acumula. O 429 vale pra qualquer e-mail digitado,
+// exista ou não, então também não revela existência de conta.
+//
+// TEMPO DE RESPOSTA: e-mail inexistente roda a mesma verificação bcrypt
+// (contra lib/auth.ts#HASH_FANTASMA) que uma senha errada — o tempo não
+// diferencia "não existe" de "senha errada".
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -15,8 +26,18 @@ import {
   hashRefreshToken,
   opcoesCookieAccessToken,
   opcoesCookieRefreshToken,
-  verificarSenha
+  verificarSenhaDaConta
 } from "@/lib/auth";
+import {
+  LIMITE_LOGIN_POR_EMAIL,
+  LIMITE_LOGIN_POR_IP,
+  desfazerTentativa,
+  normalizarEmail,
+  obterIpCliente,
+  registrarTentativa,
+  respostaLimiteExcedido,
+  zerarContador
+} from "@/lib/rateLimit";
 
 const LoginSchema = z.object({
   email: z.string().email(),
@@ -35,21 +56,33 @@ interface ContaLinha {
 }
 
 export async function POST(req: NextRequest) {
-  const parsed = LoginSchema.safeParse(await req.json());
+  const parsed = LoginSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json({ erro: "Dados inválidos" }, { status: 400 });
   }
-  const { email, senha } = parsed.data;
+  const email = normalizarEmail(parsed.data.email);
+  const { senha } = parsed.data;
+  const ip = obterIpCliente(req);
+
+  const [porIp, porEmail] = await Promise.all([
+    registrarTentativa(LIMITE_LOGIN_POR_IP, ip),
+    registrarTentativa(LIMITE_LOGIN_POR_EMAIL, email)
+  ]);
+  const bloqueios = [porIp, porEmail].filter((r) => !r.permitido);
+  if (bloqueios.length > 0) return respostaLimiteExcedido(Math.max(...bloqueios.map((r) => r.retryAfterSegundos)));
 
   const linhas = await query<ContaLinha>(
     `select id, nome, senha_hash, senha_temporaria, token_version, ativo from equipe_nexaigen where email = $1`,
-    [email.trim().toLowerCase()]
+    [email]
   );
   const conta = linhas[0];
 
-  if (!conta || !(await verificarSenha(senha, conta.senha_hash))) {
+  if (!(await verificarSenhaDaConta(senha, conta?.senha_hash ?? null)) || !conta) {
     return NextResponse.json(ERRO_GENERICO, { status: 401 });
   }
+
+  // Senha certa: a tentativa não conta como falha.
+  await Promise.all([zerarContador(LIMITE_LOGIN_POR_EMAIL, email), desfazerTentativa(LIMITE_LOGIN_POR_IP, ip)]);
 
   if (!conta.ativo) {
     return NextResponse.json({ erro: "Conta desativada. Fale com um colega da equipe." }, { status: 403 });

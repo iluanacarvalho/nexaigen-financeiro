@@ -80,7 +80,7 @@ function dividirEmails(valor: string): string[] {
     .filter(Boolean);
 }
 
-export async function notificarTimeDeCobranca(alerta: AlertaParaNotificar): Promise<void> {
+export async function notificarTimeDeCobranca(alerta: AlertaParaNotificar): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY;
   const destino = process.env.COBRANCA_EMAIL_DESTINO;
   const remetente = process.env.ALERTA_EMAIL_REMETENTE ?? "alertas@nexaigen.com.br";
@@ -93,7 +93,7 @@ export async function notificarTimeDeCobranca(alerta: AlertaParaNotificar): Prom
     // falha de SISTEMA (env var faltando), não dado cadastral de um
     // cliente específico — categoria "resend_interno".
     await alertarErroSistema("resend_interno", "RESEND_API_KEY ou COBRANCA_EMAIL_DESTINO não configurados.");
-    return;
+    return false;
   }
 
   const rotulo = LABEL_TIPO[alerta.tipo] ?? alerta.tipo;
@@ -133,10 +133,13 @@ export async function notificarTimeDeCobranca(alerta: AlertaParaNotificar): Prom
       // suficiente pra triagem.
       console.error(`Falha ao enviar notificação via Resend — código: ${error.name}.`);
       await alertarErroSistema("resend_interno", `Erro da API do Resend ao notificar time de cobrança — código: ${error.name}.`);
+      return false;
     }
+    return true;
   } catch (erro) {
     const motivo = erro instanceof Error && erro.message === "timeout" ? "timeout" : "erro de rede";
     console.error(`Falha ao enviar notificação via Resend — ${motivo}, alerta gravado no banco mas notificação não confirmada.`);
     await alertarErroSistema("resend_interno", `Falha (${motivo}) ao notificar time de cobrança via Resend.`);
+    return false;
   }
 }

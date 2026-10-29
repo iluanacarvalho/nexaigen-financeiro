@@ -7,8 +7,32 @@ on:
     branches: [main]
 
 jobs:
-  typecheck-and-build:
+  test-and-build:
     runs-on: ubuntu-latest
+
+    # Postgres efêmero só pra esta execução (mesmo padrão do ci.yml do
+    # nexaigen-educa) — os testes de integração (*.integration.test.ts)
+    # rodam contra um banco de verdade, com as migrations aplicadas.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: nexaigen
+          POSTGRES_PASSWORD: nexaigen_ci
+          POSTGRES_DB: nexaigen_financeiro
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nexaigen -d nexaigen_financeiro"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Valores FICTÍCIOS, só pra CI — nunca reaproveitar em staging/produção.
+      DATABASE_URL: postgres://nexaigen:nexaigen_ci@localhost:5432/nexaigen_financeiro
+      JWT_SECRET: ci-apenas-nao-usar-em-producao-${{ github.run_id }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -22,21 +46,25 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Testes unitários
-        run: npm run test
-
       - name: Lint
         run: npm run lint
 
+      - name: Testes unitários
+        run: npm run test
+
+      - name: Migrar banco
+        run: npm run migrate
+
+      - name: Testes de integração (Postgres real)
+        run: npm run test:integration
+
+      # Nenhuma variável própria: o build só precisa que DATABASE_URL EXISTA
+      # (já definida no `env` do job) — lib/db.ts cria o Pool ao carregar o
+      # módulo e o Next carrega as rotas na fase "Collecting page data", mas
+      # NADA conecta ao banco durante o build (conferido na rodada 07: build
+      # com ambiente vazio + só uma DATABASE_URL fictícia apontando pra uma
+      # porta fechada passa; sem DATABASE_URL nenhuma, falha). As
+      # NEXT_PUBLIC_SUPABASE_*/SUPABASE_SERVICE_ROLE_KEY que existiam aqui
+      # sobraram da arquitetura anterior e foram removidas.
       - name: Build
         run: npm run build
-        env:
-          # Valores fictícios — suficientes para o build (rotas são todas
-          # dinâmicas, nenhuma faz chamada real ao Supabase em build-time).
-          NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co"
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder-anon-key"
-          SUPABASE_SERVICE_ROLE_KEY: "placeholder-service-role-key"
-          NEXT_PUBLIC_SITE_URL: "http://localhost:3001"
-          CRON_SECRET: "placeholder-secret-apenas-para-ci"
-          RESEND_API_KEY: "placeholder-apenas-para-ci"
-          COBRANCA_EMAIL_DESTINO: "cobranca@nexaigen.com.br"

@@ -94,9 +94,22 @@ criar a primeira conta antes de usar a plataforma.
 
 ## 5. Agendando o job diário (produção)
 
-No `vercel.json` já está configurado um cron chamando `/api/cron/verificar-prazos` todo dia às 9h.
-Defina a env var `CRON_SECRET` no projeto Vercel (o próprio Vercel injeta o header
-`Authorization: Bearer <CRON_SECRET>` automaticamente ao chamar o cron). Para testar manualmente
+A hospedagem é **Railway** — por isso o agendamento NÃO fica no `vercel.json` (removido na rodada 07:
+cron da Vercel não dispara fora da Vercel). Quem agenda é o GitHub Actions:
+`.github/workflows/verificar-prazos.yml` faz, todo dia às 09:00 UTC (06:00 em Brasília), um `POST` em
+`/api/cron/verificar-prazos` com `Authorization: Bearer <CRON_SECRET>` e imprime no log o resumo da
+execução (notas avaliadas, alertas criados, e-mails enviados/falhos). Também dá pra disparar à mão
+pela aba Actions (`workflow_dispatch`).
+
+**Secrets do repositório (Settings > Secrets and variables > Actions) — obrigatórios em produção:**
+
+| Secret | Valor |
+|---|---|
+| `FINANCEIRO_URL` | URL pública do Financeiro no Railway, sem barra no fim |
+| `CRON_SECRET` | o MESMO valor da variável `CRON_SECRET` do serviço no Railway |
+
+Sem os dois, o workflow só avisa e termina com sucesso (nada é executado). Até 3 tentativas, só em
+erro transitório (rede, 5xx, 429); 401 falha na hora. Para testar manualmente
 antes do deploy:
 
 ```bash
@@ -379,9 +392,8 @@ chamada de saída) é a próxima.
   manualmente). Se um município for recriado do zero no Educa **com o mesmo id**, o próximo POST de
   integração dá UPDATE, não INSERT — correto, mas vale saber. (Um município recriado com id NOVO cria
   um segundo cliente — o antigo continua lá, vinculado ao id velho.)
-- Não há rate limiter neste projeto (nem proxy/middleware) — a rota de integração não ganhou um. Com
-  um segredo longo e aleatório, força bruta não é um vetor realista; se for desejado, seria um
-  mecanismo novo a decidir à parte.
+- ~~Não há rate limiter neste projeto~~ — resolvido na rodada 07 (Seção 13): a rota de integração
+  limita 60 req/min e 10 falhas de autenticação/15 min por IP.
 - Falha no upload do contrato via integração já é alertada pelo próprio `lib/armazenamentoObjetos.ts`
   (categoria `railway_bucket`) — não é alertada uma segunda vez como `integracao_educa`.
 
@@ -392,3 +404,7 @@ chamada de saída) é a próxima.
 ## 12. Histórico de versões do PDF da nota fiscal
 
 Cada envio de PDF da nota vira uma versão nova em `nota_fiscal_arquivo_versao` (`0005_nota_fiscal_arquivo_versao.sql`, com backfill da v1 das notas legadas): chave própria por envio no bucket, sha256/tamanho/autor/motivo gravados, nunca apaga versão nem objeto; `nota_fiscal.arquivo_pdf_chave/nome` continua apontando pra atual; download por `GET /api/notas/[id]/arquivo?versao=N` (passa pelo servidor), histórico em `GET /api/notas/[id]/arquivo/versoes`, UI na Fila de Checagem.
+
+## 13. Segurança, agendamento e CI (rodada 07)
+
+Limite de tentativas em Postgres (`lib/rateLimit.ts`, `0006_rate_limit.sql`): login 5 falhas/15 min por e-mail e por IP (429 + Retry-After; e-mail inexistente custa o mesmo tempo que senha errada), troca de senha 10/15 min, integração 60/min e 10 falhas de autenticação/15 min por IP; debounce do alerta de sistema realmente atômico (`0007`); job diário agendado pelo GitHub Actions (ver Seção 5); aviso no Dashboard do que falta configurar (`GET /api/configuracao/status`, só sim/não, nunca valores); CI com Postgres rodando também os testes de integração; testes isolados de Resend/bucket (`vitest.setup.sem-apis-externas.ts`).

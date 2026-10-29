@@ -17,6 +17,8 @@ vi.mock("@/lib/alertaErroSistema", () => ({ alertarErroSistema: vi.fn() }));
 import { NextRequest } from "next/server";
 import { query } from "@/lib/db";
 import { POST } from "./route";
+import { chaveLimite } from "@/lib/rateLimit";
+import { aguardarLongeDaViradaDaJanela } from "@/testes/janelaRateLimit";
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL não configurada. Rode: docker compose up -d && npm run migrate && npm run test:integration");
@@ -39,8 +41,12 @@ beforeEach(() => {
   process.env.INTEGRACAO_SECRET = SEGREDO;
 });
 
+const ipsUsados = ["desconhecido"];
+
 afterAll(async () => {
   await query(`delete from cliente_prefeitura where id = any($1::uuid[])`, [criados]);
+  const chaves = ipsUsados.flatMap((ip) => [chaveLimite("integracao:ip", ip), chaveLimite("integracao:falha-auth", ip)]);
+  await query(`delete from rate_limit_contador where chave = any($1::text[])`, [chaves]);
 });
 
 describe("índice único parcial uq_cliente_municipio_id_externo — Postgres real", () => {
@@ -98,5 +104,47 @@ describe("POST /api/integracao/clientes — upsert real", () => {
 
     const [{ total }] = await query<{ total: string }>(`select count(*) as total from cliente_prefeitura where municipio_id_externo = $1`, [municipio]);
     expect(Number(total)).toBe(1);
+  });
+});
+
+describe("POST /api/integracao/clientes — limites por IP, contadores reais (rodada 07)", () => {
+  function chamar(ip: string, auth: string, corpo: unknown = {}) {
+    return POST(
+      new NextRequest("http://localhost:3001/api/integracao/clientes", {
+        method: "POST",
+        headers: { authorization: auth, "content-type": "application/json", "x-forwarded-for": ip },
+        body: JSON.stringify(corpo)
+      })
+    );
+  }
+  const novoIp = () => {
+    const ip = `teste-integracao-${randomUUID()}`;
+    ipsUsados.push(ip);
+    return ip;
+  };
+
+  it("10 segredos errados → 401 genérico cada; a 11ª → 429 MESMO com o segredo certo", async () => {
+    await aguardarLongeDaViradaDaJanela(15 * 60, 10);
+    const ip = novoIp();
+    for (let i = 0; i < 10; i++) {
+      const res = await chamar(ip, `Bearer errado-${i}`);
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({ erro: "Não autorizado." });
+    }
+    const res = await chamar(ip, `Bearer ${SEGREDO}`);
+    expect(res.status).toBe(429);
+    expect(Number(res.headers.get("retry-after"))).toBeGreaterThanOrEqual(1);
+  });
+
+  it("chamadas autenticadas não acumulam falha: 15 com o segredo certo (corpo inválido → 400) seguem sem 429", async () => {
+    const ip = novoIp();
+    for (let i = 0; i < 15; i++) expect((await chamar(ip, `Bearer ${SEGREDO}`)).status).toBe(400);
+  });
+
+  it("60 requisições/min por IP: a 61ª → 429", async () => {
+    await aguardarLongeDaViradaDaJanela(60, 15); // janela de 1 min — as 61 chamadas cabem numa janela só
+    const ip = novoIp();
+    for (let i = 0; i < 60; i++) expect((await chamar(ip, `Bearer ${SEGREDO}`)).status).toBe(400);
+    expect((await chamar(ip, `Bearer ${SEGREDO}`)).status).toBe(429);
   });
 });

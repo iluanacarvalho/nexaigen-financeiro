@@ -1,6 +1,7 @@
 // Teste de integração de lib/alertaErroSistema.ts contra Postgres REAL —
-// prova o que um mock de `query` não provaria: que o
-// `insert ... where not exists (...)` é de fato atômico e decide
+// prova o que um mock de `query` não provaria: que a instrução única de
+// debounce (on conflict sobre alerta_sistema_debounce, 0007) é de fato
+// atômica — inclusive sob 20 chamadas concorrentes — e decide
 // corretamente "debounçar ou não" contra o estado real de
 // log_alerta_sistema (0003_log_alerta_sistema.sql). Mocka SOMENTE a
 // camada de envio de e-mail (Resend), nunca o banco — mesmo padrão de
@@ -44,12 +45,13 @@ beforeEach(() => {
   sendMock.mockReset();
   sendMock.mockResolvedValue({ data: { id: "email-fake-id" }, error: null });
   process.env.RESEND_API_KEY = "re_teste_fake";
-  process.env.ALERTA_SISTEMA_EMAILS_DESTINO = "luana@nexaigen.com.br,suporte@nexaigen.com.br";
-  process.env.ALERTA_EMAIL_REMETENTE = "alertas@nexaigen.com.br";
+  process.env.ALERTA_SISTEMA_EMAILS_DESTINO = "alerta-sistema-teste@example.invalid,outro-destino-teste@example.invalid";
+  process.env.ALERTA_EMAIL_REMETENTE = "remetente-teste@example.invalid";
 });
 
 afterAll(async () => {
   await query(`delete from log_alerta_sistema where categoria like 'teste_integracao_%'`);
+  await query(`delete from alerta_sistema_debounce where categoria like 'teste_integracao_%'`);
   if (ENV_ORIGINAL.resendApiKey === undefined) delete process.env.RESEND_API_KEY;
   else process.env.RESEND_API_KEY = ENV_ORIGINAL.resendApiKey;
   if (ENV_ORIGINAL.destino === undefined) delete process.env.ALERTA_SISTEMA_EMAILS_DESTINO;
@@ -90,12 +92,14 @@ describe("alertarErroSistema — debounce real contra Postgres", () => {
   it("categoria com um registro de mais de 30 minutos atrás — NÃO debounça, insere nova linha e reenvia o e-mail", async () => {
     const categoria = categoriaUnica("vencido");
 
-    // Simula uma tentativa antiga diretamente via SQL — fora da janela de
-    // debounce de 30 minutos.
+    // Simula um envio antigo diretamente via SQL — fora da janela de
+    // debounce de 30 minutos: histórico em log_alerta_sistema E estado do
+    // debounce em alerta_sistema_debounce (0007), como o código grava.
     await query(
       `insert into log_alerta_sistema (categoria, mensagem, enviado_em) values ($1, 'tentativa antiga', now() - interval '31 minutes')`,
       [categoria]
     );
+    await query(`insert into alerta_sistema_debounce (categoria, ultimo_envio_em) values ($1, now() - interval '31 minutes')`, [categoria]);
 
     await alertarErroSistema(categoria, "tentativa nova, fora da janela de debounce");
 
@@ -120,5 +124,15 @@ describe("alertarErroSistema — debounce real contra Postgres", () => {
     const linhasB = await query<{ id: string }>(`select id from log_alerta_sistema where categoria = $1`, [categoriaB]);
     expect(linhasA).toHaveLength(1);
     expect(linhasB).toHaveLength(1);
+  });
+
+  it("20 chamadas CONCORRENTES da mesma categoria — exatamente 1 registro e 1 e-mail (debounce sem janela de corrida)", async () => {
+    const categoria = categoriaUnica("concorrente");
+
+    await Promise.all(Array.from({ length: 20 }, (_, i) => alertarErroSistema(categoria, `tentativa concorrente ${i}`)));
+
+    const linhas = await query<{ id: string }>(`select id from log_alerta_sistema where categoria = $1`, [categoria]);
+    expect(linhas).toHaveLength(1);
+    expect(sendMock).toHaveBeenCalledTimes(1);
   });
 });

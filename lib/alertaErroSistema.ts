@@ -26,19 +26,16 @@
 // fora do ar por horas) inundaria a caixa de entrada com um e-mail por
 // tentativa, em vez de um a cada 30 minutos.
 //
-// ATOMICIDADE DO DEBOUNCE: um único `insert ... where not exists (...)`
-// decide atomicamente "essa categoria já alertou nos últimos 30min?" e
-// grava a tentativa na MESMA instrução — nunca um SELECT seguido de um
-// INSERT separado, que teria uma janela de corrida entre os dois. Isso
-// não é uma garantia de serializabilidade total sob concorrência pesada
-// (duas transações distintas podem, em teoria, passar pelo NOT EXISTS
-// antes de qualquer uma commitar) — aceitável aqui pelo mesmo motivo que
-// lib/notificacao-interna.ts/lib/notificacaoCliente.ts não têm proteção
-// de concorrência nenhuma: volume baixo, uso interno, um e-mail
-// duplicado ocasional sob uma corrida rara não é um problema real pra
-// este caso de uso (diferente, por exemplo, do rate limiter de login do
-// projeto irmão nexaigen-educa, que protege contra força bruta e por
-// isso usa um advisory lock).
+// ATOMICIDADE DO DEBOUNCE (rodada 07): uma única instrução SQL decide
+// "pode enviar?" e registra o envio, apoiada numa linha POR CATEGORIA em
+// alerta_sistema_debounce (chave primária) — `insert ... on conflict
+// (categoria) do update ... where <janela de 30 min vencida>`. Uma chamada
+// concorrente da mesma categoria fica bloqueada na linha até a primeira
+// commitar e então reavalia o WHERE contra a janela recém-renovada: só UMA
+// leva o envio. O formato antigo (`insert ... where not exists` direto no
+// log) NÃO era atômico — medido: 20 chamadas simultâneas gravavam 4 a 10
+// linhas. Ver db/migrations/0007_alerta_sistema_debounce.sql e o teste de
+// 20 chamadas concorrentes em lib/alertaErroSistema.integration.test.ts.
 //
 // MESMO CONTRATO DE ROBUSTEZ dos dois módulos irmãos (NUNCA lança) —
 // estendido aqui pra cobrir inclusive uma falha do PRÓPRIO Postgres (um
@@ -83,22 +80,27 @@ function dividirEmails(valor: string): string[] {
 }
 
 /**
- * Decide atomicamente se `categoria` já alertou dentro da janela de
- * debounce — se não, registra a tentativa agora (devolve true, "pode
- * enviar"); se já alertou, não grava nada novo (devolve false,
- * "debounçado"). `make_interval` em vez de interpolar
- * JANELA_DEBOUNCE_MINUTOS na string SQL — mesmo princípio de "nunca
- * interpolar valores na string" já documentado em lib/db.ts, mesmo sendo
- * uma constante da própria aplicação, não dado externo.
+ * Reivindica atomicamente o envio de `categoria`: se o último envio
+ * registrado tem mais de JANELA_DEBOUNCE_MINUTOS (ou não existe), renova
+ * a janela, grava o alerta no histórico (log_alerta_sistema) e devolve
+ * true; senão não grava nada e devolve false. UMA instrução (CTE) — o
+ * `on conflict ... do update ... where` sobre a chave primária da
+ * categoria é o que serializa chamadas concorrentes. `make_interval` em
+ * vez de interpolar a constante na string SQL (lib/db.ts: nunca
+ * interpolar valores).
  */
 async function registrarSeNaoDebounced(categoria: string, mensagem: string): Promise<boolean> {
   const linhas = await query<{ id: string }>(
-    `insert into log_alerta_sistema (categoria, mensagem)
-     select $1, $2
-     where not exists (
-       select 1 from log_alerta_sistema
-       where categoria = $1 and enviado_em > now() - make_interval(mins => $3)
+    `with reivindicado as (
+       insert into alerta_sistema_debounce as d (categoria, ultimo_envio_em)
+       values ($1, now())
+       on conflict (categoria) do update
+         set ultimo_envio_em = excluded.ultimo_envio_em
+         where d.ultimo_envio_em <= excluded.ultimo_envio_em - make_interval(mins => $3)
+       returning d.categoria
      )
+     insert into log_alerta_sistema (categoria, mensagem)
+     select $1, $2 from reivindicado
      returning id`,
     [categoria, mensagem, JANELA_DEBOUNCE_MINUTOS]
   );

@@ -14,6 +14,8 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // Nenhum teste fala com Resend/bucket de verdade — ver o arquivo.
+    setupFiles: ["./vitest.setup.sem-apis-externas.ts"],
     include: ["**/*.test.ts"],
     // *.integration.test.ts precisa de Postgres real (docker compose up -d
     // && npm run migrate) — roda só via `npm run test:integration`

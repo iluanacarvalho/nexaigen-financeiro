@@ -6,17 +6,29 @@
 
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { queryMock, uploadArquivoMock, alertarErroSistemaMock } = vi.hoisted(() => ({
+const { queryMock, uploadArquivoMock, alertarErroSistemaMock, registrarTentativaMock, desfazerTentativaMock } = vi.hoisted(() => ({
   queryMock: vi.fn(),
   uploadArquivoMock: vi.fn(),
-  alertarErroSistemaMock: vi.fn()
+  alertarErroSistemaMock: vi.fn(),
+  registrarTentativaMock: vi.fn(),
+  desfazerTentativaMock: vi.fn()
 }));
 vi.mock("@/lib/db", () => ({ query: queryMock }));
 vi.mock("@/lib/armazenamentoObjetos", () => ({ uploadArquivo: uploadArquivoMock, gerarUrlDownload: vi.fn() }));
 vi.mock("@/lib/alertaErroSistema", () => ({ alertarErroSistema: alertarErroSistemaMock }));
+// Rate limit (rodada 07): só o contador é mockado — as regras e funções
+// puras de lib/rateLimit.ts continuam reais. O contador em Postgres de
+// verdade é testado em lib/rateLimit.integration.test.ts e em
+// route.integration.test.ts.
+vi.mock("@/lib/rateLimit", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/rateLimit")>()),
+  registrarTentativa: registrarTentativaMock,
+  desfazerTentativa: desfazerTentativaMock
+}));
 
 import { NextRequest } from "next/server";
 import { POST } from "./route";
+import { LIMITE_INTEGRACAO_FALHA_AUTH, LIMITE_INTEGRACAO_POR_IP } from "@/lib/rateLimit";
 
 const SEGREDO = "segredo-de-teste-da-integracao";
 const ENV_ORIGINAL = process.env.INTEGRACAO_SECRET;
@@ -34,8 +46,8 @@ function corpoValido(extra: Record<string, unknown> = {}) {
   };
 }
 
-function requisicao(corpo: unknown, auth: string | null = `Bearer ${SEGREDO}`): NextRequest {
-  const headers: Record<string, string> = { "content-type": "application/json" };
+function requisicao(corpo: unknown, auth: string | null = `Bearer ${SEGREDO}`, extras: Record<string, string> = {}): NextRequest {
+  const headers: Record<string, string> = { "content-type": "application/json", ...extras };
   if (auth) headers.authorization = auth;
   return new NextRequest("http://localhost:3001/api/integracao/clientes", {
     method: "POST",
@@ -53,6 +65,9 @@ beforeEach(() => {
   queryMock.mockReset();
   uploadArquivoMock.mockReset();
   alertarErroSistemaMock.mockReset();
+  registrarTentativaMock.mockReset();
+  registrarTentativaMock.mockResolvedValue({ permitido: true, contagem: 1, retryAfterSegundos: 60 });
+  desfazerTentativaMock.mockReset();
 });
 
 afterAll(() => {
@@ -209,5 +224,49 @@ describe("POST /api/integracao/clientes — contrato em base64", () => {
     const [, params] = chamadaUpsert()!;
     expect(params[15]).toBeNull();
     expect(params[16]).toBeNull();
+  });
+});
+
+describe("POST /api/integracao/clientes — limite de tentativas por IP", () => {
+  const bloqueado = { permitido: false, contagem: 61, retryAfterSegundos: 42 };
+
+  it("acima de 60 req/min no IP — 429 com Retry-After, antes de qualquer checagem de segredo", async () => {
+    registrarTentativaMock.mockImplementation(async (regra) => (regra === LIMITE_INTEGRACAO_POR_IP ? bloqueado : { permitido: true, contagem: 1, retryAfterSegundos: 60 }));
+    const res = await POST(requisicao(corpoValido(), undefined, { "x-forwarded-for": "203.0.113.7, 10.0.0.1" }));
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("retry-after")).toBe("42");
+    expect(registrarTentativaMock).toHaveBeenCalledWith(LIMITE_INTEGRACAO_POR_IP, "203.0.113.7");
+    expect(registrarTentativaMock).not.toHaveBeenCalledWith(LIMITE_INTEGRACAO_FALHA_AUTH, expect.anything());
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it("10 falhas de autenticação em 15 min no IP — 429 MESMO com o segredo certo (o segredo nem é comparado)", async () => {
+    registrarTentativaMock.mockImplementation(async (regra) => (regra === LIMITE_INTEGRACAO_FALHA_AUTH ? bloqueado : { permitido: true, contagem: 1, retryAfterSegundos: 60 }));
+    const res = await POST(requisicao(corpoValido()));
+
+    expect(res.status).toBe(429);
+    expect(queryMock).not.toHaveBeenCalled();
+    expect(desfazerTentativaMock).not.toHaveBeenCalled();
+  });
+
+  it("segredo errado — 401 genérico e a falha FICA contada (não desfaz)", async () => {
+    const res = await POST(requisicao(corpoValido(), "Bearer errado"));
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ erro: "Não autorizado." });
+    expect(registrarTentativaMock).toHaveBeenCalledWith(LIMITE_INTEGRACAO_FALHA_AUTH, expect.any(String));
+    expect(desfazerTentativaMock).not.toHaveBeenCalled();
+  });
+
+  it("segredo certo — a tentativa de autenticação é devolvida (só falha acumula)", async () => {
+    queryMock.mockResolvedValue([{ id: "cliente-novo", criado: true }]);
+    const res = await POST(requisicao(corpoValido(), undefined, { "x-forwarded-for": "198.51.100.4" }));
+    expect(res.status).toBe(200);
+    expect(desfazerTentativaMock).toHaveBeenCalledWith(LIMITE_INTEGRACAO_FALHA_AUTH, "198.51.100.4");
+  });
+
+  it("segredo com comprimento muito diferente do esperado — 401, nunca lança", async () => {
+    const res = await POST(requisicao(corpoValido(), `Bearer ${"x".repeat(5000)}`));
+    expect(res.status).toBe(401);
   });
 });

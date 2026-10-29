@@ -34,7 +34,7 @@ import { SignJWT, jwtVerify } from "jose";
 import { NextResponse } from "next/server";
 import { query } from "./db";
 
-const CUSTO_BCRYPT = 12;
+export const CUSTO_BCRYPT = 12;
 const DURACAO_ACCESS_TOKEN = "15m";
 export const DURACAO_REFRESH_TOKEN_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -54,6 +54,30 @@ export async function hashSenha(senha: string): Promise<string> {
 }
 
 export async function verificarSenha(senha: string, hash: string): Promise<boolean> {
+  return bcrypt.compare(senha, hash);
+}
+
+/**
+ * Hash bcrypt, com o MESMO custo (CUSTO_BCRYPT), de um valor aleatório
+ * gerado uma vez e descartado — nenhuma senha conhecida bate com ele.
+ * Existe só pra `verificarSenhaDaConta` gastar o mesmo tempo quando o
+ * e-mail NÃO existe: sem isso, "e-mail inexistente" respondia em ~1 ms e
+ * "senha errada" em ~250 ms (bcrypt), e o tempo de resposta revelava quais
+ * e-mails têm conta. lib/auth.test.ts garante que o custo deste hash
+ * acompanha CUSTO_BCRYPT.
+ */
+export const HASH_FANTASMA = "$2b$12$MZX1io1.wl5qyPnlSutuCuiMAT/sRysQPdKT0WEgp7w.k0eaTsrSi";
+
+/**
+ * Confere a senha contra o hash da conta — ou, se a conta não existe
+ * (`hash` null), roda a MESMA verificação bcrypt contra HASH_FANTASMA e
+ * devolve false. Tempo de resposta igual nos dois casos.
+ */
+export async function verificarSenhaDaConta(senha: string, hash: string | null): Promise<boolean> {
+  if (hash === null) {
+    await bcrypt.compare(senha, HASH_FANTASMA);
+    return false;
+  }
   return bcrypt.compare(senha, hash);
 }
 

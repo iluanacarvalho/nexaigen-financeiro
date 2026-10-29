@@ -35,6 +35,8 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // Nenhum teste fala com Resend/bucket de verdade — ver o arquivo.
+    setupFiles: ["./vitest.setup.sem-apis-externas.ts"],
     include: ["**/*.integration.test.ts"],
     exclude: ["**/node_modules/**"],
     testTimeout: 30_000,

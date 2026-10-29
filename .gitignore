@@ -6,3 +6,8 @@ out
 .DS_Store
 *.tsbuildinfo
 npm-debug.log*
+
+# Arquivos temporários locais — nunca commitar (rodada 07):
+# script de disparo manual de e-mails reais pra revisão visual, e o rascunho de prompt da rodada 04.
+scripts/teste-envio-emails.ts
+prompt-code-04-integracao-educa-anexo-contrato.txt
