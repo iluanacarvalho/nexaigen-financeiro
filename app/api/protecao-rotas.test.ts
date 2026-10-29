@@ -41,6 +41,7 @@ import { POST as cronPost } from "./cron/verificar-prazos/route";
 import { GET as clienteGet, PATCH as clientePatch } from "./clientes/[id]/route";
 import { GET as contratoGet, POST as contratoPost } from "./clientes/[id]/contrato/route";
 import { POST as integracaoPost } from "./integracao/clientes/route";
+import { GET as painelGet } from "./painel-financeiro/route";
 
 function reqSemSessao(url: string, method: string): NextRequest {
   return new NextRequest(`http://localhost:3001${url}`, {
@@ -68,6 +69,8 @@ describe("achado crítico de segurança — toda rota antes aberta agora exige s
     ["POST /api/clientes/[id]/contrato", () => contratoPost(reqSemSessao("/api/clientes/cliente-1/contrato", "POST"), { params: Promise.resolve({ id: "cliente-1" }) })],
     ["GET /api/clientes/[id]/contrato", () => contratoGet(reqSemSessao("/api/clientes/cliente-1/contrato", "GET"), { params: Promise.resolve({ id: "cliente-1" }) })],
     ["GET /api/alertas", () => alertasGet(reqSemSessao("/api/alertas", "GET"))],
+    ["GET /api/painel-financeiro", () => painelGet(reqSemSessao("/api/painel-financeiro", "GET"))],
+    ["GET /api/painel-financeiro?formato=csv", () => painelGet(reqSemSessao("/api/painel-financeiro?formato=csv", "GET"))],
     ["GET /api/equipe", () => equipeGet(reqSemSessao("/api/equipe", "GET"))],
     ["POST /api/equipe", () => equipePost(reqSemSessao("/api/equipe", "POST"))]
   ])("%s — 401, nunca chama query()", async (_descricao, chamar) => {

@@ -392,3 +392,7 @@ chamada de saída) é a próxima.
   mecanismo novo a decidir à parte.
 - Falha no upload do contrato via integração já é alertada pelo próprio `lib/armazenamentoObjetos.ts`
   (categoria `railway_bucket`) — não é alertada uma segunda vez como `integracao_educa`.
+
+## 11. Painel financeiro
+
+**`/painel`** (e `GET /api/painel-financeiro`, `?formato=csv` pro CSV): MRR, recebido no mês, a receber (no prazo/vencido/crítico), inadimplência e prazo médio de 12 meses, notas sem atesto há >15 dias, série faturado (por competência) x recebido (por mês de pagamento) e tabela de clientes com situação — cálculo puro em `lib/painelFinanceiro.ts` (centavos inteiros, datas em America/Sao_Paulo, status derivado via `diagnosticarNota` na data de hoje), leitura em `lib/painelFinanceiroRepositorio.ts`.
