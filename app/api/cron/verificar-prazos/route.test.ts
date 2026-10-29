@@ -69,7 +69,7 @@ const NOTA_VENCIDA = {
 // Distingue a consulta pelo texto do SQL — mesmo espírito do builder fake
 // por tabela de antes, só que a "tabela" agora é reconhecida por um
 // trecho característico da própria query.
-function criarQueryFake(opts: { notas: any[]; alertaResultado: { id: string } | null }) {
+function criarQueryFake(opts: { notas: (typeof NOTA_VENCIDA)[]; alertaResultado: { id: string } | null }) {
   return vi.fn((sql: string) => {
     if (sql.includes("from nota_fiscal nf")) return Promise.resolve(opts.notas);
     if (sql.includes("update nota_fiscal set status")) return Promise.resolve([]);

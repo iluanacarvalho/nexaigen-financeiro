@@ -1,28 +1,51 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { ClientePrefeitura } from "@/lib/tipos";
+
+async function buscarClientes(): Promise<ClientePrefeitura[]> {
+  const res = await fetch("/api/clientes");
+  const data = await res.json();
+  return data.clientes ?? [];
+}
 
 export default function ClientesPage() {
-  const [clientes, setClientes] = useState<any[]>([]);
+  const [clientes, setClientes] = useState<ClientePrefeitura[]>([]);
   const [mostrarForm, setMostrarForm] = useState(false);
   // null = criando um cliente novo; um cliente = editando (PATCH /api/clientes/[id]).
-  const [editando, setEditando] = useState<any | null>(null);
+  const [editando, setEditando] = useState<ClientePrefeitura | null>(null);
   const [erroForm, setErroForm] = useState<string | null>(null);
   const [enviandoContratoId, setEnviandoContratoId] = useState<string | null>(null);
   const [erroContrato, setErroContrato] = useState<{ id: string; mensagem: string } | null>(null);
   const inputsContrato = useRef<Record<string, HTMLInputElement | null>>({});
 
+  // Recarga depois de salvar/anexar — chamada de event handler.
   async function carregar() {
-    const res = await fetch("/api/clientes");
-    const data = await res.json();
-    setClientes(data.clientes ?? []);
+    setClientes(await buscarClientes());
   }
 
+  // Carga inicial: estado só muda no callback da Promise (nunca de forma
+  // síncrona no corpo do efeito — react-hooks/set-state-in-effect), ignorado
+  // se a página desmontar antes. `?editar=<id>` (link "cadastro do cliente"
+  // do Painel Financeiro) já abre o formulário de edição desse cliente.
   useEffect(() => {
-    carregar();
+    let ativo = true;
+    const idParaEditar = new URLSearchParams(window.location.search).get("editar");
+    buscarClientes().then((lista) => {
+      if (!ativo) return;
+      setClientes(lista);
+      const alvo = idParaEditar ? lista.find((c) => c.id === idParaEditar) : undefined;
+      if (alvo) {
+        setEditando(alvo);
+        setMostrarForm(true);
+      }
+    });
+    return () => {
+      ativo = false;
+    };
   }, []);
 
-  function abrirForm(cliente: any | null) {
+  function abrirForm(cliente: ClientePrefeitura | null) {
     setErroForm(null);
     setEditando(cliente);
     setMostrarForm(true);

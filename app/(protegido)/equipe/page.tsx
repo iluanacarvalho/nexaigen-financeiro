@@ -16,6 +16,12 @@ interface Colega {
   criado_em: string;
 }
 
+async function buscarColegas(): Promise<Colega[]> {
+  const res = await fetch("/api/equipe");
+  const data = await res.json();
+  return data.colegas ?? [];
+}
+
 export default function EquipePage() {
   const [colegas, setColegas] = useState<Colega[]>([]);
   const [nome, setNome] = useState("");
@@ -24,14 +30,22 @@ export default function EquipePage() {
   const [enviando, setEnviando] = useState(false);
   const [resultado, setResultado] = useState<{ email: string; senhaTemporaria: string; aviso: string } | null>(null);
 
+  // Recarga depois de cadastrar alguém — chamada de event handler.
   async function carregar() {
-    const res = await fetch("/api/equipe");
-    const data = await res.json();
-    setColegas(data.colegas ?? []);
+    setColegas(await buscarColegas());
   }
 
+  // Carga inicial: estado só muda no callback da Promise (nunca de forma
+  // síncrona no corpo do efeito — react-hooks/set-state-in-effect),
+  // ignorado se a página desmontar antes da resposta chegar.
   useEffect(() => {
-    carregar();
+    let ativo = true;
+    buscarColegas().then((lista) => {
+      if (ativo) setColegas(lista);
+    });
+    return () => {
+      ativo = false;
+    };
   }, []);
 
   async function cadastrar(e: React.FormEvent) {

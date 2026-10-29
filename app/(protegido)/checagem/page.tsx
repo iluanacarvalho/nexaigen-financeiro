@@ -1,24 +1,41 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { NotaComCliente } from "@/lib/tipos";
+
+async function buscarNotasAguardandoAtesto(): Promise<NotaComCliente[]> {
+  const res = await fetch("/api/notas?status=aguardando_atesto");
+  const data = await res.json();
+  return data.notas ?? [];
+}
 
 export default function FilaChecagemPage() {
-  const [notas, setNotas] = useState<any[]>([]);
+  const [notas, setNotas] = useState<NotaComCliente[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [enviandoArquivoId, setEnviandoArquivoId] = useState<string | null>(null);
   const [erroArquivoId, setErroArquivoId] = useState<{ id: string; mensagem: string } | null>(null);
   const inputsArquivo = useRef<Record<string, HTMLInputElement | null>>({});
 
+  // Recarga depois de uma ação (registrar/anexar) — chamada de event handler.
   async function carregar() {
     setCarregando(true);
-    const res = await fetch("/api/notas?status=aguardando_atesto");
-    const data = await res.json();
-    setNotas(data.notas ?? []);
+    setNotas(await buscarNotasAguardandoAtesto());
     setCarregando(false);
   }
 
+  // Carga inicial: o estado só muda no callback da Promise (nunca de forma
+  // síncrona no corpo do efeito — react-hooks/set-state-in-effect), e é
+  // ignorado se a página desmontar antes da resposta chegar.
   useEffect(() => {
-    carregar();
+    let ativo = true;
+    buscarNotasAguardandoAtesto().then((lista) => {
+      if (!ativo) return;
+      setNotas(lista);
+      setCarregando(false);
+    });
+    return () => {
+      ativo = false;
+    };
   }, []);
 
   async function registrar(notaId: string, resultado: string) {

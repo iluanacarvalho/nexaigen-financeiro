@@ -8,9 +8,10 @@
 // completo lá sobre o `json_build_object` aninhado.
 
 import { query } from "@/lib/db";
+import type { AlertaComNota } from "@/lib/tipos";
 
 async function getAlertas() {
-  return query(
+  return query<AlertaComNota>(
     `select
        a.*,
        json_build_object(
@@ -42,7 +43,7 @@ export default async function AlertasPage() {
       <h1 className="mb-6 text-2xl font-bold text-navy">Alertas de Cobrança</h1>
 
       <div className="space-y-3">
-        {alertas.map((a: any) => (
+        {alertas.map((a) => (
           <div
             key={a.id}
             className={`rounded-lg border bg-white p-4 shadow-sm ${a.tipo === "atraso_60_dias" ? "border-alerta" : ""}`}
