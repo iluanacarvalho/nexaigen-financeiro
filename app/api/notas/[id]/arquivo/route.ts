@@ -16,13 +16,12 @@
 // Não existe — de propósito — nenhum fluxo de remover PDF.
 
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
 import { lerPdfDoFormData } from "@/lib/validacaoPdf";
 import { lerMotivo, lerParametroVersao } from "@/lib/versaoArquivo";
 import { ALVO_PDF_NOTA, donoExiste, localizarPdf, registrarVersaoPdf, respostaDownloadPdf } from "@/lib/versionamentoPdf";
+import { ehUuid } from "@/lib/validacao";
 
-const idValido = (id: string) => z.string().uuid().safeParse(id).success;
 const NAO_ENCONTRADA = () => NextResponse.json({ erro: "Nota fiscal não encontrada." }, { status: 404 });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -31,7 +30,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (negado) return negado;
 
   const { id: notaId } = await params;
-  if (!idValido(notaId) || !(await donoExiste(ALVO_PDF_NOTA, notaId))) return NAO_ENCONTRADA();
+  if (!ehUuid(notaId) || !(await donoExiste(ALVO_PDF_NOTA, notaId))) return NAO_ENCONTRADA();
 
   const formData = await req.formData().catch(() => null);
   if (!formData) return NextResponse.json({ erro: "Corpo da requisição precisa ser multipart/form-data." }, { status: 400 });
@@ -56,7 +55,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id: notaId } = await params;
   const parametro = lerParametroVersao(req.nextUrl.searchParams.get("versao"));
   if (!parametro.ok) return NextResponse.json({ erro: parametro.erro }, { status: 400 });
-  if (!idValido(notaId)) return NAO_ENCONTRADA();
+  if (!ehUuid(notaId)) return NAO_ENCONTRADA();
 
   const local = await localizarPdf(ALVO_PDF_NOTA, notaId, parametro.versao);
   switch (local.status) {

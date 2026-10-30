@@ -10,13 +10,12 @@
 // GET [?versao=N] — download pelo servidor, em streaming (padrão: atual).
 
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
 import { lerPdfDoFormData } from "@/lib/validacaoPdf";
 import { lerMotivo, lerParametroVersao } from "@/lib/versaoArquivo";
 import { ALVO_CONTRATO, donoExiste, localizarPdf, registrarVersaoPdf, respostaDownloadPdf } from "@/lib/versionamentoPdf";
+import { ehUuid } from "@/lib/validacao";
 
-const idValido = (id: string) => z.string().uuid().safeParse(id).success;
 const NAO_ENCONTRADO = () => NextResponse.json({ erro: "Cliente não encontrado." }, { status: 404 });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -25,7 +24,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (negado) return negado;
 
   const { id: clienteId } = await params;
-  if (!idValido(clienteId) || !(await donoExiste(ALVO_CONTRATO, clienteId))) return NAO_ENCONTRADO();
+  if (!ehUuid(clienteId) || !(await donoExiste(ALVO_CONTRATO, clienteId))) return NAO_ENCONTRADO();
 
   const formData = await req.formData().catch(() => null);
   if (!formData) return NextResponse.json({ erro: "Corpo da requisição precisa ser multipart/form-data." }, { status: 400 });
@@ -49,7 +48,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id: clienteId } = await params;
   const parametro = lerParametroVersao(req.nextUrl.searchParams.get("versao"));
   if (!parametro.ok) return NextResponse.json({ erro: parametro.erro }, { status: 400 });
-  if (!idValido(clienteId)) return NAO_ENCONTRADO();
+  if (!ehUuid(clienteId)) return NAO_ENCONTRADO();
 
   const local = await localizarPdf(ALVO_CONTRATO, clienteId, parametro.versao);
   switch (local.status) {

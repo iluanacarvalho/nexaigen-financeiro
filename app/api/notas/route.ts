@@ -19,13 +19,14 @@ import { hojeEmSaoPaulo } from "@/lib/painelFinanceiro";
 import { FiltrosNotasSchema, NovaNotaSchema } from "@/lib/notaSchemas";
 import { criarNota, listarNotas, type FiltrosNotas } from "@/lib/notasServico";
 import { lerValorMonetario, normalizarCompetencia, validarCompetencia, validarDataEmissao, type SituacaoNota } from "@/lib/estadoNota";
+import { detalhesDoErro } from "@/lib/validacao";
 
 export async function GET(req: NextRequest) {
   const negado = exigirSessao(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value));
   if (negado) return negado;
 
   const parsed = FiltrosNotasSchema.safeParse(Object.fromEntries(req.nextUrl.searchParams));
-  if (!parsed.success) return NextResponse.json({ erro: "Filtros inválidos", detalhes: parsed.error.flatten() }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ erro: "Filtros inválidos", detalhes: detalhesDoErro(parsed.error) }, { status: 400 });
   const f = parsed.data;
 
   const filtros: FiltrosNotas = {
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest) {
   if (negado) return negado;
 
   const parsed = NovaNotaSchema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ erro: "Dados inválidos", detalhes: parsed.error.flatten() }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ erro: "Dados inválidos", detalhes: detalhesDoErro(parsed.error) }, { status: 400 });
   const n = parsed.data;
   const hoje = hojeEmSaoPaulo(new Date());
 

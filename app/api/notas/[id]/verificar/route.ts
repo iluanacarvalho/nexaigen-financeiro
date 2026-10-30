@@ -21,14 +21,13 @@ import { z } from "zod";
 import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
 import { hojeEmSaoPaulo } from "@/lib/painelFinanceiro";
 import { executarAcaoNota, registrarVerificacaoSemMudanca } from "@/lib/notasServico";
+import { detalhesDoErro, ehUuid } from "@/lib/validacao";
 
-const VerificacaoSchema = z
-  .object({
+const VerificacaoSchema = z.strictObject({
     resultado: z.enum(["sem_atesto_ainda", "atestada", "paga", "erro_acesso_portal"]),
     data_evento: z.string().max(10).optional(),
     observacao: z.string().trim().max(1000).optional()
-  })
-  .strict();
+});
 
 // UPGRADE Next.js 16: `params` de route handlers dinâmicos é uma Promise.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -37,10 +36,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (negado) return negado;
 
   const parsed = VerificacaoSchema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ erro: "Dados inválidos", detalhes: parsed.error.flatten() }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ erro: "Dados inválidos", detalhes: detalhesDoErro(parsed.error) }, { status: 400 });
 
   const { id } = await params;
-  if (!z.string().uuid().safeParse(id).success) return NextResponse.json({ erro: "Nota fiscal não encontrada." }, { status: 404 });
+  if (!ehUuid(id)) return NextResponse.json({ erro: "Nota fiscal não encontrada." }, { status: 404 });
   const { resultado, data_evento, observacao } = parsed.data;
   const hoje = hojeEmSaoPaulo(new Date());
   const obs = observacao ? observacao : null;

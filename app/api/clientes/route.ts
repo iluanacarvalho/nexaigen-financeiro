@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { ClienteSchema } from "@/lib/clienteSchema";
 import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
+import { detalhesDoErro } from "@/lib/validacao";
 
 export async function GET(req: NextRequest) {
   const negado = exigirSessao(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value));
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
   if (negado) return negado;
 
   const parsed = ClienteSchema.safeParse(await req.json());
-  if (!parsed.success) return NextResponse.json({ erro: "Dados inválidos", detalhes: parsed.error.flatten() }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ erro: "Dados inválidos", detalhes: detalhesDoErro(parsed.error) }, { status: 400 });
   const c = parsed.data;
 
   const linhas = await query<{ id: string }>(

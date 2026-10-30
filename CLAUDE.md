@@ -79,6 +79,8 @@ This is NEXAIGEN's own internal billing/collections tool — it is never sold to
 
 **Dependencies & security (round 09-A).** Next.js is pinned at **16.4.3** (exact; `eslint-config-next` same version). Policy: apply Next.js security patches within 7 days. CI runs `npm audit --omit=dev --audit-level=high` as a **blocking** step (prod deps only) plus a full informative `npm audit`. Regenerate the lock ONLY with **npm 10.9** (`npx npm@10.9 install ...`) and validate with `rm -rf node_modules && npm ci`. `package.json#overrides.vitest` must stay equal to `devDependencies.vitest` — it breaks an optional-peer cycle (`vite → @vitejs/devtools → devtools-vitest → vitest@*`) that crashes npm 10.9's resolver. `images.unoptimized: true` in `next.config.js` on purpose (no `next/image`/`next/og` in this app; `/_next/image` → 404, removing the attack surface of recent image-optimizer advisories) — don't add `next/image` without revisiting it.
 
+**Zod 4 (round 10-A).** Use the v4 APIs only: `z.strictObject` (not `.strict()`), `z.uuid()/z.email()/z.url()` (not `z.string().uuid()` etc.), `{ error: "..." }` (not `message`). Every 400 builds `detalhes` with `lib/validacao.ts#detalhesDoErro` (same `{formErrors, fieldErrors}` shape as v3 `.flatten()` — API contract) and route ids are checked with `ehUuid`. **Never put `.default()` on a field that is reused by an optional/partial schema** — in v4 defaults inside optional fields ARE applied (see `lib/clienteSchema.ts`: defaults live only in the create schema). `app/api/contrato-validacao.test.ts` pins the 400 contract of every validated route.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know

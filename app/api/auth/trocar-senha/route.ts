@@ -19,16 +19,17 @@ import {
   trocarSenha
 } from "@/lib/auth";
 import { LIMITE_TROCAR_SENHA, registrarTentativa, respostaLimiteExcedido } from "@/lib/rateLimit";
+import { detalhesDoErro } from "@/lib/validacao";
 
 // Mínimo razoável, não uma política formal de complexidade — mesmo padrão
 // já usado no projeto irmão nexaigen-educa.
 const TrocarSenhaSchema = z.object({
-  senha_atual: z.string().min(1, "Informe a senha atual."),
+  senha_atual: z.string().min(1, { error: "Informe a senha atual." }),
   nova_senha: z
     .string()
-    .min(8, "A nova senha precisa de pelo menos 8 caracteres.")
-    .regex(/[A-Za-z]/, "A nova senha precisa de pelo menos uma letra.")
-    .regex(/[0-9]/, "A nova senha precisa de pelo menos um número.")
+    .min(8, { error: "A nova senha precisa de pelo menos 8 caracteres." })
+    .regex(/[A-Za-z]/, { error: "A nova senha precisa de pelo menos uma letra." })
+    .regex(/[0-9]/, { error: "A nova senha precisa de pelo menos um número." })
 });
 
 export async function POST(req: NextRequest) {
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
 
   const parsed = TrocarSenhaSchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ erro: "Dados inválidos", detalhes: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json({ erro: "Dados inválidos", detalhes: detalhesDoErro(parsed.error) }, { status: 400 });
   }
 
   const resultado = await trocarSenha(contexto.equipeId, parsed.data.senha_atual, parsed.data.nova_senha);

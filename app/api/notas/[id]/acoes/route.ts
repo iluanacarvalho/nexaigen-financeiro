@@ -9,12 +9,12 @@
 // inexistente · 409 transição não permitida (ex.: pagar nota cancelada).
 
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
 import { hojeEmSaoPaulo } from "@/lib/painelFinanceiro";
 import { AcaoNotaSchema } from "@/lib/notaSchemas";
 import { executarAcaoNota } from "@/lib/notasServico";
 import { lerMotivoObrigatorio } from "@/lib/estadoNota";
+import { detalhesDoErro, ehUuid } from "@/lib/validacao";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const contexto = await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value);
@@ -22,10 +22,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (negado) return negado;
 
   const { id } = await params;
-  if (!z.string().uuid().safeParse(id).success) return NextResponse.json({ erro: "Nota fiscal não encontrada." }, { status: 404 });
+  if (!ehUuid(id)) return NextResponse.json({ erro: "Nota fiscal não encontrada." }, { status: 404 });
 
   const parsed = AcaoNotaSchema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ erro: "Dados inválidos", detalhes: parsed.error.flatten() }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ erro: "Dados inválidos", detalhes: detalhesDoErro(parsed.error) }, { status: 400 });
   const { acao, data, motivo } = parsed.data;
 
   let motivoValidado: string | null = null;

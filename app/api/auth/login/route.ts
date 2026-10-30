@@ -40,7 +40,7 @@ import {
 } from "@/lib/rateLimit";
 
 const LoginSchema = z.object({
-  email: z.string().email(),
+  email: z.email(),
   senha: z.string().min(1)
 });
 

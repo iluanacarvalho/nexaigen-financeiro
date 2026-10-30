@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { query } from "@/lib/db";
 import { NOME_COOKIE_ACCESS, exigirSessao, gerarSenhaTemporaria, hashSenha, obterContextoAutenticado } from "@/lib/auth";
+import { detalhesDoErro } from "@/lib/validacao";
 
 export async function GET(req: NextRequest) {
   const contexto = await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value);
@@ -21,8 +22,9 @@ export async function GET(req: NextRequest) {
 }
 
 const CadastrarColegaSchema = z.object({
-  nome: z.string().trim().min(2, "Informe o nome completo."),
-  email: z.string().trim().email("E-mail inválido.")
+  nome: z.string().trim().min(2, { error: "Informe o nome completo." }),
+  // trim ANTES do formato: no zod 4 z.email() é um tipo próprio — `.pipe()` garante a ordem.
+  email: z.string().trim().pipe(z.email({ error: "E-mail inválido." }))
 });
 
 // Nome EXATO da constraint (db/migrations/0001_initial.sql) — comparação
@@ -36,7 +38,7 @@ export async function POST(req: NextRequest) {
 
   const parsed = CadastrarColegaSchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ erro: "Dados inválidos", detalhes: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json({ erro: "Dados inválidos", detalhes: detalhesDoErro(parsed.error) }, { status: 400 });
   }
   const { nome, email } = parsed.data;
   const emailNormalizado = email.toLowerCase();

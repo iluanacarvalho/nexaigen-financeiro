@@ -1,73 +1,92 @@
-// Schema zod de cliente_prefeitura — movido de app/api/clientes/route.ts
-// (um route.ts do Next só pode exportar handlers/configs de rota) quando
-// três rotas passaram a precisar das MESMAS regras por campo:
+// Schemas zod de cliente_prefeitura — compartilhados por três rotas, cada
+// regra por campo declarada UMA vez:
 //   - POST /api/clientes (criação pela equipe, snake_case),
 //   - PATCH /api/clientes/[id] (edição pela equipe, todos os campos opcionais),
-//   - POST /api/integracao/clientes (chamada pelo nexaigen-educa, camelCase —
-//     reaproveita cada campo daqui via `.shape`, nunca redeclara a regra).
+//   - POST /api/integracao/clientes (chamada pelo nexaigen-educa, camelCase).
+//
+// ZOD 4 (rodada 10-A) — por que os defaults NÃO ficam em CAMPOS_CLIENTE:
+// no zod 4 um `.default()` dentro de um campo opcional É APLICADO quando a
+// chave está ausente (no zod 3 a chave ficava ausente). Com o default no
+// campo-base, `.partial()` do PATCH e o `.optional()` da integração
+// passariam a gravar plano="essencial"/dia=1 em todo PATCH ou retry do
+// Educa que não mandasse esses campos — sobrescrevendo o valor salvo.
+// Então: campos-base SEM default; o default é aplicado só no schema de
+// CRIAÇÃO (ClienteSchema). lib/clienteSchema.test.ts e
+// app/api/clientes/[id]/route.test.ts provam os dois lados.
 
 import { z } from "zod";
 
-export const ClienteSchema = z.object({
+const CAMPOS_CLIENTE = {
   nome: z.string().min(3),
   uf: z.string().length(2),
   cnpj: z.string().optional(),
-  plano: z.enum(["essencial", "completo"]).default("essencial"),
+  plano: z.enum(["essencial", "completo"]),
   valor_mensal: z.number().positive(),
-  dia_vencimento_contrato: z.number().int().min(1).max(28).default(1),
-  data_inicio_contrato: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use o formato YYYY-MM-DD."),
+  dia_vencimento_contrato: z.number().int().min(1).max(28),
+  data_inicio_contrato: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { error: "Use o formato YYYY-MM-DD." }),
   sistema_portal: z.string().optional(),
-  portal_url: z.string().url().optional(),
+  // Só http/https (rodada 10-A): portal_url vira um <a href> clicável na
+  // Fila de Checagem — `javascript:`/`data:` (que o zod 3 aceitava) seriam
+  // um XSS armazenado. Endereço de portal de prefeitura é sempre http(s).
+  portal_url: z.url({ protocol: /^https?$/, error: "Use um endereço http:// ou https://." }).optional(),
   portal_usuario: z.string().optional(),
   contato_nome: z.string().optional(),
-  contato_email: z.string().email().optional(),
+  contato_email: z.email().optional(),
   contato_telefone: z.string().optional(),
   observacao: z.string().optional()
+};
+
+/** Criação (POST /api/clientes): defaults de plano e dia de vencimento só aqui. Chaves extras são descartadas, como sempre foram. */
+export const ClienteSchema = z.object({
+  ...CAMPOS_CLIENTE,
+  plano: CAMPOS_CLIENTE.plano.default("essencial"),
+  dia_vencimento_contrato: CAMPOS_CLIENTE.dia_vencimento_contrato.default(1)
 });
 
 /**
- * PATCH: todos os campos opcionais, só atualiza o que vier. `.partial()`
- * envolve os `.default()` em `.optional()` — campo ausente continua
- * `undefined` (nunca volta pro default e sobrescreve o valor salvo).
- * Pelo menos um campo é exigido (PATCH vazio é dado inválido, não no-op).
+ * Edição (PATCH): todos os campos opcionais, só atualiza o que vier, SEM
+ * default nenhum. Estrito: municipio_id_externo/contrato_arquivo_* (ou
+ * qualquer outra chave) → 400 — contrato só muda pela rota de contrato, o
+ * vínculo com o Educa só pela integração. PATCH vazio é dado inválido.
  */
-export const ClientePatchSchema = ClienteSchema.partial()
-  .strict()
-  .refine((c) => Object.values(c).some((v) => v !== undefined), { message: "Envie ao menos um campo para atualizar." });
+export const ClientePatchSchema = z
+  .strictObject(CAMPOS_CLIENTE)
+  .partial()
+  .refine((c) => Object.values(c).some((v) => v !== undefined), { error: "Envie ao menos um campo para atualizar." });
 
 export type ClientePatch = z.infer<typeof ClientePatchSchema>;
 
-const s = ClienteSchema.shape;
+const c = CAMPOS_CLIENTE;
 
 /**
  * Corpo de POST /api/integracao/clientes (nexaigen-educa → Financeiro).
  * camelCase porque é o contrato público entre os dois sistemas; cada
- * regra vem de ClienteSchema. plano/dia_vencimento_contrato SEM default
- * aqui (`removeDefault`): no UPDATE do upsert, campo ausente mantém o
- * valor já salvo — o default só se aplica no INSERT (ver a rota).
+ * regra vem de CAMPOS_CLIENTE. plano/diaVencimentoContrato SEM default
+ * (vêm da base): no UPDATE do upsert, campo ausente mantém o valor salvo
+ * — o default só se aplica no INSERT, em SQL (ver a rota).
  */
 export const IntegracaoClienteSchema = z
   .object({
-    municipioIdExterno: z.string().uuid(),
-    nome: s.nome,
-    uf: s.uf,
-    valorMensal: s.valor_mensal,
-    dataInicioContrato: s.data_inicio_contrato,
-    plano: s.plano.removeDefault().optional(),
-    diaVencimentoContrato: s.dia_vencimento_contrato.removeDefault().optional(),
-    cnpj: s.cnpj,
-    sistemaPortal: s.sistema_portal,
-    portalUrl: s.portal_url,
-    portalUsuario: s.portal_usuario,
-    contatoNome: s.contato_nome,
-    contatoEmail: s.contato_email,
-    contatoTelefone: s.contato_telefone,
-    observacao: s.observacao,
+    municipioIdExterno: z.uuid(),
+    nome: c.nome,
+    uf: c.uf,
+    valorMensal: c.valor_mensal,
+    dataInicioContrato: c.data_inicio_contrato,
+    plano: c.plano.optional(),
+    diaVencimentoContrato: c.dia_vencimento_contrato.optional(),
+    cnpj: c.cnpj,
+    sistemaPortal: c.sistema_portal,
+    portalUrl: c.portal_url,
+    portalUsuario: c.portal_usuario,
+    contatoNome: c.contato_nome,
+    contatoEmail: c.contato_email,
+    contatoTelefone: c.contato_telefone,
+    observacao: c.observacao,
     contratoArquivoBase64: z.string().min(1).optional(),
     contratoArquivoNome: z.string().min(1).max(255).optional()
   })
-  .refine((c) => (c.contratoArquivoBase64 === undefined) === (c.contratoArquivoNome === undefined), {
-    message: "contratoArquivoBase64 e contratoArquivoNome devem vir juntos (ou nenhum dos dois).",
+  .refine((v) => (v.contratoArquivoBase64 === undefined) === (v.contratoArquivoNome === undefined), {
+    error: "contratoArquivoBase64 e contratoArquivoNome devem vir juntos (ou nenhum dos dois).",
     path: ["contratoArquivoNome"]
   });
 

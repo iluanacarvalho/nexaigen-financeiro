@@ -62,6 +62,7 @@ import {
   registrarTentativa,
   respostaLimiteExcedido
 } from "@/lib/rateLimit";
+import { detalhesDoErro } from "@/lib/validacao";
 
 const CATEGORIA_ALERTA = "integracao_educa";
 const AVISO_CONTRATO = "não foi possível salvar o contrato anexado";
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest) {
 
   const corpo = await req.json().catch(() => null);
   const parsed = IntegracaoClienteSchema.safeParse(corpo);
-  if (!parsed.success) return NextResponse.json({ erro: "Dados inválidos", detalhes: parsed.error.flatten() }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ erro: "Dados inválidos", detalhes: detalhesDoErro(parsed.error) }, { status: 400 });
   const c = parsed.data;
 
   let contratoPdf: Buffer | null = null;
