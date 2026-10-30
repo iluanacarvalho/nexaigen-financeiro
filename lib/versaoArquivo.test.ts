@@ -83,15 +83,16 @@ describe("lerMotivo", () => {
 
 describe("montarChaveVersao", () => {
   it("prefixo da nota + /versoes/{id único}/ + nome sanitizado", () => {
-    expect(montarChaveVersao("nota-1", "uuid-1", "NF 123 / Jaguapitã.pdf")).toBe("financeiro/notas-fiscais/nota-1/versoes/uuid-1/NF_123___Jaguapit_.pdf");
+    expect(montarChaveVersao("financeiro/notas-fiscais/nota-1", "uuid-1", "NF 123 / Jaguapitã.pdf")).toBe("financeiro/notas-fiscais/nota-1/versoes/uuid-1/NF_123___Jaguapit_.pdf");
+    expect(montarChaveVersao("financeiro/contratos-prefeitura/c-1", "uuid-2", "Contrato.pdf")).toBe("financeiro/contratos-prefeitura/c-1/versoes/uuid-2/Contrato.pdf");
   });
 
   it("mesmo nome de arquivo, ids diferentes → chaves diferentes (nunca sobrescreve)", () => {
-    expect(montarChaveVersao("n", "a", "x.pdf")).not.toBe(montarChaveVersao("n", "b", "x.pdf"));
+    expect(montarChaveVersao("financeiro/notas-fiscais/n", "a", "x.pdf")).not.toBe(montarChaveVersao("financeiro/notas-fiscais/n", "b", "x.pdf"));
   });
 
   it("nome com ../ não escapa do prefixo", () => {
-    const chave = montarChaveVersao("n", "a", "../../outra-nota/x.pdf");
+    const chave = montarChaveVersao("financeiro/notas-fiscais/n", "a", "../../outra-nota/x.pdf");
     expect(chave.startsWith("financeiro/notas-fiscais/n/versoes/a/")).toBe(true);
     expect(chave.slice("financeiro/notas-fiscais/n/versoes/a/".length)).not.toContain("/");
   });
@@ -112,6 +113,6 @@ describe("montarContentDisposition", () => {
   });
 
   it("nome vazio cai pra um nome padrão", () => {
-    expect(montarContentDisposition("")).toContain('filename="nota-fiscal.pdf"');
+    expect(montarContentDisposition("")).toContain('filename="documento.pdf"');
   });
 });

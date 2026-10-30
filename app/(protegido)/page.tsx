@@ -1,22 +1,16 @@
-// Postgres direto via lib/db.ts desde a rodada de migração de
-// infraestrutura (Supabase → pg). A checagem de sessão em si já roda em
+// Dashboard — números da MESMA fonte do Painel e de GET
+// /api/painel-financeiro (lib/resumoDashboard.ts): situação derivada pela
+// data de hoje e centavos inteiros, nunca a coluna status gravada nem
+// soma em ponto flutuante. A checagem de sessão já roda em
 // app/(protegido)/layout.tsx, antes desta página renderizar.
 
-import { query } from "@/lib/db";
+import { formatarMoeda } from "@/lib/dinheiro";
+import { obterResumoDashboard } from "@/lib/resumoDashboard";
 import { avisosDeConfiguracao, lerStatusConfiguracao } from "@/lib/statusConfiguracao";
 
 export default async function Dashboard() {
-  const notas = await query<{ status: string; valor: string }>(`select status, valor from nota_fiscal`);
-  const alertas = await query<{ tipo: string }>(`select tipo from alerta_cobranca where status <> 'resolvido'`);
-
-  const contagem: Record<string, number> = {};
-  let valorEmAberto = 0;
-  for (const n of notas) {
-    contagem[n.status] = (contagem[n.status] ?? 0) + 1;
-    if (n.status !== "paga" && n.status !== "cancelada") valorEmAberto += Number(n.valor);
-  }
-
-  const alertasCriticos = alertas.filter((a) => a.tipo === "atraso_60_dias").length;
+  const resumo = await obterResumoDashboard();
+  const contagem = resumo.contagemPorSituacao;
   // Só booleanos do ambiente (nunca valores) — ver lib/statusConfiguracao.ts.
   const avisosConfiguracao = avisosDeConfiguracao(lerStatusConfiguracao());
 
@@ -37,22 +31,26 @@ export default async function Dashboard() {
       )}
 
       <div className="grid gap-4 sm:grid-cols-4">
-        <Card titulo="Aguardando atesto" valor={contagem["aguardando_atesto"] ?? 0} />
-        <Card titulo="Atestadas (aguardando pagamento)" valor={contagem["atestada"] ?? 0} />
-        <Card titulo="Vencidas" valor={contagem["vencida"] ?? 0} destaque />
-        <Card titulo="Atraso crítico (≥60 dias)" valor={contagem["atraso_critico"] ?? 0} destaque />
+        <Card titulo="Aguardando atesto" valor={contagem?.aguardando_atesto ?? null} />
+        <Card titulo="Atestadas (no prazo)" valor={contagem?.atestada ?? null} />
+        <Card titulo="Vencidas" valor={contagem?.vencida ?? null} destaque />
+        <Card titulo="Atraso crítico (≥60 dias)" valor={contagem?.atraso_critico ?? null} destaque />
       </div>
+
+      {resumo.semNotas && (
+        <p className="mt-4 text-sm text-slate-500">Nenhuma nota fiscal ainda — os números aparecem assim que a primeira for lançada em Notas fiscais.</p>
+      )}
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
         <div className="rounded-lg border bg-white p-5 shadow-sm">
           <p className="text-sm text-slate-500">Valor total em aberto</p>
           <p className="mt-1 text-3xl font-bold text-navy">
-            {valorEmAberto.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+            {formatarMoeda(resumo.emAbertoCentavos)}
           </p>
         </div>
         <div className="rounded-lg border bg-white p-5 shadow-sm">
           <p className="text-sm text-slate-500">Alertas de cobrança ativos (atraso ≥60 dias)</p>
-          <p className="mt-1 text-3xl font-bold text-alerta">{alertasCriticos}</p>
+          <p className="mt-1 text-3xl font-bold text-alerta">{resumo.alertasCriticosAtivos}</p>
         </div>
       </div>
 
@@ -64,11 +62,13 @@ export default async function Dashboard() {
   );
 }
 
-function Card({ titulo, valor, destaque = false }: { titulo: string; valor: number; destaque?: boolean }) {
+// valor null = banco sem notas: "—", nunca um 0 fingindo dado (mesma regra do Painel).
+function Card({ titulo, valor, destaque = false }: { titulo: string; valor: number | null; destaque?: boolean }) {
+  const realce = destaque && (valor ?? 0) > 0;
   return (
-    <div className={`rounded-lg border bg-white p-5 shadow-sm ${destaque && valor > 0 ? "border-alerta" : ""}`}>
+    <div className={`rounded-lg border bg-white p-5 shadow-sm ${realce ? "border-alerta" : ""}`}>
       <p className="text-sm text-slate-500">{titulo}</p>
-      <p className={`mt-1 text-3xl font-bold ${destaque && valor > 0 ? "text-alerta" : "text-navy"}`}>{valor}</p>
+      <p className={`mt-1 text-3xl font-bold ${realce ? "text-alerta" : "text-navy"}`}>{valor ?? "—"}</p>
     </div>
   );
 }

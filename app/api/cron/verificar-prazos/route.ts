@@ -40,6 +40,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { diagnosticarNota } from "@/lib/prazos";
+import { statusPersistidoDe } from "@/lib/estadoNota";
 import { notificarTimeDeCobranca } from "@/lib/notificacao-interna";
 import { notificarClientePrefeitura } from "@/lib/notificacaoCliente";
 import { alertarErroSistema } from "@/lib/alertaErroSistema";
@@ -116,7 +117,7 @@ async function executar(req: NextRequest) {
       dataLimitePagamento: nota.data_limite_pagamento
     });
 
-    const novoStatus = mapearStatus(diagnostico.statusDerivado);
+    const novoStatus = statusPersistidoDe(diagnostico.statusDerivado);
     if (novoStatus !== nota.status) {
       await query(`update nota_fiscal set status = $1 where id = $2`, [novoStatus, nota.id]);
       resultado.statusAtualizados += 1;
@@ -169,17 +170,4 @@ async function executar(req: NextRequest) {
   resultado.contadoresRateLimitRemovidos = await limparContadoresExpirados();
 
   return NextResponse.json(resultado);
-}
-
-function mapearStatus(statusDerivado: string): string {
-  const mapa: Record<string, string> = {
-    aguardando_atesto: "aguardando_atesto",
-    atesto_atrasado: "aguardando_atesto",
-    atestada_aguardando_pagamento: "atestada",
-    vencendo_em_breve: "atestada",
-    vencida: "vencida",
-    atraso_critico: "atraso_critico",
-    paga: "paga"
-  };
-  return mapa[statusDerivado] ?? "emitida";
 }

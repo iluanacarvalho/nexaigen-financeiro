@@ -14,7 +14,11 @@ export async function GET(req: NextRequest) {
   const negado = exigirSessao(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value));
   if (negado) return negado;
 
-  const clientes = await query(`select * from cliente_prefeitura order by nome`);
+  // contrato_versao_atual: número da versão pra qual contrato_arquivo_chave aponta (0009) — lookup pela chave única.
+  const clientes = await query(
+    `select c.*, (select v.versao from cliente_contrato_versao v where v.chave = c.contrato_arquivo_chave) as contrato_versao_atual
+     from cliente_prefeitura c order by c.nome`
+  );
   return NextResponse.json({ clientes });
 }
 

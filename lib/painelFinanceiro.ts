@@ -25,7 +25,9 @@
 // coluna gravada na última execução (e sem depender do cron ter rodado).
 // "Vencida"/"atraso crítico" aqui = statusDerivado "vencida"/"atraso_critico".
 
+import { paraCentavos } from "./dinheiro";
 import { LIMIAR_ATRASO_CRITICO_DIAS, diagnosticarNota } from "./prazos";
+import { statusPersistidoDe, type SituacaoNota } from "./estadoNota";
 
 /** Notas sem atesto há MAIS que isto (dias desde a emissão) entram no KPI 6. */
 export const LIMIAR_PAINEL_SEM_ATESTO_DIAS = 15;
@@ -101,37 +103,23 @@ export interface PainelFinanceiro {
     inadimplencia: { percentual: number | null; vencidoCentavos: number; faturadoCentavos: number };
     prazoMedioRecebimentoDias: number | null;
     aguardandoAtestoMais15Dias: number | null;
+    /**
+     * Notas EM ABERTO por situação na data de hoje (mesma derivação de
+     * lib/estadoNota.ts#situacaoDaNota — a que o Dashboard, a tela de
+     * Notas e o job diário usam). null sem nenhuma nota.
+     */
+    contagemPorSituacao: Record<Exclude<SituacaoNota, "paga" | "cancelada">, number> | null;
   };
   serie: PontoSerieMensal[];
   clientes: ClientePainel[];
 }
 
 // --- Dinheiro -------------------------------------------------------------
-
-const NUMERIC = /^(-)?(\d+)(?:\.(\d*))?$/;
-
-/**
- * "4500.50" → 450050. Lê a string sem passar por float. Mais de 2 casas
- * (não acontece com numeric(12,2), mas a função não assume isso)
- * arredonda meio-pra-cima pela 3ª casa. Valor que não é numérico lança —
- * dado corrompido nunca vira 0 em silêncio num painel de dinheiro.
- */
-export function paraCentavos(valor: string | number): number {
-  const texto = typeof valor === "number" ? valor.toFixed(2) : valor.trim();
-  const m = NUMERIC.exec(texto);
-  if (!m) throw new Error(`Valor monetário inválido: "${texto}"`);
-  const [, sinal, inteiros, decimais = ""] = m;
-  const casas = (decimais + "00").slice(0, 2);
-  const arredonda = decimais.length > 2 && Number(decimais[2]) >= 5 ? 1 : 0;
-  const centavos = Number(inteiros) * 100 + Number(casas) + arredonda;
-  return sinal ? -centavos : centavos;
-}
-
-/** 450050 → "R$ 4.500,50" (exibição). null → "—". */
-export function formatarMoeda(centavos: number | null): string {
-  if (centavos === null) return "—";
-  return (centavos / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
+// paraCentavos/formatarMoeda moraram aqui até a rodada 08; agora ficam em
+// lib/dinheiro.ts (a tela de Notas também precisa, e lib/estadoNota.ts não
+// pode importar este arquivo sem criar import circular). Reexportados pra
+// quem já importava daqui.
+export { formatarMoeda, paraCentavos } from "./dinheiro";
 
 // --- Datas ----------------------------------------------------------------
 
@@ -184,6 +172,7 @@ interface NotaAbertaDiagnosticada {
   nota: LinhaNotaPainel;
   centavos: number;
   faixa: FaixaNotaAberta;
+  situacao: SituacaoNota;
   diasDeAtraso: number;
   diasSemAtesto: number | null;
 }
@@ -200,7 +189,14 @@ function diagnosticarAberta(nota: LinhaNotaPainel, hoje: string): NotaAbertaDiag
     new Date(`${hoje}T00:00:00Z`)
   );
   const faixa: FaixaNotaAberta = d.statusDerivado === "atraso_critico" ? "atraso_critico" : d.statusDerivado === "vencida" ? "vencida" : "no_prazo";
-  return { nota, centavos: paraCentavos(nota.valor), faixa, diasDeAtraso: Math.max(d.diasDeAtraso ?? 0, 0), diasSemAtesto: d.diasSemAtesto };
+  return {
+    nota,
+    centavos: paraCentavos(nota.valor),
+    faixa,
+    situacao: statusPersistidoDe(d.statusDerivado),
+    diasDeAtraso: Math.max(d.diasDeAtraso ?? 0, 0),
+    diasSemAtesto: d.diasSemAtesto
+  };
 }
 
 /** MRR: soma de valor_mensal dos contratos ativos + contagem por status_contrato. null sem nenhum cliente. */
@@ -295,7 +291,9 @@ export function montarPainelFinanceiro(entrada: { clientes: LinhaClientePainel[]
   const aReceber = { totalCentavos: 0, noPrazoCentavos: 0, vencidasCentavos: 0, atrasoCriticoCentavos: 0 };
   let vencidoNaJanela = 0;
   let aguardandoAtesto = 0;
+  const contagemPorSituacao = { aguardando_atesto: 0, atestada: 0, vencida: 0, atraso_critico: 0 };
   for (const a of abertas) {
+    if (a.situacao !== "paga" && a.situacao !== "cancelada") contagemPorSituacao[a.situacao] += 1;
     aReceber.totalCentavos += a.centavos;
     if (a.faixa === "atraso_critico") aReceber.atrasoCriticoCentavos += a.centavos;
     else if (a.faixa === "vencida") aReceber.vencidasCentavos += a.centavos;
@@ -344,7 +342,8 @@ export function montarPainelFinanceiro(entrada: { clientes: LinhaClientePainel[]
       aReceber: semNotas ? null : aReceber,
       inadimplencia: calcularInadimplencia(vencidoNaJanela, faturadoNaJanela),
       prazoMedioRecebimentoDias: calcularPrazoMedioRecebimento(notas, inicioJanela, hoje),
-      aguardandoAtestoMais15Dias: semNotas ? null : aguardandoAtesto
+      aguardandoAtestoMais15Dias: semNotas ? null : aguardandoAtesto,
+      contagemPorSituacao: semNotas ? null : contagemPorSituacao
     },
     serie: montarSerieMensal(notas, meses),
     clientes: ordenarClientesPorAtraso(linhasClientes)

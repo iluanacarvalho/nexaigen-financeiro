@@ -13,9 +13,6 @@ vi.mock("@aws-sdk/client-s3", () => ({
   GetObjectCommand: vi.fn(),
   DeleteObjectCommand: vi.fn()
 }));
-vi.mock("@aws-sdk/s3-request-presigner", () => ({
-  getSignedUrl: vi.fn()
-}));
 vi.mock("@smithy/node-http-handler", () => ({
   NodeHttpHandler: vi.fn()
 }));
@@ -38,9 +35,8 @@ const { alertarErroSistemaMock } = vi.hoisted(() => ({
 vi.mock("./alertaErroSistema", () => ({ alertarErroSistema: alertarErroSistemaMock }));
 
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
-import { baixarArquivo, gerarUrlDownload, removerUploadNaoRegistrado, uploadArquivo } from "./armazenamentoObjetos";
+import { abrirLeituraArquivo, removerUploadNaoRegistrado, uploadArquivo } from "./armazenamentoObjetos";
 
 const ENV_ORIGINAL = {
   bucket: process.env.RAILWAY_BUCKET_NAME,
@@ -223,85 +219,59 @@ describe("uploadArquivo", () => {
   });
 });
 
-describe("gerarUrlDownload", () => {
-  it("armazenamento não configurado — devolve null, nunca chama o SDK, alerta falha de sistema", async () => {
+describe("abrirLeituraArquivo — streaming", () => {
+  it("armazenamento não configurado — indisponível, nunca chama o SDK, alerta falha de sistema", async () => {
     limparEnvBucket();
 
-    await expect(gerarUrlDownload("chave/teste.pdf")).resolves.toBeNull();
-    expect(S3Client).not.toHaveBeenCalled();
-    expect(getSignedUrl).not.toHaveBeenCalled();
-    expect(alertarErroSistemaMock).toHaveBeenCalledWith("railway_bucket", expect.any(String));
-  });
-
-  it("sucesso — devolve a URL presigned gerada, expiração de 5 minutos (300s)", async () => {
-    limparEnvBucket();
-    configurarEnvBucketCompleto();
-    vi.mocked(getSignedUrl).mockResolvedValue("https://t3.storageapi.dev/bucket-de-teste/chave/teste.pdf?presigned=1");
-
-    await expect(gerarUrlDownload("chave/teste.pdf")).resolves.toBe(
-      "https://t3.storageapi.dev/bucket-de-teste/chave/teste.pdf?presigned=1"
-    );
-    expect(GetObjectCommand).toHaveBeenCalledWith({ Bucket: "bucket-de-teste", Key: "chave/teste.pdf" });
-    expect(getSignedUrl).toHaveBeenCalledWith(expect.anything(), expect.anything(), { expiresIn: 300 });
-  });
-
-  it("erro do SDK ao gerar a URL — devolve null, nunca lança, alerta falha de sistema", async () => {
-    limparEnvBucket();
-    configurarEnvBucketCompleto();
-    vi.mocked(getSignedUrl).mockRejectedValue(new Error("falha simulada"));
-
-    await expect(gerarUrlDownload("chave/teste.pdf")).resolves.toBeNull();
-    expect(alertarErroSistemaMock).toHaveBeenCalledWith("railway_bucket", expect.any(String));
-  });
-
-  it("nunca loga a secret key, nem em sucesso nem em erro", async () => {
-    limparEnvBucket();
-    configurarEnvBucketCompleto();
-    vi.mocked(getSignedUrl).mockRejectedValue(new Error("falha simulada"));
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    await gerarUrlDownload("chave/teste.pdf");
-
-    for (const chamada of warnSpy.mock.calls) {
-      for (const argumento of chamada) {
-        expect(String(argumento)).not.toContain("secret-key-secreta-nao-pode-vazar");
-      }
-    }
-    warnSpy.mockRestore();
-  });
-});
-
-describe("baixarArquivo", () => {
-  it("armazenamento não configurado — null, nunca chama o SDK, alerta falha de sistema", async () => {
-    limparEnvBucket();
-
-    await expect(baixarArquivo("chave/teste.pdf")).resolves.toBeNull();
+    await expect(abrirLeituraArquivo("chave/teste.pdf")).resolves.toEqual({ ok: false, motivo: "indisponivel" });
     expect(S3Client).not.toHaveBeenCalled();
     expect(alertarErroSistemaMock).toHaveBeenCalledWith("railway_bucket", expect.any(String));
   });
 
-  it("sucesso — devolve os bytes exatos do objeto (GetObject com bucket/chave certos)", async () => {
+  it("sucesso — devolve o stream do próprio SDK (sem ler o corpo inteiro) e o ContentLength", async () => {
     limparEnvBucket();
     configurarEnvBucketCompleto();
-    const conteudo = Buffer.from("%PDF-1.4 conteúdo da versão");
-    sendMock.mockResolvedValue({ Body: { transformToByteArray: async () => new Uint8Array(conteudo) } });
+    const stream = new ReadableStream<Uint8Array>();
+    const transformToByteArray = vi.fn();
+    sendMock.mockResolvedValue({ ContentLength: 1234, Body: { transformToWebStream: () => stream, transformToByteArray } });
 
-    const bytes = await baixarArquivo("financeiro/notas-fiscais/n/versoes/u/a.pdf");
+    const leitura = await abrirLeituraArquivo("financeiro/notas-fiscais/n/versoes/u/a.pdf");
 
-    expect(bytes?.equals(conteudo)).toBe(true);
+    expect(leitura).toEqual({ ok: true, corpo: stream, tamanhoBytes: 1234 });
+    expect(transformToByteArray).not.toHaveBeenCalled(); // nunca bufferiza
     expect(GetObjectCommand).toHaveBeenCalledWith({ Bucket: "bucket-de-teste", Key: "financeiro/notas-fiscais/n/versoes/u/a.pdf" });
   });
 
   it.each([
-    ["erro do SDK (ex.: NoSuchKey)", () => sendMock.mockRejectedValue(new Error("NoSuchKey"))],
+    ["NoSuchKey", Object.assign(new Error("not found"), { name: "NoSuchKey" })],
+    ["HTTP 404", Object.assign(new Error("not found"), { $metadata: { httpStatusCode: 404 } })]
+  ])("objeto inexistente (%s) — ausente, SEM alerta de sistema (é dado inconsistente, não bucket fora do ar)", async (_d, erro) => {
+    limparEnvBucket();
+    configurarEnvBucketCompleto();
+    sendMock.mockRejectedValue(erro);
+
+    await expect(abrirLeituraArquivo("chave/x.pdf")).resolves.toEqual({ ok: false, motivo: "ausente" });
+    expect(alertarErroSistemaMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["erro de rede", () => sendMock.mockRejectedValue(new Error("ECONNRESET"))],
     ["resposta sem corpo", () => sendMock.mockResolvedValue({})]
-  ])("%s — null, nunca lança, alerta falha de sistema", async (_d, configurar) => {
+  ])("%s — indisponível, nunca lança, alerta falha de sistema", async (_d, configurar) => {
     limparEnvBucket();
     configurarEnvBucketCompleto();
     configurar();
 
-    await expect(baixarArquivo("chave/teste.pdf")).resolves.toBeNull();
+    await expect(abrirLeituraArquivo("chave/x.pdf")).resolves.toEqual({ ok: false, motivo: "indisponivel" });
     expect(alertarErroSistemaMock).toHaveBeenCalledWith("railway_bucket", expect.any(String));
+  });
+
+  it("sem ContentLength — tamanho null", async () => {
+    limparEnvBucket();
+    configurarEnvBucketCompleto();
+    sendMock.mockResolvedValue({ Body: { transformToWebStream: () => new ReadableStream() } });
+    const leitura = await abrirLeituraArquivo("chave/x.pdf");
+    expect(leitura.ok && leitura.tamanhoBytes).toBeNull();
   });
 });
 

@@ -1,7 +1,7 @@
 // Histórico de versões do PDF da nota fiscal contra Postgres REAL: rotas
 // reais (upload, download, listagem), migration 0005 real, lock por nota
 // real. Só o armazenamento de objetos é substituído — por um bucket EM
-// MEMÓRIA (Map chave → bytes), nunca o Railway de verdade; o módulo real
+// MEMÓRIA (testes/bucketEmMemoria.ts), nunca o Railway de verdade; o módulo real
 // já é testado isoladamente em lib/armazenamentoObjetos.test.ts.
 // Nada aqui chama Resend (alertarErroSistema mockado).
 //   docker compose up -d && npm run migrate && npm run test:integration
@@ -11,30 +11,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const { bucket, falharProximoUpload, removidos } = vi.hoisted(() => ({
-  bucket: new Map<string, Buffer>(),
-  falharProximoUpload: { valor: false },
-  removidos: [] as string[]
-}));
-vi.mock("@/lib/armazenamentoObjetos", () => ({
-  uploadArquivo: async (chave: string, buffer: Buffer) => {
-    if (falharProximoUpload.valor) {
-      falharProximoUpload.valor = false;
-      return false;
-    }
-    bucket.set(chave, Buffer.from(buffer));
-    return true;
-  },
-  baixarArquivo: async (chave: string) => bucket.get(chave) ?? null,
-  removerUploadNaoRegistrado: async (chave: string) => {
-    removidos.push(chave);
-    return bucket.delete(chave);
-  },
-  gerarUrlDownload: async () => null
-}));
+vi.mock("@/lib/armazenamentoObjetos", async () => (await import("@/testes/bucketEmMemoria")).armazenamentoEmMemoria);
 vi.mock("@/lib/alertaErroSistema", () => ({ alertarErroSistema: vi.fn() }));
 
 import { NextRequest } from "next/server";
+import { bucketEmMemoria } from "@/testes/bucketEmMemoria";
 import { query, withTransaction } from "@/lib/db";
 import { gerarAccessToken, NOME_COOKIE_ACCESS } from "@/lib/auth";
 import { GET, POST } from "./route";
@@ -108,7 +89,7 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
-  falharProximoUpload.valor = false;
+  bucketEmMemoria.falhas.proximoUpload = false;
 });
 
 describe("versões do PDF — fluxo completo em Postgres real", () => {
@@ -132,8 +113,8 @@ describe("versões do PDF — fluxo completo em Postgres real", () => {
     ]);
     expect(versoes[0].chave).not.toBe(versoes[1].chave);
     // Os DOIS objetos continuam no bucket.
-    expect(bucket.get(versoes[0].chave)?.equals(conteudoV1)).toBe(true);
-    expect(bucket.get(versoes[1].chave)?.equals(conteudoV2)).toBe(true);
+    expect(bucketEmMemoria.objetos.get(versoes[0].chave)?.equals(conteudoV1)).toBe(true);
+    expect(bucketEmMemoria.objetos.get(versoes[1].chave)?.equals(conteudoV2)).toBe(true);
 
     const [nota] = await query<{ arquivo_pdf_chave: string; arquivo_pdf_nome: string }>(
       `select arquivo_pdf_chave, arquivo_pdf_nome from nota_fiscal where id = $1`,
@@ -167,7 +148,7 @@ describe("versões do PDF — fluxo completo em Postgres real", () => {
     const notas = await (await GET_NOTAS(new NextRequest("http://localhost:3001/api/notas", { headers: { cookie } }))).json();
     expect(notas.notas.find((n: { id: string }) => n.id === notaId).arquivo_pdf_versao_atual).toBe(2);
 
-    expect(removidos).toEqual([]);
+    expect(bucketEmMemoria.removidos).toEqual([]);
   });
 
   it("versão inexistente → 404; versão malformada → 400", async () => {
@@ -194,7 +175,7 @@ describe("versões do PDF — fluxo completo em Postgres real", () => {
     await enviar(notaId, pdfDe("v1"), "v1.pdf");
     const antes = await query(`select arquivo_pdf_chave from nota_fiscal where id = $1`, [notaId]);
 
-    falharProximoUpload.valor = true;
+    bucketEmMemoria.falhas.proximoUpload = true;
     const res = await enviar(notaId, pdfDe("v2 que não chega"), "v2.pdf");
 
     expect(res.status).toBe(502);

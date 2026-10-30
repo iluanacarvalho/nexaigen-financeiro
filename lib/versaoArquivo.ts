@@ -1,7 +1,7 @@
-// Regras PURAS do histórico de versões do PDF da nota fiscal
-// (db/migrations/0005_nota_fiscal_arquivo_versao.sql) — sem I/O, testadas
+// Regras PURAS do histórico de versões de PDF — nota fiscal
+// (0005_nota_fiscal_arquivo_versao.sql) e contrato (0009_cliente_contrato_versao.sql) — sem I/O, testadas
 // em lib/versaoArquivo.test.ts. Quem orquestra bucket + transação é
-// app/api/notas/[id]/arquivo/route.ts.
+// lib/versionamentoPdf.ts.
 
 import { createHash } from "node:crypto";
 import { sanitizarNomeArquivo } from "./validacaoPdf";
@@ -55,13 +55,15 @@ export function lerMotivo(valor: FormDataEntryValue | null): ResultadoMotivo {
 }
 
 /**
- * Chave do objeto de UMA versão: `financeiro/notas-fiscais/{notaId}/versoes/{idUnico}/{nome sanitizado}`.
+ * Chave do objeto de UMA versão: `{prefixoDono}/versoes/{idUnico}/{nome sanitizado}`
+ * — ex.: `financeiro/notas-fiscais/{notaId}/versoes/{uuid}/NF.pdf` ou
+ * `financeiro/contratos-prefeitura/{clienteId}/versoes/{uuid}/contrato.pdf`.
  * `idUnico` (uuid gerado por envio) garante que um envio nunca grava por
- * cima do objeto de outro — nem de outra versão da mesma nota, nem de um
+ * cima do objeto de outro — nem de outra versão do mesmo dono, nem de um
  * envio concorrente — independente do nome do arquivo.
  */
-export function montarChaveVersao(notaId: string, idUnico: string, nomeOriginal: string): string {
-  return `financeiro/notas-fiscais/${notaId}/versoes/${idUnico}/${sanitizarNomeArquivo(nomeOriginal)}`;
+export function montarChaveVersao(prefixoDono: string, idUnico: string, nomeOriginal: string): string {
+  return `${prefixoDono}/versoes/${idUnico}/${sanitizarNomeArquivo(nomeOriginal)}`;
 }
 
 /**
@@ -71,7 +73,7 @@ export function montarChaveVersao(notaId: string, idUnico: string, nomeOriginal:
  * percent-encoding, pra navegadores modernos mostrarem acentos.
  */
 export function montarContentDisposition(nomeOriginal: string): string {
-  const seguro = sanitizarNomeArquivo(nomeOriginal) || "nota-fiscal.pdf";
+  const seguro = sanitizarNomeArquivo(nomeOriginal) || "documento.pdf";
   const original = nomeOriginal.replace(/[\u0000-\u001f\u007f]/g, "");
   // encodeURIComponent deixa ' ( ) * passarem — fora do attr-char da RFC 5987, então também codificados.
   const codificado = encodeURIComponent(original || seguro).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);

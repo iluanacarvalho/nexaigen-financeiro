@@ -38,19 +38,21 @@
 // CONTRATO (opcional, base64 no JSON): validado por inteiro ANTES de
 // qualquer escrita (base64 válido, ≤10MB decodificado, assinatura
 // `%PDF-` — lib/validacaoPdf.ts) — inválido é 400, nunca ignorado em
-// silêncio. Já um upload que FALHA no bucket não derruba o cadastro: o
-// cliente é salvo sem os campos de contrato (num UPDATE, o contrato
-// anterior é mantido) e a resposta traz `avisoContrato`. Chave:
-// `financeiro/contratos-prefeitura/{uuid novo}/{nome sanitizado}` — uuid
-// novo porque o id do cliente ainda não existe na hora do upload.
+// silêncio. Desde a rodada 08 o contrato vira uma VERSÃO nova
+// (cliente_contrato_versao, 0009 — mesma implementação da tela de
+// Clientes, lib/versionamentoPdf.ts), nunca sobrescreve o anterior: o
+// cliente é gravado primeiro (upsert), depois a versão. Um upload/registro
+// que FALHA não derruba o cadastro — o cliente fica salvo, o contrato
+// atual (se havia) continua o mesmo, e a resposta traz `avisoContrato`.
+// enviado_por da versão fica nulo (quem envia é o outro sistema) e o
+// motivo registra a origem.
 
-import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { IntegracaoClienteSchema } from "@/lib/clienteSchema";
-import * as armazenamentoObjetos from "@/lib/armazenamentoObjetos";
 import { alertarErroSistema } from "@/lib/alertaErroSistema";
-import { TIPO_MIME_PDF, lerPdfDeBase64, sanitizarNomeArquivo } from "@/lib/validacaoPdf";
+import { lerPdfDeBase64 } from "@/lib/validacaoPdf";
+import { ALVO_CONTRATO, registrarVersaoPdf } from "@/lib/versionamentoPdf";
 import { bearerConfere } from "@/lib/segredoCompartilhado";
 import {
   LIMITE_INTEGRACAO_FALHA_AUTH,
@@ -90,21 +92,11 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ erro: "Dados inválidos", detalhes: parsed.error.flatten() }, { status: 400 });
   const c = parsed.data;
 
-  let contratoChave: string | null = null;
-  let contratoNome: string | null = null;
-  let avisoContrato: string | undefined;
-
+  let contratoPdf: Buffer | null = null;
   if (c.contratoArquivoBase64 !== undefined && c.contratoArquivoNome !== undefined) {
     const pdf = lerPdfDeBase64(c.contratoArquivoBase64);
     if (!pdf.ok) return NextResponse.json({ erro: pdf.erro }, { status: 400 });
-
-    const chave = `financeiro/contratos-prefeitura/${randomUUID()}/${sanitizarNomeArquivo(c.contratoArquivoNome)}`;
-    if (await armazenamentoObjetos.uploadArquivo(chave, pdf.buffer, TIPO_MIME_PDF)) {
-      contratoChave = chave;
-      contratoNome = c.contratoArquivoNome;
-    } else {
-      avisoContrato = AVISO_CONTRATO;
-    }
+    contratoPdf = pdf.buffer;
   }
 
   let linhas: { id: string; criado: boolean }[];
@@ -113,9 +105,9 @@ export async function POST(req: NextRequest) {
       `insert into cliente_prefeitura
          (municipio_id_externo, nome, uf, valor_mensal, data_inicio_contrato, plano, dia_vencimento_contrato,
           cnpj, sistema_portal, portal_url, portal_usuario, contato_nome, contato_email, contato_telefone,
-          observacao, contrato_arquivo_chave, contrato_arquivo_nome)
+          observacao)
        values ($1, $2, $3, $4, $5, coalesce($6::text, 'essencial'), coalesce($7::int, 1),
-               $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+               $8, $9, $10, $11, $12, $13, $14, $15)
        on conflict (municipio_id_externo) where municipio_id_externo is not null do update set
          nome = excluded.nome,
          uf = excluded.uf,
@@ -130,9 +122,7 @@ export async function POST(req: NextRequest) {
          contato_nome = coalesce(excluded.contato_nome, cliente_prefeitura.contato_nome),
          contato_email = coalesce(excluded.contato_email, cliente_prefeitura.contato_email),
          contato_telefone = coalesce(excluded.contato_telefone, cliente_prefeitura.contato_telefone),
-         observacao = coalesce(excluded.observacao, cliente_prefeitura.observacao),
-         contrato_arquivo_chave = coalesce(excluded.contrato_arquivo_chave, cliente_prefeitura.contrato_arquivo_chave),
-         contrato_arquivo_nome = coalesce(excluded.contrato_arquivo_nome, cliente_prefeitura.contrato_arquivo_nome)
+         observacao = coalesce(excluded.observacao, cliente_prefeitura.observacao)
        returning id, (xmax = 0) as criado`,
       [
         c.municipioIdExterno,
@@ -149,9 +139,7 @@ export async function POST(req: NextRequest) {
         c.contatoNome ?? null,
         c.contatoEmail ?? null,
         c.contatoTelefone ?? null,
-        c.observacao ?? null,
-        contratoChave,
-        contratoNome
+        c.observacao ?? null
       ]
     );
   } catch (erro) {
@@ -166,5 +154,13 @@ export async function POST(req: NextRequest) {
   }
 
   const { id, criado } = linhas[0];
-  return NextResponse.json(avisoContrato ? { id, criado, avisoContrato } : { id, criado });
+  if (!contratoPdf) return NextResponse.json({ id, criado });
+
+  const versao = await registrarVersaoPdf(ALVO_CONTRATO, id, {
+    buffer: contratoPdf,
+    nome: c.contratoArquivoNome!,
+    motivo: "Enviado pela integração com o nexaigen-educa.",
+    enviadoPor: null
+  });
+  return NextResponse.json(versao.ok ? { id, criado, versaoContrato: versao.versao } : { id, criado, avisoContrato: AVISO_CONTRATO });
 }

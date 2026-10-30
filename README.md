@@ -377,16 +377,16 @@ chamada de saída) é a próxima.
   e no UPDATE só os campos enviados mudam (opcional ausente mantém o valor salvo).
 - **Contrato** (opcional, base64 no JSON): base64 válido, ≤10MB decodificado e assinatura `%PDF-` —
   qualquer falha é 400 (nunca ignorado). Se o upload no bucket falhar, o cliente é salvo mesmo assim,
-  sem contrato, com `avisoContrato` na resposta. Chave `financeiro/contratos-prefeitura/{uuid}/{nome}`.
+  sem contrato, com `avisoContrato` na resposta. Chave `financeiro/contratos-prefeitura/{uuid}/{nome}` *(desde a Seção 16: cada contrato é uma versão, chave `.../{clienteId}/versoes/{uuid}/{nome}`)*.
 - **Uso pela equipe** (sessão): `GET`/`PATCH /api/clientes/[id]` (PATCH só atualiza o que vier;
   `municipio_id_externo`/`contrato_arquivo_*` não são editáveis por ali), `POST`/`GET
-  /api/clientes/[id]/contrato` (multipart, mesmas regras de PDF; download via presigned URL). Tela
-  `/clientes`: botão Editar, campo Observação, Anexar/Trocar contrato e "Ver contrato".
+  /api/clientes/[id]/contrato` (multipart, mesmas regras de PDF; download pelo servidor em streaming —
+  Seção 18). Tela `/clientes`: botão Editar, campo Observação e o contrato com versões (Seção 16).
 - Regras de PDF compartilhadas entre nota fiscal e contrato em `lib/validacaoPdf.ts`; schema zod
   compartilhado entre as 3 rotas de cliente em `lib/clienteSchema.ts`.
 
 **Pendências conhecidas, não implementadas:**
-- Contrato substituído deixa o objeto antigo órfão no bucket (a nota fiscal ganhou histórico de versões na Seção 12; o contrato ainda não) —
+- ~~Contrato substituído deixa o objeto antigo órfão no bucket~~ — resolvido na Seção 16 (contrato com histórico de versões) —
   um job de limpeza futuro resolveria se isso crescer.
 - Não existe forma de "desvincular" um cliente do município do Educa (limpar `municipio_id_externo`
   manualmente). Se um município for recriado do zero no Educa **com o mesmo id**, o próximo POST de
@@ -408,3 +408,27 @@ Cada envio de PDF da nota vira uma versão nova em `nota_fiscal_arquivo_versao` 
 ## 13. Segurança, agendamento e CI (rodada 07)
 
 Limite de tentativas em Postgres (`lib/rateLimit.ts`, `0006_rate_limit.sql`): login 5 falhas/15 min por e-mail e por IP (429 + Retry-After; e-mail inexistente custa o mesmo tempo que senha errada), troca de senha 10/15 min, integração 60/min e 10 falhas de autenticação/15 min por IP; debounce do alerta de sistema realmente atômico (`0007`); job diário agendado pelo GitHub Actions (ver Seção 5); aviso no Dashboard do que falta configurar (`GET /api/configuracao/status`, só sim/não, nunca valores); CI com Postgres rodando também os testes de integração; testes isolados de Resend/bucket (`vitest.setup.sem-apis-externas.ts`).
+
+## 14. Tela de Notas fiscais (rodada 08)
+
+`/notas` lista TODAS as notas (filtros por situação/cliente/competência, busca por número, ordenação e paginação no servidor — `GET /api/notas`, uma query só) e cria nota (valor sempre como texto → centavos, competência normalizada pro 1º do mês, cliente precisa estar com contrato ativo, número único por cliente — `0008_nota_fiscal_ciclo_de_vida.sql`). Ações com confirmação (`POST /api/notas/[id]/acoes`): atesto, pagamento (**só depois do atesto** — Lei 14.133, Art. 141), cancelar e reabrir pagamento (motivo obrigatório), validadas pela máquina de estados pura `lib/estadoNota.ts` e aplicadas em transação com a nota travada (`lib/notasServico.ts`); histórico com autor em `GET /api/notas/[id]/eventos` (`nota_fiscal_evento`). A Fila de Checagem usa as mesmas rotas e regras (`/verificar` também virou uma transação só; "paga" sem atesto agora é 409).
+
+## 15. Uma única fonte de números (rodada 08)
+
+Dashboard, Painel e `/api/painel-financeiro` usam a mesma função (`lib/resumoDashboard.ts` → `obterPainelFinanceiro`): situação derivada pela data de hoje (`lib/estadoNota.ts`), centavos inteiros (`lib/dinheiro.ts`). Teste de integração confere Dashboard × API iguais em cada passo do ciclo de vida da nota.
+
+## 16. Contrato da prefeitura versionado (rodada 08)
+
+Mesmo padrão e mesma implementação do PDF da nota (`lib/versionamentoPdf.ts`, `0009_cliente_contrato_versao.sql` com backfill da v1): nada sobrescrito nem apagado, `?versao=N`, `GET /api/clientes/[id]/contrato/versoes`, UI com versão atual/histórico/confirmação em Clientes. O contrato que chega pela integração com o Educa vira versão nova (autor nulo, motivo com a origem).
+
+## 17. Hash das versões legadas (rodada 08)
+
+`npm run recalcular-hash-versoes` preenche sha256/tamanho das versões (nota e contrato) vindas de backfill, lendo o objeto em streaming; idempotente, uma falha não para as outras, relatório ok/objeto ausente/erro (saída 1 só se houve erro).
+
+## 18. Download em streaming (rodada 08)
+
+Downloads de PDF passam do bucket pra resposta sem carregar o arquivo em memória (`armazenamentoObjetos.abrirLeituraArquivo` → `respostaDownloadPdf`), com Content-Length, `application/pdf`, nosniff, no-store e nome sanitizado; bucket fora do ar → 502 sem corpo de PDF; objeto que sumiu → 404.
+
+## 19. Testes de tela (rodada 08)
+
+`npm run test:component` (vitest + jsdom + Testing Library, também no CI): Notas, Checagem, Clientes, Painel e Dashboard. Ciclo de vida completo da nota (criar → atestar → pagar → reabrir; criar → cancelar) em `app/api/notas/ciclo-de-vida.integration.test.ts`.

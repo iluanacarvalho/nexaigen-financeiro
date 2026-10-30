@@ -11,7 +11,7 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 
-vi.mock("@/lib/armazenamentoObjetos", () => ({ uploadArquivo: vi.fn(async () => true), gerarUrlDownload: vi.fn() }));
+vi.mock("@/lib/armazenamentoObjetos", async () => (await import("@/testes/bucketEmMemoria")).armazenamentoEmMemoria);
 vi.mock("@/lib/alertaErroSistema", () => ({ alertarErroSistema: vi.fn() }));
 
 import { NextRequest } from "next/server";
@@ -100,7 +100,13 @@ describe("POST /api/integracao/clientes — upsert real", () => {
     expect(linha.plano).toBe("completo");
     expect(linha.contato_email).toBe("contato@prefeitura.example");
     expect(linha.contrato_arquivo_nome).toBe("contrato.pdf");
-    expect(linha.contrato_arquivo_chave).toMatch(/^financeiro\/contratos-prefeitura\/[0-9a-f-]{36}\/contrato\.pdf$/);
+    // Desde a rodada 08 o contrato da integração é uma VERSÃO (0009), com a chave por cliente/envio.
+    expect(linha.contrato_arquivo_chave).toMatch(new RegExp(`^financeiro/contratos-prefeitura/${r1.id}/versoes/[0-9a-f-]{36}/contrato\\.pdf$`));
+    const versoes = await query<{ versao: number; enviado_por: string | null; motivo: string }>(
+      `select versao, enviado_por, motivo from cliente_contrato_versao where cliente_id = $1`,
+      [r1.id]
+    );
+    expect(versoes).toEqual([{ versao: 1, enviado_por: null, motivo: "Enviado pela integração com o nexaigen-educa." }]);
 
     const [{ total }] = await query<{ total: string }>(`select count(*) as total from cliente_prefeitura where municipio_id_externo = $1`, [municipio]);
     expect(Number(total)).toBe(1);

@@ -29,27 +29,25 @@ export interface NotaFiscal {
   created_at: string;
 }
 
-/** GET /api/notas — nota com o resumo do cliente embutido (json_build_object). */
-export interface NotaComCliente extends NotaFiscal {
-  cliente: { nome: string; uf: string; sistema_portal: string | null; portal_url: string | null };
-  /** Número da versão para a qual arquivo_pdf_chave aponta (null sem PDF). */
-  arquivo_pdf_versao_atual: number | null;
-}
-
-/** Uma versão do PDF da nota fiscal (GET /api/notas/[id]/arquivo/versoes). */
-export interface VersaoArquivoNota {
+/**
+ * Uma versão de PDF com histórico — nota fiscal (GET /api/notas/[id]/arquivo/versoes)
+ * ou contrato (GET /api/clientes/[id]/contrato/versoes). Mesmo formato pros dois.
+ */
+export interface VersaoArquivoPdf {
   versao: number;
   nome: string;
-  tamanho_bytes: number | null; // nulo só em versão vinda do backfill da migração 0005
+  tamanho_bytes: number | null; // nulo só em versão vinda de backfill (0005/0009) ainda não recalculada (npm run recalcular-hash-versoes)
   sha256: string | null; // idem
   enviado_em: string;
-  enviado_por_nome: string | null; // nulo só no backfill (autor desconhecido)
+  enviado_por_nome: string | null; // nulo no backfill (autor desconhecido) e no contrato enviado pela integração com o Educa
   motivo: string | null;
   atual: boolean;
 }
 
 /** Linha de cliente_prefeitura (GET /api/clientes, `select *`). */
 export interface ClientePrefeitura {
+  /** Versão atual do contrato (cliente_contrato_versao, 0009) — null sem contrato. */
+  contrato_versao_atual?: number | null;
   id: string;
   nome: string;
   uf: string;
@@ -88,4 +86,45 @@ export interface AlertaComNota {
     data_limite_pagamento: string | null;
     cliente: { nome: string; uf: string; contato_email: string | null; contato_telefone: string | null };
   };
+}
+
+/** Nome usado pela UI da nota fiscal desde a rodada 06. */
+export type VersaoArquivoNota = VersaoArquivoPdf;
+
+/** Situação da nota na data de hoje — ver lib/estadoNota.ts#SituacaoNota (mesmo vocabulário). */
+export type SituacaoNotaListada = "aguardando_atesto" | "atestada" | "vencida" | "atraso_critico" | "paga" | "cancelada";
+
+/** Uma linha de GET /api/notas (lib/notasServico.ts#listarNotas). */
+export interface NotaListada {
+  id: string;
+  cliente_id: string;
+  numero_nf: string | null;
+  valor: string;
+  competencia: string;
+  data_emissao: string;
+  data_atesto: string | null;
+  data_limite_pagamento: string | null;
+  data_pagamento: string | null;
+  status: string;
+  situacao: SituacaoNotaListada;
+  motivo_cancelamento: string | null;
+  cancelado_em: string | null;
+  arquivo_pdf_nome: string | null;
+  arquivo_pdf_versao_atual: number | null;
+  cliente: { id: string; nome: string; uf: string; sistema_portal: string | null; portal_url: string | null };
+}
+
+export type TipoEventoNota = "criacao" | "verificacao_portal" | "atesto" | "pagamento" | "cancelamento" | "reabertura_pagamento";
+
+/** Uma linha do histórico da nota (GET /api/notas/[id]/eventos). */
+export interface EventoNota {
+  id: string;
+  tipo: TipoEventoNota;
+  status_anterior: string | null;
+  status_novo: string | null;
+  data_evento: string | null;
+  motivo: string | null;
+  observacao: string | null;
+  feito_por_nome: string | null;
+  feito_em: string;
 }

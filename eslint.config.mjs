@@ -41,7 +41,6 @@ const travasDeImport = {
         paths: [
           { name: "pg", message: "Use lib/db.ts (query/withTransaction) — é o único arquivo que fala direto com o driver \"pg\"." },
           { name: "@aws-sdk/client-s3", message: mensagemSdkAws },
-          { name: "@aws-sdk/s3-request-presigner", message: mensagemSdkAws },
           { name: "@smithy/node-http-handler", message: mensagemSdkAws }
         ]
       }

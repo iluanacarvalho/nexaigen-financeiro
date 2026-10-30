@@ -1,20 +1,24 @@
 // Testes unitários de POST /api/integracao/clientes (nexaigen-educa →
-// Financeiro). Mocka @/lib/db, @/lib/armazenamentoObjetos e
+// Financeiro). Mocka @/lib/db, @/lib/versionamentoPdf (o contrato vira VERSÃO
+// desde a rodada 08 — testado em lib/versionamentoPdf.test.ts) e
 // @/lib/alertaErroSistema — nunca Postgres, bucket ou Resend reais. O
 // upsert de verdade (índice único parcial + ON CONFLICT) é exercitado
 // contra Postgres real em route.integration.test.ts.
 
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { queryMock, uploadArquivoMock, alertarErroSistemaMock, registrarTentativaMock, desfazerTentativaMock } = vi.hoisted(() => ({
+const { queryMock, registrarVersaoMock, alertarErroSistemaMock, registrarTentativaMock, desfazerTentativaMock } = vi.hoisted(() => ({
   queryMock: vi.fn(),
-  uploadArquivoMock: vi.fn(),
+  registrarVersaoMock: vi.fn(),
   alertarErroSistemaMock: vi.fn(),
   registrarTentativaMock: vi.fn(),
   desfazerTentativaMock: vi.fn()
 }));
 vi.mock("@/lib/db", () => ({ query: queryMock }));
-vi.mock("@/lib/armazenamentoObjetos", () => ({ uploadArquivo: uploadArquivoMock, gerarUrlDownload: vi.fn() }));
+vi.mock("@/lib/versionamentoPdf", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/versionamentoPdf")>()),
+  registrarVersaoPdf: registrarVersaoMock
+}));
 vi.mock("@/lib/alertaErroSistema", () => ({ alertarErroSistema: alertarErroSistemaMock }));
 // Rate limit (rodada 07): só o contador é mockado — as regras e funções
 // puras de lib/rateLimit.ts continuam reais. O contador em Postgres de
@@ -29,6 +33,7 @@ vi.mock("@/lib/rateLimit", async (importOriginal) => ({
 import { NextRequest } from "next/server";
 import { POST } from "./route";
 import { LIMITE_INTEGRACAO_FALHA_AUTH, LIMITE_INTEGRACAO_POR_IP } from "@/lib/rateLimit";
+import { ALVO_CONTRATO } from "@/lib/versionamentoPdf";
 
 const SEGREDO = "segredo-de-teste-da-integracao";
 const ENV_ORIGINAL = process.env.INTEGRACAO_SECRET;
@@ -63,7 +68,7 @@ function chamadaUpsert() {
 beforeEach(() => {
   process.env.INTEGRACAO_SECRET = SEGREDO;
   queryMock.mockReset();
-  uploadArquivoMock.mockReset();
+  registrarVersaoMock.mockReset();
   alertarErroSistemaMock.mockReset();
   registrarTentativaMock.mockReset();
   registrarTentativaMock.mockResolvedValue({ permitido: true, contagem: 1, retryAfterSegundos: 60 });
@@ -116,7 +121,7 @@ describe("POST /api/integracao/clientes — validação do corpo", () => {
     const res = await POST(requisicao(corpo));
     expect(res.status).toBe(400);
     expect(queryMock).not.toHaveBeenCalled();
-    expect(uploadArquivoMock).not.toHaveBeenCalled();
+    expect(registrarVersaoMock).not.toHaveBeenCalled();
   });
 
   it("devolve zod.flatten() em detalhes", async () => {
@@ -142,8 +147,10 @@ describe("POST /api/integracao/clientes — upsert por municipio_id_externo", ()
     // plano/dia ausentes chegam como null — default só no INSERT, coalesce mantém o salvo no UPDATE.
     expect(params[5]).toBeNull();
     expect(params[6]).toBeNull();
-    expect(params[15]).toBeNull();
-    expect(params[16]).toBeNull();
+    // Contrato não entra mais no upsert (vira versão depois, em cliente_contrato_versao).
+    expect(params).toHaveLength(15);
+    expect(sql).not.toContain("contrato_arquivo");
+    expect(registrarVersaoMock).not.toHaveBeenCalled();
   });
 
   it("municipio_id_externo já existente — UPDATE, devolve { id, criado: false }", async () => {
@@ -177,7 +184,7 @@ describe("POST /api/integracao/clientes — contrato em base64", () => {
   ])("%s — 400, nunca faz upload nem grava cliente", async (_desc, base64) => {
     const res = await POST(requisicao(corpoValido({ contratoArquivoBase64: base64, contratoArquivoNome: "contrato.pdf" })));
     expect(res.status).toBe(400);
-    expect(uploadArquivoMock).not.toHaveBeenCalled();
+    expect(registrarVersaoMock).not.toHaveBeenCalled();
     expect(queryMock).not.toHaveBeenCalled();
   });
 
@@ -188,42 +195,38 @@ describe("POST /api/integracao/clientes — contrato em base64", () => {
       requisicao(corpoValido({ contratoArquivoBase64: grande.toString("base64"), contratoArquivoNome: "grande.pdf" }))
     );
     expect(res.status).toBe(400);
-    expect(uploadArquivoMock).not.toHaveBeenCalled();
+    expect(registrarVersaoMock).not.toHaveBeenCalled();
     expect(queryMock).not.toHaveBeenCalled();
   });
 
-  it("contrato válido — faz upload no prefixo financeiro/contratos-prefeitura/{uuid}/ e grava chave/nome", async () => {
-    uploadArquivoMock.mockResolvedValue(true);
-    queryMock.mockResolvedValue([{ id: "cliente-novo", criado: true }]);
+  it("contrato válido — cliente gravado primeiro, depois o contrato vira uma VERSÃO nova (nunca sobrescreve), autor nulo e motivo com a origem", async () => {
+    registrarVersaoMock.mockResolvedValue({ ok: true, versao: 2, tamanhoBytes: 10, sha256: "a".repeat(64) });
+    queryMock.mockResolvedValue([{ id: "cliente-novo", criado: false }]);
 
-    const res = await POST(
-      requisicao(corpoValido({ contratoArquivoBase64: PDF_BASE64, contratoArquivoNome: "Contrato Jaguapitã 2026.pdf" }))
-    );
+    const res = await POST(requisicao(corpoValido({ contratoArquivoBase64: PDF_BASE64, contratoArquivoNome: "Contrato Jaguapitã 2026.pdf" })));
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ id: "cliente-novo", criado: true });
-
-    const [chave, buffer, tipo] = uploadArquivoMock.mock.calls[0];
-    expect(chave).toMatch(/^financeiro\/contratos-prefeitura\/[0-9a-f-]{36}\/Contrato_Jaguapit__2026\.pdf$/);
-    expect((buffer as Buffer).subarray(0, 5).toString()).toBe("%PDF-");
-    expect(tipo).toBe("application/pdf");
-
-    const [, params] = chamadaUpsert()!;
-    expect(params[15]).toBe(chave);
-    expect(params[16]).toBe("Contrato Jaguapitã 2026.pdf");
+    expect(await res.json()).toEqual({ id: "cliente-novo", criado: false, versaoContrato: 2 });
+    const [alvo, clienteId, arquivo] = registrarVersaoMock.mock.calls[0];
+    expect(alvo).toBe(ALVO_CONTRATO);
+    expect(clienteId).toBe("cliente-novo");
+    expect(arquivo).toMatchObject({ nome: "Contrato Jaguapitã 2026.pdf", enviadoPor: null, motivo: expect.stringMatching(/integração com o nexaigen-educa/) });
+    expect((arquivo.buffer as Buffer).subarray(0, 5).toString()).toBe("%PDF-");
+    // Ordem: upsert do cliente antes do registro da versão.
+    expect(queryMock.mock.invocationCallOrder[queryMock.mock.calls.findIndex((c: unknown[]) => (c[0] as string).includes("insert into cliente_prefeitura"))]).toBeLessThan(
+      registrarVersaoMock.mock.invocationCallOrder[0]
+    );
   });
 
-  it("falha no upload do contrato NÃO derruba o cadastro — cliente salvo sem contrato + avisoContrato", async () => {
-    uploadArquivoMock.mockResolvedValue(false);
+  it.each(["bucket", "banco"])("falha ao registrar a versão do contrato (%s) NÃO derruba o cadastro — cliente salvo + avisoContrato", async (motivo) => {
+    registrarVersaoMock.mockResolvedValue({ ok: false, motivo });
     queryMock.mockResolvedValue([{ id: "cliente-novo", criado: true }]);
 
     const res = await POST(requisicao(corpoValido({ contratoArquivoBase64: PDF_BASE64, contratoArquivoNome: "contrato.pdf" })));
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ id: "cliente-novo", criado: true, avisoContrato: "não foi possível salvar o contrato anexado" });
-    const [, params] = chamadaUpsert()!;
-    expect(params[15]).toBeNull();
-    expect(params[16]).toBeNull();
+    expect(chamadaUpsert()).toBeDefined();
   });
 });
 

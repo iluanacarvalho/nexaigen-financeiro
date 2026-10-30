@@ -173,7 +173,7 @@ describe("GET /api/painel-financeiro — rota real", () => {
     expect(res.headers.get("cache-control")).toBe("no-store");
     const corpo = await res.json();
     expect(Object.keys(corpo.kpis).sort()).toEqual(
-      ["aReceber", "aguardandoAtestoMais15Dias", "inadimplencia", "mrr", "prazoMedioRecebimentoDias", "recebidoMesCentavos"].sort()
+      ["aReceber", "aguardandoAtestoMais15Dias", "contagemPorSituacao", "inadimplencia", "mrr", "prazoMedioRecebimentoDias", "recebidoMesCentavos"].sort()
     );
     expect(corpo.serie).toHaveLength(12);
     expect(Array.isArray(corpo.clientes)).toBe(true);

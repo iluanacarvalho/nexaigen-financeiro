@@ -44,6 +44,9 @@ import { GET as notasGet, POST as notasPost } from "./notas/route";
 import { POST as verificarPost } from "./notas/[id]/verificar/route";
 import { GET as arquivoGet, POST as arquivoPost } from "./notas/[id]/arquivo/route";
 import { GET as versoesGet } from "./notas/[id]/arquivo/versoes/route";
+import { POST as acoesNotaPost } from "./notas/[id]/acoes/route";
+import { GET as eventosNotaGet } from "./notas/[id]/eventos/route";
+import { GET as versoesContratoGet } from "./clientes/[id]/contrato/versoes/route";
 import { GET as alertasGet } from "./alertas/route";
 import { GET as equipeGet, POST as equipePost } from "./equipe/route";
 import { POST as cronPost } from "./cron/verificar-prazos/route";
@@ -70,12 +73,17 @@ describe("achado crítico de segurança — toda rota antes aberta agora exige s
     ["GET /api/clientes", () => clientesGet(reqSemSessao("/api/clientes", "GET"))],
     ["POST /api/clientes", () => clientesPost(reqSemSessao("/api/clientes", "POST"))],
     ["GET /api/notas", () => notasGet(reqSemSessao("/api/notas", "GET"))],
+    ["GET /api/notas?situacao=paga&pagina=2", () => notasGet(reqSemSessao("/api/notas?situacao=paga&pagina=2", "GET"))],
     ["POST /api/notas", () => notasPost(reqSemSessao("/api/notas", "POST"))],
     ["POST /api/notas/[id]/verificar", () => verificarPost(reqSemSessao("/api/notas/nota-1/verificar", "POST"), { params: Promise.resolve({ id: "nota-1" }) })],
     ["POST /api/notas/[id]/arquivo", () => arquivoPost(reqSemSessao("/api/notas/nota-1/arquivo", "POST"), { params: Promise.resolve({ id: "nota-1" }) })],
     ["GET /api/notas/[id]/arquivo", () => arquivoGet(reqSemSessao("/api/notas/nota-1/arquivo", "GET"), { params: Promise.resolve({ id: "nota-1" }) })],
     ["GET /api/notas/[id]/arquivo?versao=1", () => arquivoGet(reqSemSessao("/api/notas/nota-1/arquivo?versao=1", "GET"), { params: Promise.resolve({ id: "nota-1" }) })],
     ["GET /api/notas/[id]/arquivo/versoes", () => versoesGet(reqSemSessao("/api/notas/nota-1/arquivo/versoes", "GET"), { params: Promise.resolve({ id: "nota-1" }) })],
+    ["POST /api/notas/[id]/acoes", () => acoesNotaPost(reqSemSessao("/api/notas/nota-1/acoes", "POST"), { params: Promise.resolve({ id: "nota-1" }) })],
+    ["GET /api/notas/[id]/eventos", () => eventosNotaGet(reqSemSessao("/api/notas/nota-1/eventos", "GET"), { params: Promise.resolve({ id: "nota-1" }) })],
+    ["GET /api/clientes/[id]/contrato/versoes", () => versoesContratoGet(reqSemSessao("/api/clientes/cliente-1/contrato/versoes", "GET"), { params: Promise.resolve({ id: "cliente-1" }) })],
+    ["GET /api/clientes/[id]/contrato?versao=1", () => contratoGet(reqSemSessao("/api/clientes/cliente-1/contrato?versao=1", "GET"), { params: Promise.resolve({ id: "cliente-1" }) })],
     ["GET /api/clientes/[id]", () => clienteGet(reqSemSessao("/api/clientes/cliente-1", "GET"), { params: Promise.resolve({ id: "cliente-1" }) })],
     ["PATCH /api/clientes/[id]", () => clientePatch(reqSemSessao("/api/clientes/cliente-1", "PATCH"), { params: Promise.resolve({ id: "cliente-1" }) })],
     ["POST /api/clientes/[id]/contrato", () => contratoPost(reqSemSessao("/api/clientes/cliente-1/contrato", "POST"), { params: Promise.resolve({ id: "cliente-1" }) })],

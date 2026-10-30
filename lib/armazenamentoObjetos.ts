@@ -9,7 +9,8 @@
 //
 // RAILWAY BUCKETS é um bucket S3-compatível PRIVADO — não existe bucket
 // público no Railway hoje. Toda leitura de um objeto precisa de uma
-// presigned URL (`gerarUrlDownload`), nunca uma URL direta.
+// leitura passa pelo servidor (`abrirLeituraArquivo`, em streaming), nunca
+// uma URL direta do bucket.
 //
 // As env vars que o Railway injeta ao linkar um bucket a um serviço têm
 // nomes genéricos (`BUCKET`, `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`,
@@ -28,23 +29,19 @@
 // próprio `S3Client` via `NodeHttpHandler` (ver `criarClient`) — o SDK
 // da AWS v3 não aplica nenhum timeout de rede por padrão, então sem isso
 // uma conexão travada (rede lenta, bucket com problema) deixaria
-// `uploadArquivo`/`gerarUrlDownload` pendurados indefinidamente em vez
+// `uploadArquivo`/`abrirLeituraArquivo` pendurados indefinidamente em vez
 // de devolver `false`/`null` rapidamente.
 //
 // TESTABILIDADE: `lib/armazenamentoObjetos.test.ts` mocka o SDK da AWS
-// via `vi.mock("@aws-sdk/client-s3", ...)`/`vi.mock("@aws-sdk/s3-request-presigner", ...)`
+// via `vi.mock("@aws-sdk/client-s3", ...)`
 // — nunca rede real, nunca uma conta Railway real. Quem CHAMA este
-// módulo (app/api/notas/[id]/arquivo/route.ts) mocka o módulo INTEIRO —
+// módulo (lib/versionamentoPdf.ts, lib/recalcularHashVersoes.ts) mocka o
+// módulo INTEIRO (testes/bucketEmMemoria.ts nos testes de integração) —
 // não precisa conhecer o SDK.
 
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
 import { alertarErroSistema } from "./alertaErroSistema";
-
-// Documento fiscal — a URL não deve ficar acessível por muito tempo
-// depois de gerada.
-const EXPIRACAO_URL_DOWNLOAD_SEGUNDOS = 5 * 60;
 
 // Timeout de rede do S3Client (ver criarClient abaixo). Upload de
 // arquivo de até 10MB: 25s dá margem real pra isso completar numa
@@ -108,7 +105,7 @@ function criarClient(config: ConfigBucket): S3Client {
     // nenhum timeout de rede por padrão (NodeHttpHandler's default é 0,
     // "sem timeout"). throwOnRequestTimeout é necessário pra um estouro
     // de requestTimeout virar de fato um erro lançado (e cair no catch
-    // de uploadArquivo/gerarUrlDownload) — sem isso, o SDK só loga um
+    // de uploadArquivo/abrirLeituraArquivo) — sem isso, o SDK só loga um
     // aviso e a chamada continua pendurada mesmo assim.
     requestHandler: new NodeHttpHandler({
       connectionTimeout: TIMEOUT_CONEXAO_MS,
@@ -145,55 +142,42 @@ export async function uploadArquivo(chave: string, buffer: Buffer, tipoMime: str
   }
 }
 
-/**
- * Gera uma presigned URL de download (GetObject), válida por 5 minutos.
- * NUNCA lança — qualquer falha devolve `null`.
- */
-export async function gerarUrlDownload(chave: string): Promise<string | null> {
-  const config = lerConfigBucket();
-  if (!config) {
-    console.warn(
-      "Armazenamento de objetos: RAILWAY_BUCKET_NAME/RAILWAY_BUCKET_ACCESS_KEY_ID/RAILWAY_BUCKET_SECRET_ACCESS_KEY/RAILWAY_BUCKET_ENDPOINT não configurados por completo — não é possível gerar URL de download."
-    );
-    await alertarErroSistema("railway_bucket", "Variáveis RAILWAY_BUCKET_* não configuradas por completo — não foi possível gerar URL de download.");
-    return null;
-  }
-
-  try {
-    const client = criarClient(config);
-    const comando = new GetObjectCommand({ Bucket: config.bucket, Key: chave });
-    return await getSignedUrl(client, comando, { expiresIn: EXPIRACAO_URL_DOWNLOAD_SEGUNDOS });
-  } catch {
-    console.warn("Armazenamento de objetos: falha ao gerar URL de download — tente novamente.");
-    await alertarErroSistema("railway_bucket", "Falha ao gerar URL de download — ver logs do servidor para detalhe.");
-    return null;
-  }
-}
+export type LeituraArquivo =
+  | { ok: true; corpo: ReadableStream<Uint8Array>; tamanhoBytes: number | null }
+  | { ok: false; motivo: "ausente" | "indisponivel" };
 
 /**
- * Lê os bytes de um objeto (GetObject) — usado pelo download do PDF da
- * nota fiscal, que passa PELO servidor (resposta com Content-Disposition/
- * Content-Type/Cache-Control controlados pela rota, link `<a download>`
- * real na UI) em vez de redirecionar pra uma presigned URL. NUNCA lança —
- * qualquer falha (objeto inexistente incluído) devolve `null`.
+ * Abre a leitura de um objeto (GetObject) em STREAMING — o corpo é
+ * repassado direto pra resposta HTTP (download do PDF) ou pro cálculo de
+ * hash (scripts/recalcular-hash-versoes-pdf.ts), nunca carregado inteiro
+ * em memória. Distingue "objeto não existe" (`ausente`, sem alerta de
+ * sistema — é dado inconsistente, não bucket fora do ar) de qualquer outra
+ * falha (`indisponivel`, com alerta "railway_bucket"). NUNCA lança.
+ * O timeout de rede do S3Client (criarClient) vale pra abrir a leitura e
+ * pra cada pausa da transferência.
  */
-export async function baixarArquivo(chave: string): Promise<Buffer | null> {
+export async function abrirLeituraArquivo(chave: string): Promise<LeituraArquivo> {
   const config = lerConfigBucket();
   if (!config) {
-    console.warn("Armazenamento de objetos: RAILWAY_BUCKET_* não configurados por completo — download não realizado.");
-    await alertarErroSistema("railway_bucket", "Variáveis RAILWAY_BUCKET_* não configuradas por completo — download não realizado.");
-    return null;
+    console.warn("Armazenamento de objetos: RAILWAY_BUCKET_* não configurados por completo — leitura não realizada.");
+    await alertarErroSistema("railway_bucket", "Variáveis RAILWAY_BUCKET_* não configuradas por completo — leitura de arquivo não realizada.");
+    return { ok: false, motivo: "indisponivel" };
   }
 
   try {
     const client = criarClient(config);
     const resposta = await client.send(new GetObjectCommand({ Bucket: config.bucket, Key: chave }));
     if (!resposta.Body) throw new Error("corpo vazio");
-    return Buffer.from(await resposta.Body.transformToByteArray());
-  } catch {
-    console.warn("Armazenamento de objetos: falha ao baixar arquivo do bucket.");
-    await alertarErroSistema("railway_bucket", "Falha ao baixar arquivo do bucket (download) — ver logs do servidor para detalhe.");
-    return null;
+    return { ok: true, corpo: resposta.Body.transformToWebStream() as ReadableStream<Uint8Array>, tamanhoBytes: resposta.ContentLength ?? null };
+  } catch (erro) {
+    const e = erro as { name?: string; $metadata?: { httpStatusCode?: number } } | null;
+    if (e?.name === "NoSuchKey" || e?.$metadata?.httpStatusCode === 404) {
+      console.warn("Armazenamento de objetos: objeto não encontrado no bucket.");
+      return { ok: false, motivo: "ausente" };
+    }
+    console.warn("Armazenamento de objetos: falha ao abrir leitura do bucket.");
+    await alertarErroSistema("railway_bucket", "Falha ao ler arquivo do bucket (download) — ver logs do servidor para detalhe.");
+    return { ok: false, motivo: "indisponivel" };
   }
 }
 

@@ -52,6 +52,9 @@ jobs:
       - name: Testes unitários
         run: npm run test
 
+      - name: Testes de componente (telas, jsdom)
+        run: npm run test:component
+
       - name: Migrar banco
         run: npm run migrate
 

@@ -31,6 +31,7 @@ export default function NavBar({ nome }: { nome: string }) {
         <span className="font-bold text-navy">NEXAIGEN Financeiro</span>
         <Link href="/" className="text-slate-600 hover:text-navy">Dashboard</Link>
         <Link href="/painel" className="text-slate-600 hover:text-navy">Painel</Link>
+        <Link href="/notas" className="text-slate-600 hover:text-navy">Notas fiscais</Link>
         <Link href="/checagem" className="text-slate-600 hover:text-navy">Fila de Checagem</Link>
         <Link href="/clientes" className="text-slate-600 hover:text-navy">Clientes</Link>
         <Link href="/alertas" className="text-slate-600 hover:text-navy">Alertas de Cobrança</Link>

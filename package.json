@@ -11,12 +11,13 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:component": "vitest run --config vitest.component.config.ts",
     "migrate": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/migrate.ts",
-    "bootstrap-equipe-nexaigen": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/bootstrap-equipe-nexaigen.ts"
+    "bootstrap-equipe-nexaigen": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/bootstrap-equipe-nexaigen.ts",
+    "recalcular-hash-versoes": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/recalcular-hash-versoes-pdf.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",
-    "@aws-sdk/s3-request-presigner": "^3.1131.0",
     "@smithy/node-http-handler": "^4.12.1",
     "bcryptjs": "^3.0.3",
     "jose": "^6.2.10",
@@ -28,6 +29,9 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20.14.0",
     "@types/pg": "^8.23.1",
@@ -36,6 +40,7 @@
     "autoprefixer": "^10.4.20",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.3",
+    "jsdom": "^29.1.1",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
     "tsx": "^4.23.12",

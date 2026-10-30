@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+// Contrato em PDF COM histórico de versões (0009) desde a rodada 08 — o
+// mesmo componente do PDF da nota fiscal (components/PdfVersionado.tsx):
+// versão atual, download por link real, confirmação ao substituir ("a
+// versão anterior será mantida") e histórico.
+
+import { useEffect, useState } from "react";
+import PdfVersionado from "@/components/PdfVersionado";
 import type { ClientePrefeitura } from "@/lib/tipos";
 
 async function buscarClientes(): Promise<ClientePrefeitura[]> {
@@ -15,9 +21,6 @@ export default function ClientesPage() {
   // null = criando um cliente novo; um cliente = editando (PATCH /api/clientes/[id]).
   const [editando, setEditando] = useState<ClientePrefeitura | null>(null);
   const [erroForm, setErroForm] = useState<string | null>(null);
-  const [enviandoContratoId, setEnviandoContratoId] = useState<string | null>(null);
-  const [erroContrato, setErroContrato] = useState<{ id: string; mensagem: string } | null>(null);
-  const inputsContrato = useRef<Record<string, HTMLInputElement | null>>({});
 
   // Recarga depois de salvar/anexar — chamada de event handler.
   async function carregar() {
@@ -78,31 +81,6 @@ export default function ClientesPage() {
     setMostrarForm(false);
     setEditando(null);
     carregar();
-  }
-
-  async function anexarContrato(clienteId: string, arquivo: File) {
-    setErroContrato(null);
-    setEnviandoContratoId(clienteId);
-    const formData = new FormData();
-    formData.set("arquivo", arquivo);
-    const res = await fetch(`/api/clientes/${clienteId}/contrato`, { method: "POST", body: formData });
-    setEnviandoContratoId(null);
-    if (!res.ok) {
-      const data = await res.json().catch(() => null);
-      setErroContrato({ id: clienteId, mensagem: data?.erro ?? "Não foi possível anexar o contrato." });
-      return;
-    }
-    carregar();
-  }
-
-  async function abrirContrato(clienteId: string) {
-    const res = await fetch(`/api/clientes/${clienteId}/contrato`);
-    if (!res.ok) {
-      setErroContrato({ id: clienteId, mensagem: "Não foi possível abrir o contrato — tente novamente." });
-      return;
-    }
-    const { url } = await res.json();
-    window.open(url, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -178,34 +156,13 @@ export default function ClientesPage() {
                 </td>
                 <td className="p-3">{c.sistema_portal ?? "—"}</td>
                 <td className="p-3">
-                  <div className="flex flex-col items-start gap-1">
-                    {c.contrato_arquivo_nome && (
-                      <button onClick={() => abrirContrato(c.id)} className="text-xs text-teal underline" title={c.contrato_arquivo_nome}>
-                        Ver contrato
-                      </button>
-                    )}
-                    <input
-                      ref={(el) => {
-                        inputsContrato.current[c.id] = el;
-                      }}
-                      type="file"
-                      accept="application/pdf,.pdf"
-                      className="hidden"
-                      onChange={(e) => {
-                        const arquivo = e.target.files?.[0];
-                        if (arquivo) anexarContrato(c.id, arquivo);
-                        e.target.value = "";
-                      }}
-                    />
-                    <button
-                      onClick={() => inputsContrato.current[c.id]?.click()}
-                      disabled={enviandoContratoId === c.id}
-                      className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
-                    >
-                      {enviandoContratoId === c.id ? "Enviando..." : c.contrato_arquivo_nome ? "Trocar contrato" : "Anexar contrato"}
-                    </button>
-                    {erroContrato?.id === c.id && <span className="text-xs text-red-600">{erroContrato?.mensagem}</span>}
-                  </div>
+                  <PdfVersionado
+                    urlArquivo={`/api/clientes/${c.id}/contrato`}
+                    rotulo="contrato"
+                    versaoAtual={c.contrato_versao_atual ?? null}
+                    nomeAtual={c.contrato_arquivo_nome}
+                    onEnviado={() => carregar()}
+                  />
                 </td>
                 <td className="p-3">
                   <button onClick={() => abrirForm(c)} className="text-xs text-navy underline">

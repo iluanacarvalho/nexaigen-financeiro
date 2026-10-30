@@ -1,68 +1,87 @@
-// Exige sessão (lib/auth.ts#exigirSessao) desde a rodada de correção do
-// achado crítico de segurança. Postgres direto via lib/db.ts desde a
-// rodada de migração de infraestrutura (Supabase → pg).
+// Notas fiscais — listagem (filtros, busca, ordenação e paginação NO
+// SERVIDOR) e criação. Exige sessão da equipe (exigirSessao). Regras em
+// lib/estadoNota.ts (puras) e lib/notasServico.ts (transações); esta rota
+// só valida a forma (lib/notaSchemas.ts) e traduz o resultado em HTTP.
 //
-// GET — o embed aninhado do Supabase (`cliente:cliente_id ( nome, uf,
-// sistema_portal, portal_url )`) vira um JOIN + `json_build_object(...)
-// as cliente` em SQL puro: o driver "pg" já devolve colunas json/jsonb
-// como objeto JS automaticamente (sem type parser nenhum necessário pra
-// isso, diferente de date/timestamptz/bigint — ver lib/db.ts), então
-// `nota.cliente.nome` etc. no frontend (app/(protegido)/checagem)
-// continua funcionando idêntico, sem mudar o formato da resposta.
+// GET  ?situacao=&cliente_id=&competencia=aaaa-mm&busca=&ordenar=&direcao=&pagina=&por_pagina=
+//      → { notas, total, pagina, por_pagina }. `situacao` é a da data de
+//      HOJE (mesma derivação do Painel/Dashboard), não a coluna gravada.
+//      Uma query só (total via count(*) over()), sem N+1.
+// POST { cliente_id, competencia, numero_nf?, valor (texto), data_emissao? }
+//      → 201 { id }. 400 dado inválido · 404 cliente inexistente ·
+//      409 cliente suspenso/encerrado ou número de NF repetido pro cliente.
+//      O PDF, se houver, vai depois em POST /api/notas/[id]/arquivo (upload
+//      versionado que já existe).
 
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
-import { query } from "@/lib/db";
 import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
-
-const NotaSchema = z.object({
-  cliente_id: z.string().uuid(),
-  competencia: z.string(), // "2026-08-01"
-  numero_nf: z.string().optional(),
-  valor: z.number().positive(),
-  data_emissao: z.string().optional()
-});
-
-const SELECT_NOTAS = `
-  select
-    nf.*,
-    json_build_object('nome', c.nome, 'uf', c.uf, 'sistema_portal', c.sistema_portal, 'portal_url', c.portal_url) as cliente,
-    -- Versão atual do PDF (0005_nota_fiscal_arquivo_versao.sql) — lookup pela chave única, indexada.
-    (select v.versao from nota_fiscal_arquivo_versao v where v.chave = nf.arquivo_pdf_chave) as arquivo_pdf_versao_atual
-  from nota_fiscal nf
-  join cliente_prefeitura c on c.id = nf.cliente_id
-`;
+import { hojeEmSaoPaulo } from "@/lib/painelFinanceiro";
+import { FiltrosNotasSchema, NovaNotaSchema } from "@/lib/notaSchemas";
+import { criarNota, listarNotas, type FiltrosNotas } from "@/lib/notasServico";
+import { lerValorMonetario, normalizarCompetencia, validarCompetencia, validarDataEmissao, type SituacaoNota } from "@/lib/estadoNota";
 
 export async function GET(req: NextRequest) {
   const negado = exigirSessao(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value));
   if (negado) return negado;
 
-  const status = req.nextUrl.searchParams.get("status");
-  const notas = status
-    ? await query(`${SELECT_NOTAS} where nf.status = $1 order by nf.data_emissao desc`, [status])
-    : await query(`${SELECT_NOTAS} order by nf.data_emissao desc`);
+  const parsed = FiltrosNotasSchema.safeParse(Object.fromEntries(req.nextUrl.searchParams));
+  if (!parsed.success) return NextResponse.json({ erro: "Filtros inválidos", detalhes: parsed.error.flatten() }, { status: 400 });
+  const f = parsed.data;
 
-  return NextResponse.json({ notas });
+  const filtros: FiltrosNotas = {
+    situacao: f.situacao as SituacaoNota | undefined,
+    clienteId: f.cliente_id,
+    competencia: f.competencia ? normalizarCompetencia(f.competencia)! : undefined,
+    busca: f.busca,
+    ordenar: f.ordenar,
+    direcao: f.direcao,
+    pagina: f.pagina,
+    porPagina: f.por_pagina
+  };
+  const { notas, total } = await listarNotas(filtros, hojeEmSaoPaulo(new Date()));
+  return NextResponse.json({ notas, total, pagina: f.pagina, por_pagina: f.por_pagina }, { headers: { "cache-control": "no-store" } });
 }
 
 export async function POST(req: NextRequest) {
-  const negado = exigirSessao(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value));
+  const contexto = await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value);
+  const negado = exigirSessao(contexto);
   if (negado) return negado;
 
-  const parsed = NotaSchema.safeParse(await req.json());
+  const parsed = NovaNotaSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ erro: "Dados inválidos", detalhes: parsed.error.flatten() }, { status: 400 });
   const n = parsed.data;
+  const hoje = hojeEmSaoPaulo(new Date());
 
-  // status: "aguardando_atesto" — igual à rota Supabase original.
-  const linhas = await query<{ id: string }>(
-    n.data_emissao
-      ? `insert into nota_fiscal (cliente_id, competencia, numero_nf, valor, data_emissao, status)
-         values ($1, $2, $3, $4, $5, 'aguardando_atesto') returning id`
-      : `insert into nota_fiscal (cliente_id, competencia, numero_nf, valor, status)
-         values ($1, $2, $3, $4, 'aguardando_atesto') returning id`,
-    n.data_emissao
-      ? [n.cliente_id, n.competencia, n.numero_nf ?? null, n.valor, n.data_emissao]
-      : [n.cliente_id, n.competencia, n.numero_nf ?? null, n.valor]
+  const erros: Record<string, string> = {};
+  const competencia = normalizarCompetencia(n.competencia);
+  if (!competencia) erros.competencia = "Competência inválida — use aaaa-mm.";
+  else {
+    const erro = validarCompetencia(competencia, hoje);
+    if (erro) erros.competencia = erro;
+  }
+  const valor = lerValorMonetario(n.valor);
+  if (!valor.ok) erros.valor = valor.erro;
+  const dataEmissao = n.data_emissao ?? hoje;
+  const erroEmissao = validarDataEmissao(dataEmissao, hoje);
+  if (erroEmissao) erros.data_emissao = erroEmissao;
+  if (Object.keys(erros).length > 0 || !valor.ok || !competencia) {
+    return NextResponse.json({ erro: "Dados inválidos", detalhes: { fieldErrors: erros } }, { status: 400 });
+  }
+
+  const resultado = await criarNota(
+    { clienteId: n.cliente_id, competencia, numeroNf: n.numero_nf ?? null, valorCentavos: valor.centavos, dataEmissao },
+    contexto!.equipeId
   );
-  return NextResponse.json({ id: linhas[0].id });
+  if (resultado.ok) return NextResponse.json({ id: resultado.id }, { status: 201 });
+  switch (resultado.motivo) {
+    case "cliente_inexistente":
+      return NextResponse.json({ erro: "Cliente não encontrado." }, { status: 404 });
+    case "cliente_inativo":
+      return NextResponse.json(
+        { erro: `Este cliente está com o contrato ${resultado.statusContrato} — só é possível lançar nota para cliente com contrato ativo.` },
+        { status: 409 }
+      );
+    case "numero_duplicado":
+      return NextResponse.json({ erro: "Já existe uma nota com este número para este cliente." }, { status: 409 });
+  }
 }
