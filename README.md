@@ -432,3 +432,8 @@ Downloads de PDF passam do bucket pra resposta sem carregar o arquivo em memóri
 ## 19. Testes de tela (rodada 08)
 
 `npm run test:component` (vitest + jsdom + Testing Library, também no CI): Notas, Checagem, Clientes, Painel e Dashboard. Ciclo de vida completo da nota (criar → atestar → pagar → reabrir; criar → cancelar) em `app/api/notas/ciclo-de-vida.integration.test.ts`.
+
+## 20. Versão do Next.js e política de segurança de dependências (rodada 09-A)
+
+**Next.js 16.4.3** (fixado, sem `^`; `eslint-config-next` na mesma versão). Política: **patch de segurança do Next aplicado em até 7 dias** após a publicação do aviso. O CI roda `npm audit --omit=dev --audit-level=high` como passo **bloqueante** (alta/crítica em dependência de produção falha o job) e `npm audit` completo como informativo. Lock regenerado sempre com **npm 10.9** (o do CI) e validado com `rm -rf node_modules && npm ci`. `overrides.vitest` em `package.json` fixa todo vitest da árvore na mesma faixa da raiz — sem ele o npm 10.9 quebra (`Cannot read properties of null (reading 'edgesOut')`) num ciclo de peers opcionais `vite → @vitejs/devtools → devtools-vitest → vitest@*`. Otimização de imagens desligada (`images.unoptimized` em `next.config.js`): o projeto não usa `next/image` nem `next/og`, e o endpoint `/_next/image` (ponto de entrada de avisos de RCE/SSRF) passa a responder 404.
+

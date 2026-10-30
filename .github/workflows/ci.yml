@@ -43,6 +43,17 @@ jobs:
 
       - run: npm ci
 
+      # Bloqueante (rodada 09-A): vulnerabilidade ALTA ou CRÍTICA em
+      # dependência de PRODUÇÃO falha o job. Dependências só de
+      # desenvolvimento (--omit=dev) não vão pro servidor, então não
+      # bloqueiam aqui — aparecem no passo informativo abaixo.
+      - name: Auditoria de segurança (produção — bloqueante)
+        run: npm audit --omit=dev --audit-level=high
+
+      # Informativo: auditoria completa (inclui dev) só pro log, nunca falha o job.
+      - name: Auditoria de segurança (tudo — informativo)
+        run: npm audit || true
+
       - name: Typecheck
         run: npm run typecheck
 
