@@ -91,7 +91,7 @@ describe("painel financeiro — fixtures em Postgres real, valores exatos", () =
       expect(p.hoje).toBe("2026-10-29");
       expect(p.inicioJanela).toBe("2025-11-01");
       expect(p.semNotas).toBe(false);
-      expect(p.kpis.mrr).toEqual({ valorCentavos: 400025, contratos: { ativos: 2, suspensos: 1, encerrados: 0 } });
+      expect(p.kpis.mrr).toEqual({ valorCentavos: 400025, contratos: { ativos: 2, emAvisoPrevio: 0, suspensos: 1, encerrados: 0 } });
       expect(p.kpis.recebidoMesCentavos).toBe(150050);
       expect(p.kpis.aReceber).toEqual({ totalCentavos: 650000, noPrazoCentavos: 150050, vencidasCentavos: 249975, atrasoCriticoCentavos: 249975 });
       // 4999,50 vencido / 10500,25 faturado na janela = 47,61% → 47,6
@@ -173,7 +173,7 @@ describe("GET /api/painel-financeiro — rota real", () => {
     expect(res.headers.get("cache-control")).toBe("no-store");
     const corpo = await res.json();
     expect(Object.keys(corpo.kpis).sort()).toEqual(
-      ["aReceber", "aguardandoAtestoMais15Dias", "contagemPorSituacao", "implantacao", "inadimplencia", "mrr", "prazoMedioRecebimentoDias", "recebidoMesCentavos"].sort()
+      ["aReceber", "aguardandoAtestoMais15Dias", "avisoPrevio", "contagemPorSituacao", "implantacao", "inadimplencia", "mrr", "prazoMedioRecebimentoDias", "recebidoMesCentavos"].sort()
     );
     expect(corpo.serie).toHaveLength(12);
     expect(Array.isArray(corpo.clientes)).toBe(true);

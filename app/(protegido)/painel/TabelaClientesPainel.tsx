@@ -4,9 +4,13 @@
 // atraso (clique no cabeçalho). Os dados já chegam prontos do Server
 // Component (app/(protegido)/painel/page.tsx); a ordem usa a MESMA função
 // pura do servidor (ordenarClientesPorAtraso). Sem dado de contato.
+// Contrato encerrado continua aparecendo (rodada 12-A): a situação
+// financeira vem das notas em aberto, que seguem sendo cobradas.
 
 import { useState } from "react";
 import { ROTULO_SITUACAO, formatarMoeda, ordenarClientesPorAtraso, type ClientePainel, type SituacaoCliente } from "@/lib/painelFinanceiro";
+import { formatarDataBr } from "@/lib/cancelamentoContrato";
+import SeloStatusContrato from "@/components/SeloStatusContrato";
 
 const COR_SITUACAO: Record<SituacaoCliente, string> = {
   em_dia: "bg-emerald-50 text-emerald-700",
@@ -56,7 +60,14 @@ export default function TabelaClientesPainel({ clientes }: { clientes: ClientePa
                   <a href={`/clientes?editar=${c.id}`} className="text-navy hover:underline">
                     {c.nome} — {c.uf}
                   </a>
-                  {c.statusContrato !== "ativo" && <span className="ml-2 text-xs text-slate-400">({c.statusContrato})</span>}
+                  {c.statusContrato !== "ativo" && (
+                    <span className="ml-2">
+                      <SeloStatusContrato status={c.statusContrato} />
+                      {c.statusContrato === "em_aviso_previo" && c.terminoAvisoPrevio && (
+                        <span className="ml-1 text-xs text-amber-800">término em {formatarDataBr(c.terminoAvisoPrevio)}</span>
+                      )}
+                    </span>
+                  )}
                   {c.implantacaoACobrarCentavos !== null && (
                     <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
                       Implantação a cobrar — {formatarMoeda(c.implantacaoACobrarCentavos)}

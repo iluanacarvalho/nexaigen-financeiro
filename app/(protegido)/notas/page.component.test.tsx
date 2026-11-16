@@ -88,7 +88,7 @@ describe("/notas — lista e filtros", () => {
     await usuario.click(await screen.findByRole("button", { name: "+ Nova nota" }));
 
     const form = screen.getByRole("form", { name: "Nova nota fiscal" });
-    const opcoes = within(within(form).getByLabelText("Cliente (contrato ativo)")).getAllByRole("option").map((o) => o.textContent);
+    const opcoes = within(within(form).getByLabelText("Cliente (contrato ativo ou em aviso prévio)")).getAllByRole("option").map((o) => o.textContent);
     expect(opcoes).toEqual(["Selecione…", "Prefeitura de Alfa — PR"]);
   });
 });
@@ -105,7 +105,7 @@ describe("/notas — criação com erro de validação", () => {
     await usuario.click(await screen.findByRole("button", { name: "+ Nova nota" }));
     const form = screen.getByRole("form", { name: "Nova nota fiscal" });
 
-    await usuario.selectOptions(within(form).getByLabelText("Cliente (contrato ativo)"), "c1");
+    await usuario.selectOptions(within(form).getByLabelText("Cliente (contrato ativo ou em aviso prévio)"), "c1");
     await usuario.type(within(form).getByLabelText("Competência (mês)"), "2026-10");
     await usuario.type(within(form).getByLabelText(/Valor/), "0,00");
     await usuario.click(within(form).getByRole("button", { name: "Criar nota" }));
@@ -127,7 +127,7 @@ describe("/notas — criação com erro de validação", () => {
     render(<NotasPage />);
     await usuario.click(await screen.findByRole("button", { name: "+ Nova nota" }));
     const form = screen.getByRole("form", { name: "Nova nota fiscal" });
-    await usuario.selectOptions(within(form).getByLabelText("Cliente (contrato ativo)"), "c1");
+    await usuario.selectOptions(within(form).getByLabelText("Cliente (contrato ativo ou em aviso prévio)"), "c1");
     await usuario.type(within(form).getByLabelText("Competência (mês)"), "2026-10");
     await usuario.type(within(form).getByLabelText(/Valor/), "10");
     await usuario.click(within(form).getByRole("button", { name: "Criar nota" }));

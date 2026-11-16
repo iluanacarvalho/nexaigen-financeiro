@@ -41,7 +41,7 @@ describe("Notas — implantação a cobrar", () => {
     await usuario.click(within(quadro).getByRole("button", { name: "Criar nota de implantação" }));
     const form = screen.getByRole("form", { name: "Nova nota fiscal" });
     expect((within(form).getByLabelText("Tipo da nota") as HTMLSelectElement).value).toBe("implantacao");
-    expect((within(form).getByLabelText("Cliente (contrato ativo)") as HTMLSelectElement).value).toBe("c1");
+    expect((within(form).getByLabelText("Cliente (contrato ativo ou em aviso prévio)") as HTMLSelectElement).value).toBe("c1");
     expect((within(form).getByLabelText(/Valor/) as HTMLInputElement).value).toBe("20000,00");
     expect(within(form).queryByLabelText("Competência (mês)")).toBeNull();
     expect(within(form).getByText(/é o mês da data de emissão/)).toBeTruthy();

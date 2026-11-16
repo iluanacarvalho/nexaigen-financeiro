@@ -6,6 +6,7 @@
 
 import { formatarMoeda } from "@/lib/dinheiro";
 import { obterResumoDashboard } from "@/lib/resumoDashboard";
+import { formatarDataBr } from "@/lib/cancelamentoContrato";
 import { avisosDeConfiguracao, lerStatusConfiguracao } from "@/lib/statusConfiguracao";
 
 export default async function Dashboard() {
@@ -53,6 +54,19 @@ export default async function Dashboard() {
           <p className="mt-1 text-3xl font-bold text-alerta">{resumo.alertasCriticosAtivos}</p>
         </div>
       </div>
+
+      {resumo.avisoPrevio.quantidade > 0 && (
+        <a href="/clientes" className="mt-4 block rounded-lg border border-amber-300 bg-amber-50 p-5 text-sm shadow-sm hover:bg-amber-100">
+          <p className="font-semibold text-amber-900">
+            Em aviso prévio: {resumo.avisoPrevio.quantidade} {resumo.avisoPrevio.quantidade === 1 ? "contrato" : "contratos"} — MRR em risco{" "}
+            {formatarMoeda(resumo.avisoPrevio.mrrEmRiscoCentavos)}
+          </p>
+          <p className="mt-1 text-xs text-amber-800">
+            Próximo término em {formatarDataBr(resumo.avisoPrevio.proximoTermino!)}. A mensalidade continua devida até o término — emita a nota final proporcional em
+            Clientes.
+          </p>
+        </a>
+      )}
 
       {resumo.implantacaoACobrar.clientes > 0 && (
         <a href="/notas" className="mt-4 block rounded-lg border border-amber-300 bg-amber-50 p-5 text-sm shadow-sm hover:bg-amber-100">

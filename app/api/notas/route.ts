@@ -10,6 +10,10 @@
 // POST { cliente_id, competencia, numero_nf?, valor (texto), data_emissao? }
 //      → 201 { id }. 400 dado inválido · 404 cliente inexistente ·
 //      409 cliente suspenso/encerrado ou número de NF repetido pro cliente.
+//      Aviso prévio (rodada 12-A): contrato 'em_aviso_previo' aceita nota
+//      normalmente; 'encerrado' por aviso prévio ainda aceita a mensalidade
+//      do último período (nota final); mensalidade de período que começa
+//      depois do término → 409 (lib/cancelamentoContrato.ts).
 //      O PDF, se houver, vai depois em POST /api/notas/[id]/arquivo (upload
 //      versionado que já existe).
 //      tipo (rodada 11-A): "mensalidade" (padrão) ou "implantacao" — cobrança
@@ -24,6 +28,7 @@ import { FiltrosNotasSchema, NovaNotaSchema } from "@/lib/notaSchemas";
 import { criarNota, listarNotas, type FiltrosNotas } from "@/lib/notasServico";
 import { lerValorMonetario, normalizarCompetencia, validarCompetencia, validarDataEmissao, type SituacaoNota } from "@/lib/estadoNota";
 import { detalhesDoErro } from "@/lib/validacao";
+import { formatarDataBr, rotuloStatusContrato } from "@/lib/cancelamentoContrato";
 
 export async function GET(req: NextRequest) {
   const negado = exigirSessao(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value));
@@ -98,7 +103,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ erro: "Cliente não encontrado." }, { status: 404 });
     case "cliente_inativo":
       return NextResponse.json(
-        { erro: `Este cliente está com o contrato ${resultado.statusContrato} — só é possível lançar nota para cliente com contrato ativo.` },
+        { erro: `Este cliente está com o contrato ${rotuloStatusContrato(resultado.statusContrato).toLowerCase()} — só é possível lançar nota para cliente com contrato ativo ou em aviso prévio.` },
+        { status: 409 }
+      );
+    case "competencia_apos_termino":
+      return NextResponse.json(
+        {
+          erro: `O contrato termina em ${formatarDataBr(resultado.terminoEm)} (aviso prévio) — a última competência que pode ser cobrada é ${resultado.ultimaCompetencia.slice(5, 7)}/${resultado.ultimaCompetencia.slice(0, 4)}.`
+        },
         { status: 409 }
       );
     case "numero_duplicado":

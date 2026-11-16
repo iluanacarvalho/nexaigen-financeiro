@@ -29,6 +29,7 @@ import { paraCentavos } from "./dinheiro";
 import { LIMIAR_ATRASO_CRITICO_DIAS, diagnosticarNota } from "./prazos";
 import { statusPersistidoDe, type SituacaoNota } from "./estadoNota";
 import { rotuloDoPlano, temImplantacaoACobrar } from "./planos";
+import { statusContratoNaData } from "./cancelamentoContrato";
 
 /** Notas sem atesto há MAIS que isto (dias desde a emissão) entram no KPI 6. */
 export const LIMIAR_PAINEL_SEM_ATESTO_DIAS = 15;
@@ -45,6 +46,8 @@ export interface LinhaClientePainel {
   taxa_implantacao?: string | null;
   /** Já tem nota de implantação não cancelada (o repositório calcula com um `exists`, sem N+1). */
   tem_implantacao_ativa?: boolean;
+  /** Término do aviso prévio (0011) — null/ausente sem cancelamento registrado. */
+  cancelamento_termino_em?: string | null;
 }
 
 export interface LinhaNotaPainel {
@@ -78,7 +81,10 @@ export interface ClientePainel {
   plano: string;
   /** Rótulo do plano pra exibição ("Pequeno Porte") — lib/planos.ts. */
   planoRotulo: string;
+  /** Status do contrato NA DATA DE HOJE (aviso prévio com término passado já conta como encerrado — lib/cancelamentoContrato.ts). */
   statusContrato: string;
+  /** Término do aviso prévio (contrato em aviso ou encerrado por ele); null sem cancelamento. */
+  terminoAvisoPrevio: string | null;
   valorMensalCentavos: number;
   /** Taxa de implantação ainda SEM nota emitida (selo "Implantação a cobrar"); null = nada a cobrar. */
   implantacaoACobrarCentavos: number | null;
@@ -102,8 +108,14 @@ export interface PainelFinanceiro {
   kpis: {
     mrr: {
       valorCentavos: number | null;
-      contratos: { ativos: number; suspensos: number; encerrados: number };
+      contratos: { ativos: number; emAvisoPrevio: number; suspensos: number; encerrados: number };
     };
+    /**
+     * Contratos em aviso prévio (rodada 12-A): quantos e quanto do MRR sai
+     * quando terminarem ("MRR em risco" — já incluído no MRR acima até o
+     * término). proximoTermino: o término mais próximo (null sem nenhum).
+     */
+    avisoPrevio: { quantidade: number; mrrEmRiscoCentavos: number; proximoTermino: string | null };
     recebidoMesCentavos: number | null;
     aReceber: {
       totalCentavos: number;
@@ -223,18 +235,37 @@ function diagnosticarAberta(nota: LinhaNotaPainel, hoje: string): NotaAbertaDiag
   };
 }
 
-/** MRR: soma de valor_mensal dos contratos ativos + contagem por status_contrato. null sem nenhum cliente. */
-export function calcularMrr(clientes: LinhaClientePainel[]): PainelFinanceiro["kpis"]["mrr"] {
-  const contratos = { ativos: 0, suspensos: 0, encerrados: 0 };
+/**
+ * MRR: soma de valor_mensal dos contratos ATIVOS e EM AVISO PRÉVIO (a
+ * mensalidade continua devida até o término — rodada 12-A) + contagem por
+ * status. Encerrado e suspenso não entram. Status pela data de `hoje`
+ * (aviso com término passado = encerrado, mesmo antes do job diário).
+ * null sem nenhum cliente.
+ */
+export function calcularMrr(clientes: LinhaClientePainel[], hoje: string): PainelFinanceiro["kpis"]["mrr"] {
+  const contratos = { ativos: 0, emAvisoPrevio: 0, suspensos: 0, encerrados: 0 };
   let valor = 0;
   for (const c of clientes) {
-    if (c.status_contrato === "ativo") {
-      contratos.ativos += 1;
+    const status = statusContratoNaData(c, hoje);
+    if (status === "ativo" || status === "em_aviso_previo") {
+      if (status === "ativo") contratos.ativos += 1;
+      else contratos.emAvisoPrevio += 1;
       valor += paraCentavos(c.valor_mensal);
-    } else if (c.status_contrato === "suspenso") contratos.suspensos += 1;
-    else if (c.status_contrato === "encerrado") contratos.encerrados += 1;
+    } else if (status === "suspenso") contratos.suspensos += 1;
+    else if (status === "encerrado") contratos.encerrados += 1;
   }
   return { valorCentavos: clientes.length === 0 ? null : valor, contratos };
+}
+
+/** Cartão "Em aviso prévio": quantidade, MRR que sai no término e o término mais próximo. */
+export function calcularAvisoPrevio(clientes: LinhaClientePainel[], hoje: string): PainelFinanceiro["kpis"]["avisoPrevio"] {
+  const emAviso = clientes.filter((c) => statusContratoNaData(c, hoje) === "em_aviso_previo");
+  const terminos = emAviso.map((c) => c.cancelamento_termino_em).filter((t): t is string => !!t).sort();
+  return {
+    quantidade: emAviso.length,
+    mrrEmRiscoCentavos: emAviso.reduce((soma, c) => soma + paraCentavos(c.valor_mensal), 0),
+    proximoTermino: terminos[0] ?? null
+  };
 }
 
 /**
@@ -343,18 +374,21 @@ export function montarPainelFinanceiro(entrada: { clientes: LinhaClientePainel[]
     abertasPorCliente.set(a.nota.cliente_id, lista);
   }
 
+  // Encerrado continua na tabela: a situação financeira vem das notas em aberto, que seguem exigíveis.
   const linhasClientes: ClientePainel[] = clientes.map((c) => {
     const doCliente = abertasPorCliente.get(c.id) ?? [];
     const maiorAtrasoDias = doCliente.reduce((max, a) => Math.max(max, a.diasDeAtraso), 0);
+    const statusContrato = statusContratoNaData(c, hoje);
     return {
       id: c.id,
       nome: c.nome,
       uf: c.uf,
       plano: c.plano,
       planoRotulo: rotuloDoPlano(c.plano),
-      statusContrato: c.status_contrato,
+      statusContrato,
+      terminoAvisoPrevio: c.cancelamento_termino_em ?? null,
       valorMensalCentavos: paraCentavos(c.valor_mensal),
-      implantacaoACobrarCentavos: implantacaoACobrar(c),
+      implantacaoACobrarCentavos: implantacaoACobrar({ ...c, status_contrato: statusContrato }),
       notasEmAberto: doCliente.length,
       valorEmAbertoCentavos: doCliente.reduce((soma, a) => soma + a.centavos, 0),
       maiorAtrasoDias,
@@ -368,7 +402,8 @@ export function montarPainelFinanceiro(entrada: { clientes: LinhaClientePainel[]
     inicioJanela,
     semNotas,
     kpis: {
-      mrr: calcularMrr(clientes),
+      mrr: calcularMrr(clientes, hoje),
+      avisoPrevio: calcularAvisoPrevio(clientes, hoje),
       recebidoMesCentavos: semNotas ? null : recebidoMes,
       aReceber: semNotas ? null : aReceber,
       inadimplencia: calcularInadimplencia(vencidoNaJanela, faturadoNaJanela),

@@ -8,12 +8,20 @@
 // de estados que o servidor usa pra validar (lib/estadoNota.ts#acoesPermitidas)
 // — a tela nunca oferece uma ação que o servidor recusaria, e o servidor
 // recusa (409) mesmo se alguém chamar a API direto.
+//
+// Rodada 12-A — aviso prévio: quadro "Aviso prévio" com o aviso de cada
+// contrato em aviso (ou encerrado ainda sem a nota final) e o botão
+// "Criar nota final", que abre o formulário de MENSALIDADE já com o
+// cliente, a competência do último período e o valor proporcional
+// (editável). `?nota_final=<clienteId>` (vindo de Clientes) abre direto.
 
 import { useEffect, useState } from "react";
 import Paginacao from "@/components/Paginacao";
 import PdfVersionado from "@/components/PdfVersionado";
 import { centavosParaTextoCampo, formatarMoeda, paraCentavos } from "@/lib/dinheiro";
 import { temImplantacaoACobrar } from "@/lib/planos";
+import { aceitaMensalidade, formatarDataBr, precisaNotaFinal } from "@/lib/cancelamentoContrato";
+import { AvisoContrato, inicialNotaFinal, mostrarAvisoContrato } from "@/components/AvisoPrevio";
 import { ROTULO_SITUACAO_NOTA, SITUACOES, acoesPermitidas, faseDaSituacao, type AcaoNota, type SituacaoNota } from "@/lib/estadoNota";
 import { hojeEmSaoPaulo } from "@/lib/painelFinanceiro";
 import type { ClientePrefeitura, EventoNota, NotaListada, TipoEventoNota, TipoNota } from "@/lib/tipos";
@@ -22,11 +30,31 @@ const POR_PAGINA = 25;
 
 const ROTULO_TIPO: Record<TipoNota, string> = { mensalidade: "Mensalidade", implantacao: "Implantação" };
 
-/** Formulário de nota aberto já preenchido (nota de implantação: tipo, cliente e valor = taxa combinada, editável). */
+/**
+ * Formulário de nota aberto já preenchido — nota de implantação (tipo,
+ * cliente e valor = taxa combinada) ou nota FINAL de aviso prévio
+ * (mensalidade, competência do último período e valor proporcional). Valor
+ * sempre editável.
+ */
 interface InicialNota {
   tipo: TipoNota;
   clienteId: string;
   valor: string;
+  /** "aaaa-mm" — só na nota final. */
+  competencia?: string;
+  /** Explicação mostrada no formulário (nota final). */
+  observacao?: string;
+}
+
+function inicialFinal(c: ClientePrefeitura): InicialNota {
+  const f = inicialNotaFinal(c);
+  return {
+    tipo: "mensalidade",
+    clienteId: f.clienteId,
+    valor: f.valor,
+    competencia: f.competencia,
+    observacao: `Nota final do aviso prévio: ${f.dias} ${f.dias === 1 ? "dia" : "dias"} do período ${formatarDataBr(f.periodo.inicio)}–${formatarDataBr(f.periodo.fim)} (término em ${formatarDataBr(c.cancelamento_termino_em!)}). Valor proporcional — pode ser ajustado.`
+  };
 }
 
 function inicialImplantacao(c: ClientePrefeitura): InicialNota {
@@ -136,14 +164,20 @@ export default function NotasPage() {
       else setDados(r);
       setCarregando(false);
     });
-    // `?implantacao=<clienteId>` (botão "Criar nota de implantação" da tela de Clientes) já abre o formulário.
-    const idImplantacao = new URLSearchParams(window.location.search).get("implantacao");
+    // `?implantacao=<clienteId>` / `?nota_final=<clienteId>` (botões da tela de Clientes) já abrem o formulário.
+    const busca = new URLSearchParams(window.location.search);
+    const idImplantacao = busca.get("implantacao");
+    const idNotaFinal = busca.get("nota_final");
     buscarClientes().then((lista) => {
       if (!ativo) return;
       setClientes(lista);
       const alvo = idImplantacao ? lista.find((c) => c.id === idImplantacao) : undefined;
+      const alvoFinal = idNotaFinal ? lista.find((c) => c.id === idNotaFinal) : undefined;
       if (alvo && temImplantacaoACobrar(alvo)) {
         setInicialForm(inicialImplantacao(alvo));
+        setMostrarForm(true);
+      } else if (alvoFinal && precisaNotaFinal(alvoFinal)) {
+        setInicialForm(inicialFinal(alvoFinal));
         setMostrarForm(true);
       }
     });
@@ -154,6 +188,11 @@ export default function NotasPage() {
 
   function abrirImplantacao(c: ClientePrefeitura) {
     setInicialForm(inicialImplantacao(c));
+    setMostrarForm(true);
+  }
+
+  function abrirNotaFinal(c: ClientePrefeitura) {
+    setInicialForm(inicialFinal(c));
     setMostrarForm(true);
   }
 
@@ -196,8 +235,10 @@ export default function NotasPage() {
     carregar();
   }
 
-  const clientesAtivos = clientes.filter((c) => c.status_contrato === "ativo");
+  // Quem pode receber nota: ativo, em aviso prévio, ou encerrado por aviso prévio (nota final) — o servidor revalida.
+  const clientesAtivos = clientes.filter(aceitaMensalidade);
   const aCobrar = clientes.filter(temImplantacaoACobrar);
+  const emAviso = clientes.filter(mostrarAvisoContrato);
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
@@ -237,9 +278,29 @@ export default function NotasPage() {
         </section>
       )}
 
+      {emAviso.length > 0 && (
+        <section aria-label="Contratos em aviso prévio" className="mb-6 rounded-lg border border-amber-300 bg-white p-4 text-sm">
+          <p className="font-semibold text-amber-900">Contratos em aviso prévio</p>
+          <p className="mb-2 text-xs text-amber-800">
+            A mensalidade continua devida até o término; a última nota é proporcional aos dias do último período. Notas já emitidas seguem sendo cobradas
+            normalmente.
+          </p>
+          <ul className="space-y-2">
+            {emAviso.map((c) => (
+              <li key={c.id}>
+                <span className="font-medium">
+                  {c.nome} — {c.uf}
+                </span>
+                <AvisoContrato cliente={c} onCriarNotaFinal={() => abrirNotaFinal(c)} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {mostrarForm && (
         <FormNovaNota
-          key={inicialForm ? `implantacao-${inicialForm.clienteId}` : "mensalidade"}
+          key={inicialForm ? `${inicialForm.tipo}-${inicialForm.competencia ?? ""}-${inicialForm.clienteId}` : "mensalidade"}
           clientes={clientesAtivos}
           inicial={inicialForm}
           onCriada={() => {
@@ -613,7 +674,7 @@ function FormNovaNota({ clientes, inicial, onCriada }: { clientes: ClientePrefei
           <option value="implantacao">{ROTULO_TIPO.implantacao}</option>
         </select>
       </Campo>
-      <Campo rotulo="Cliente (contrato ativo)" erro={erros.cliente_id}>
+      <Campo rotulo="Cliente (contrato ativo ou em aviso prévio)" erro={erros.cliente_id}>
         <select name="cliente_id" required defaultValue={inicial?.clienteId ?? ""} className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5">
           <option value="">Selecione…</option>
           {clientes.map((c) => (
@@ -625,7 +686,7 @@ function FormNovaNota({ clientes, inicial, onCriada }: { clientes: ClientePrefei
       </Campo>
       {tipo === "mensalidade" ? (
         <Campo rotulo="Competência (mês)" erro={erros.competencia}>
-          <input name="competencia" type="month" required className="mt-1 w-full rounded border border-slate-300 px-2 py-1" />
+          <input name="competencia" type="month" required defaultValue={inicial?.competencia ?? ""} className="mt-1 w-full rounded border border-slate-300 px-2 py-1" />
         </Campo>
       ) : (
         <div className="text-xs text-slate-600">
@@ -646,6 +707,7 @@ function FormNovaNota({ clientes, inicial, onCriada }: { clientes: ClientePrefei
       <Campo rotulo="PDF da nota (opcional)">
         <input name="pdf" type="file" accept="application/pdf,.pdf" className="mt-1 w-full text-xs" />
       </Campo>
+      {inicial?.observacao && <p className="text-xs text-amber-800 sm:col-span-3">{inicial.observacao}</p>}
       <div className="sm:col-span-3">
         {erroGeral && (
           <p role="alert" className="mb-2 text-red-600">

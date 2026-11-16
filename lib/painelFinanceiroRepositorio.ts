@@ -37,7 +37,7 @@ export async function lerDadosPainel(
     query<LinhaClientePainel>(
       // tem_implantacao_ativa: subconsulta correlacionada por linha, na MESMA query (sem N+1) — olha TODAS as
       // notas de implantação do cliente, não só as da janela (uma paga há 2 anos não pode virar "a cobrar").
-      `select c.id, c.nome, c.uf, c.plano, c.valor_mensal, c.status_contrato, c.taxa_implantacao,
+      `select c.id, c.nome, c.uf, c.plano, c.valor_mensal, c.status_contrato, c.taxa_implantacao, c.cancelamento_termino_em,
          exists (select 1 from nota_fiscal n where n.cliente_id = c.id and n.tipo = 'implantacao' and n.status <> 'cancelada') as tem_implantacao_ativa
        from cliente_prefeitura c
        order by c.nome`,

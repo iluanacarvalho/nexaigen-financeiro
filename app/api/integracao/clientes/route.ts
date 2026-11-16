@@ -14,7 +14,9 @@
 // total, e 10 falhas de autenticação em 15 min → 429 mesmo com o segredo
 // certo (a tentativa soma ANTES de comparar e é devolvida se o segredo
 // confere — só falha acumula; atômico, sem corrida sob rajada). Resposta
-// de falha é sempre o mesmo 401 genérico.
+// de falha é sempre o mesmo 401 genérico. Desde a rodada 12-A essa
+// barreira inteira é lib/autenticacaoIntegracao.ts (a rota de
+// cancelamento usa a mesma).
 //
 // ALERTA DE SISTEMA (lib/alertaErroSistema.ts, categoria
 // "integracao_educa"): INTEGRACAO_SECRET ausente (toda chamada do Educa
@@ -53,42 +55,16 @@ import { IntegracaoClienteSchema } from "@/lib/clienteSchema";
 import { alertarErroSistema } from "@/lib/alertaErroSistema";
 import { lerPdfDeBase64 } from "@/lib/validacaoPdf";
 import { ALVO_CONTRATO, registrarVersaoPdf } from "@/lib/versionamentoPdf";
-import { bearerConfere } from "@/lib/segredoCompartilhado";
-import {
-  LIMITE_INTEGRACAO_FALHA_AUTH,
-  LIMITE_INTEGRACAO_POR_IP,
-  desfazerTentativa,
-  obterIpCliente,
-  registrarTentativa,
-  respostaLimiteExcedido
-} from "@/lib/rateLimit";
+import { CATEGORIA_ALERTA_INTEGRACAO, autorizarIntegracao } from "@/lib/autenticacaoIntegracao";
 import { detalhesDoErro } from "@/lib/validacao";
 import { centavosParaNumeric } from "@/lib/dinheiro";
 import { MENSAGEM_DISPENSA_SEM_TAXA, valoresPadrao, type IdPlano } from "@/lib/planos";
 
-const CATEGORIA_ALERTA = "integracao_educa";
 const AVISO_CONTRATO = "não foi possível salvar o contrato anexado";
 
 export async function POST(req: NextRequest) {
-  const ip = obterIpCliente(req);
-  const porIp = await registrarTentativa(LIMITE_INTEGRACAO_POR_IP, ip);
-  if (!porIp.permitido) return respostaLimiteExcedido(porIp.retryAfterSegundos);
-
-  if (!process.env.INTEGRACAO_SECRET) {
-    console.error("INTEGRACAO_SECRET não configurado — recusando chamada de integração do Educa.");
-    await alertarErroSistema(
-      CATEGORIA_ALERTA,
-      "INTEGRACAO_SECRET não configurado — toda chamada de integração do nexaigen-educa está sendo recusada (clientes novos não chegam ao Financeiro)."
-    );
-    return NextResponse.json({ erro: "Não autorizado." }, { status: 401 });
-  }
-
-  const tentativaAuth = await registrarTentativa(LIMITE_INTEGRACAO_FALHA_AUTH, ip);
-  if (!tentativaAuth.permitido) return respostaLimiteExcedido(tentativaAuth.retryAfterSegundos);
-  if (!bearerConfere(req.headers.get("authorization"), process.env.INTEGRACAO_SECRET)) {
-    return NextResponse.json({ erro: "Não autorizado." }, { status: 401 });
-  }
-  await desfazerTentativa(LIMITE_INTEGRACAO_FALHA_AUTH, ip);
+  const negado = await autorizarIntegracao(req);
+  if (negado) return negado;
 
   const corpo = await req.json().catch(() => null);
   const parsed = IntegracaoClienteSchema.safeParse(corpo);
@@ -180,7 +156,7 @@ export async function POST(req: NextRequest) {
     const codigo = (erro as { code?: string } | null)?.code ?? "desconhecido";
     console.error(`[integracao-educa] falha ao gravar cliente_prefeitura — código pg: ${codigo}.`);
     await alertarErroSistema(
-      CATEGORIA_ALERTA,
+      CATEGORIA_ALERTA_INTEGRACAO,
       `Falha ao gravar cliente vindo da integração com o nexaigen-educa (upsert em cliente_prefeitura, código pg: ${codigo}).`
     );
     return NextResponse.json({ erro: "Falha ao gravar o cliente — tente novamente em instantes." }, { status: 500 });

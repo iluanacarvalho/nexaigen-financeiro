@@ -12,6 +12,7 @@ vi.mock("@/lib/resumoDashboard", () => ({ obterResumoDashboard: obterResumoMock 
 import Dashboard from "./page";
 
 const SENTINELA = "SENTINELA-nao-pode-aparecer-3e9";
+const SEM_AVISO = { quantidade: 0, mrrEmRiscoCentavos: 0, proximoTermino: null };
 const VARIAVEIS = ["RESEND_API_KEY", "ALERTA_EMAIL_REMETENTE", "ALERTA_SISTEMA_EMAILS_DESTINO", "COBRANCA_EMAIL_DESTINO", "RAILWAY_BUCKET_NAME", "RAILWAY_BUCKET_ACCESS_KEY_ID", "RAILWAY_BUCKET_SECRET_ACCESS_KEY", "RAILWAY_BUCKET_ENDPOINT", "CRON_SECRET", "INTEGRACAO_SECRET", "JWT_SECRET"];
 const originais: Record<string, string | undefined> = {};
 
@@ -20,7 +21,7 @@ beforeEach(() => {
     originais[v] = process.env[v];
     process.env[v] = `${SENTINELA}-${v}`;
   }
-  obterResumoMock.mockResolvedValue({ semNotas: false, contagemPorSituacao: { aguardando_atesto: 2, atestada: 1, vencida: 3, atraso_critico: 1 }, emAbertoCentavos: 1234567, alertasCriticosAtivos: 1, implantacaoACobrar: { clientes: 0, centavos: 0 } });
+  obterResumoMock.mockResolvedValue({ semNotas: false, contagemPorSituacao: { aguardando_atesto: 2, atestada: 1, vencida: 3, atraso_critico: 1 }, emAbertoCentavos: 1234567, alertasCriticosAtivos: 1, implantacaoACobrar: { clientes: 0, centavos: 0 }, avisoPrevio: SEM_AVISO });
 });
 
 afterEach(() => {
@@ -53,7 +54,7 @@ describe("Dashboard", () => {
   });
 
   it("banco sem notas: '—' nos cards (nunca 0 fingindo dado) e mensagem", async () => {
-    obterResumoMock.mockResolvedValue({ semNotas: true, contagemPorSituacao: null, emAbertoCentavos: null, alertasCriticosAtivos: 0, implantacaoACobrar: { clientes: 0, centavos: 0 } });
+    obterResumoMock.mockResolvedValue({ semNotas: true, contagemPorSituacao: null, emAbertoCentavos: null, alertasCriticosAtivos: 0, implantacaoACobrar: { clientes: 0, centavos: 0 }, avisoPrevio: SEM_AVISO });
     render(await Dashboard());
     expect(screen.getByText("Aguardando atesto").nextElementSibling!.textContent).toBe("—");
     expect(screen.getByText("Valor total em aberto").nextElementSibling!.textContent).toBe("—");
@@ -61,11 +62,28 @@ describe("Dashboard", () => {
   });
 
   it("implantação a cobrar: cartão com contagem e valor (mesma conta do Painel), só quando há o que cobrar", async () => {
-    obterResumoMock.mockResolvedValue({ semNotas: false, contagemPorSituacao: { aguardando_atesto: 0, atestada: 0, vencida: 0, atraso_critico: 0 }, emAbertoCentavos: 0, alertasCriticosAtivos: 0, implantacaoACobrar: { clientes: 2, centavos: 4500000 } });
+    obterResumoMock.mockResolvedValue({ semNotas: false, contagemPorSituacao: { aguardando_atesto: 0, atestada: 0, vencida: 0, atraso_critico: 0 }, emAbertoCentavos: 0, alertasCriticosAtivos: 0, implantacaoACobrar: { clientes: 2, centavos: 4500000 }, avisoPrevio: SEM_AVISO });
     render(await Dashboard());
     const cartao = screen.getByText(/Implantação a cobrar: 2 clientes/);
     expect(cartao.textContent).toMatch(/R\$\s*45\.000,00/);
     expect(cartao.closest("a")!.getAttribute("href")).toBe("/notas");
   });
-});
 
+  it("aviso prévio: cartão com quantidade, MRR em risco e próximo término (mesma conta do Painel); some sem nenhum", async () => {
+    render(await Dashboard());
+    expect(screen.queryByText(/Em aviso prévio/)).toBeNull();
+
+    obterResumoMock.mockResolvedValue({
+      semNotas: false,
+      contagemPorSituacao: { aguardando_atesto: 0, atestada: 0, vencida: 0, atraso_critico: 0 },
+      emAbertoCentavos: 0,
+      alertasCriticosAtivos: 0,
+      implantacaoACobrar: { clientes: 0, centavos: 0 },
+      avisoPrevio: { quantidade: 1, mrrEmRiscoCentavos: 850000, proximoTermino: "2026-11-30" }
+    });
+    render(await Dashboard());
+    const cartao = screen.getByText(/Em aviso prévio: 1 contrato/);
+    expect(cartao.textContent).toMatch(/MRR em risco\s*R\$\s*8\.500,00/);
+    expect(cartao.closest("a")!.textContent).toMatch(/Próximo término em 30\/11\/2026/);
+  });
+});

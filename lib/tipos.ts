@@ -60,7 +60,14 @@ export interface ClientePrefeitura {
   valor_mensal: string;
   dia_vencimento_contrato: number;
   data_inicio_contrato: string;
-  status_contrato: "ativo" | "suspenso" | "encerrado";
+  status_contrato: "ativo" | "em_aviso_previo" | "suspenso" | "encerrado"; // lib/cancelamentoContrato.ts
+  /** Data de recebimento do ofício de cancelamento (0011) — null sem cancelamento registrado. */
+  cancelamento_pedido_em: string | null;
+  /** Término do aviso prévio = pedido + 30 dias (0011). Continua preenchido depois do encerramento. */
+  cancelamento_termino_em: string | null;
+  cancelamento_motivo: string | null;
+  /** GET /api/clientes: já existe nota de mensalidade (não cancelada) da competência do último período — some o botão "Criar nota final". */
+  nota_final_emitida?: boolean;
   sistema_portal: string | null;
   portal_url: string | null;
   portal_usuario: string | null;

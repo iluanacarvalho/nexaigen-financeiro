@@ -7,9 +7,12 @@
 //
 // Estado vazio honesto: KPI sem base aparece "—" (nunca um 0 fingindo
 // dado) — quem decide o que é "sem base" é lib/painelFinanceiro.ts.
+// MRR inclui contratos em aviso prévio até o término (rodada 12-A); o
+// cartão "Em aviso prévio" mostra quanto desse MRR sai quando terminarem.
 
 import { obterPainelFinanceiro } from "@/lib/painelFinanceiroRepositorio";
 import { formatarMoeda, type PontoSerieMensal } from "@/lib/painelFinanceiro";
+import { formatarDataBr } from "@/lib/cancelamentoContrato";
 import TabelaClientesPainel from "./TabelaClientesPainel";
 
 const NOMES_MES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
@@ -45,7 +48,17 @@ export default async function PainelPage() {
         <Card
           titulo="Receita mensal recorrente (MRR)"
           valor={formatarMoeda(kpis.mrr.valorCentavos)}
-          detalhe={`${contratos.ativos} ativos · ${contratos.suspensos} suspensos · ${contratos.encerrados} encerrados`}
+          detalhe={`${contratos.ativos} ativos · ${contratos.emAvisoPrevio} em aviso prévio · ${contratos.suspensos} suspensos · ${contratos.encerrados} encerrados`}
+        />
+        <Card
+          titulo="Em aviso prévio"
+          valor={String(kpis.avisoPrevio.quantidade)}
+          destaque={kpis.avisoPrevio.quantidade > 0}
+          detalhe={
+            kpis.avisoPrevio.quantidade === 0
+              ? "Nenhum contrato em aviso prévio"
+              : `MRR em risco: ${formatarMoeda(kpis.avisoPrevio.mrrEmRiscoCentavos)} · próximo término em ${formatarDataBr(kpis.avisoPrevio.proximoTermino!)}`
+          }
         />
         <Card titulo={`Recebido em ${rotuloMes(painel.mesCorrente)}`} valor={formatarMoeda(kpis.recebidoMesCentavos)} />
         <Card titulo="A receber" valor={formatarMoeda(kpis.aReceber?.totalCentavos ?? null)}>

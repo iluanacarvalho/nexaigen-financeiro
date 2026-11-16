@@ -55,6 +55,8 @@ import { GET as contratoGet, POST as contratoPost } from "./clientes/[id]/contra
 import { POST as integracaoPost } from "./integracao/clientes/route";
 import { GET as painelGet } from "./painel-financeiro/route";
 import { GET as configuracaoStatusGet } from "./configuracao/status/route";
+import { DELETE as cancelamentoDelete, POST as cancelamentoPost } from "./clientes/[id]/cancelamento/route";
+import { POST as integracaoCancelamentoPost } from "./integracao/clientes/[municipioIdExterno]/cancelamento/route";
 
 function reqSemSessao(url: string, method: string): NextRequest {
   return new NextRequest(`http://localhost:3001${url}`, {
@@ -93,6 +95,8 @@ describe("achado crítico de segurança — toda rota antes aberta agora exige s
     ["GET /api/configuracao/status", () => configuracaoStatusGet(reqSemSessao("/api/configuracao/status", "GET"))],
     ["GET /api/painel-financeiro?formato=csv", () => painelGet(reqSemSessao("/api/painel-financeiro?formato=csv", "GET"))],
     ["GET /api/equipe", () => equipeGet(reqSemSessao("/api/equipe", "GET"))],
+    ["POST /api/clientes/[id]/cancelamento", () => cancelamentoPost(reqSemSessao("/api/clientes/cliente-1/cancelamento", "POST"), { params: Promise.resolve({ id: "cliente-1" }) })],
+    ["DELETE /api/clientes/[id]/cancelamento", () => cancelamentoDelete(reqSemSessao("/api/clientes/cliente-1/cancelamento", "DELETE"), { params: Promise.resolve({ id: "cliente-1" }) })],
     ["POST /api/equipe", () => equipePost(reqSemSessao("/api/equipe", "POST"))]
   ])("%s — 401, nunca chama query()", async (_descricao, chamar) => {
     const res = await chamar();
@@ -189,6 +193,48 @@ describe("/api/integracao/clientes — segredo compartilhado com o nexaigen-educ
         headers: { authorization: `Bearer ${SEGREDO}`, "content-type": "application/json" },
         body: corpo
       })
+    );
+    expect(queryMock).toHaveBeenCalled();
+    expect(res.status).toBe(500);
+  });
+});
+
+describe("/api/integracao/clientes/[municipioIdExterno]/cancelamento — mesmo segredo da integração (INTEGRACAO_SECRET), nunca sessão de equipe", () => {
+  const ORIGINAL = process.env.INTEGRACAO_SECRET;
+  const SEGREDO = "segredo-de-teste-integracao-cancelamento";
+  const MUNICIPIO = "6f1c2b0e-5a4d-4c3b-9e8f-1a2b3c4d5e6f";
+  const url = `http://localhost:3001/api/integracao/clientes/${MUNICIPIO}/cancelamento`;
+  const corpo = JSON.stringify({ acao: "registrar", dataPedido: "2026-10-01" });
+  const ctx = { params: Promise.resolve({ municipioIdExterno: MUNICIPIO }) };
+
+  beforeEach(() => {
+    process.env.INTEGRACAO_SECRET = SEGREDO;
+  });
+
+  afterAll(() => {
+    if (ORIGINAL === undefined) delete process.env.INTEGRACAO_SECRET;
+    else process.env.INTEGRACAO_SECRET = ORIGINAL;
+  });
+
+  it("sem Authorization — 401, nunca chama query()", async () => {
+    const res = await integracaoCancelamentoPost(new NextRequest(url, { method: "POST", body: corpo }), ctx);
+    expect(res.status).toBe(401);
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it("segredo errado ou só cookie de sessão — 401, nunca chama query()", async () => {
+    for (const headers of [{ authorization: "Bearer outro-segredo" }, { cookie: "access_token=qualquer-coisa" }] as Record<string, string>[]) {
+      const res = await integracaoCancelamentoPost(new NextRequest(url, { method: "POST", headers, body: corpo }), ctx);
+      expect(res.status).toBe(401);
+    }
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it("com Authorization: Bearer INTEGRACAO_SECRET — chega ao banco SEM sessão de equipe", async () => {
+    // query() mockada pra lançar: a rota captura (500 + alerta de sistema) — o sinal é o banco ter sido alcançado.
+    const res = await integracaoCancelamentoPost(
+      new NextRequest(url, { method: "POST", headers: { authorization: `Bearer ${SEGREDO}`, "content-type": "application/json" }, body: corpo }),
+      ctx
     );
     expect(queryMock).toHaveBeenCalled();
     expect(res.status).toBe(500);

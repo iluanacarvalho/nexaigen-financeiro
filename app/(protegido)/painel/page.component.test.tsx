@@ -86,5 +86,36 @@ describe("Painel financeiro", () => {
     expect(within(eta).getByText("Grande Porte")).toBeTruthy();
     expect(within(eta).getByText(/Implantação a cobrar — R\$\s*30\.000,00/)).toBeTruthy();
   });
-});
 
+  it("aviso prévio: MRR inclui o contrato em aviso, cartão 'Em aviso prévio' com MRR em risco; encerrado continua na tabela com a situação financeira", async () => {
+    obterPainelMock.mockResolvedValue(
+      montarPainelFinanceiro({
+        hoje: HOJE,
+        clientes: [
+          { id: "c1", nome: "Prefeitura de Iota", uf: "PR", plano: "dispensa", valor_mensal: "5457.00", status_contrato: "ativo" },
+          { id: "c2", nome: "Prefeitura de Kapa", uf: "PR", plano: "pequeno_porte", valor_mensal: "8500.00", status_contrato: "em_aviso_previo", cancelamento_termino_em: "2026-11-20" },
+          { id: "c3", nome: "Prefeitura de Lambda", uf: "PR", plano: "dispensa", valor_mensal: "5457.00", status_contrato: "encerrado", cancelamento_termino_em: "2026-09-30" }
+        ],
+        notas: [
+          // nota do encerrado: limite 2026-08-01 → 89 dias de atraso, continua exigível
+          { id: "n1", cliente_id: "c3", valor: "5457.00", competencia: "2026-07-01", status: "vencida", data_emissao: "2026-07-01", data_atesto: "2026-07-02", data_limite_pagamento: "2026-08-01", data_pagamento: null }
+        ]
+      })
+    );
+    render(await PainelPage());
+
+    expect(card("Receita mensal recorrente (MRR)").textContent).toMatch(/R\$\s*13\.957,00/);
+    expect(card("Receita mensal recorrente (MRR)").textContent).toMatch(/1 ativos · 1 em aviso prévio · 0 suspensos · 1 encerrados/);
+    const aviso = card("Em aviso prévio");
+    expect(aviso.textContent).toMatch(/^Em aviso prévio1/);
+    expect(aviso.textContent).toMatch(/MRR em risco: R\$\s*8\.500,00 · próximo término em 20\/11\/2026/);
+
+    const kapa = screen.getByText("Prefeitura de Kapa — PR").closest("tr")!;
+    expect(within(kapa).getByTestId("selo-status-contrato").textContent).toBe("Em aviso prévio");
+    expect(within(kapa).getByText("término em 20/11/2026")).toBeTruthy();
+    const lambda = screen.getByText("Prefeitura de Lambda — PR").closest("tr")!;
+    expect(within(lambda).getByTestId("selo-status-contrato").textContent).toBe("Encerrado");
+    expect(within(lambda).getByText("Inadimplente")).toBeTruthy();
+    expect(within(lambda).getByText("89 dias")).toBeTruthy();
+  });
+});

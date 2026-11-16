@@ -88,13 +88,15 @@ export function precosDeCriacao(
 }
 
 /**
- * "Implantação a cobrar": contrato ATIVO, taxa de implantação combinada e
- * nenhuma nota de implantação ativa (não cancelada). Regra ÚNICA — usada
- * pelo Painel, pelo Dashboard (via Painel), pela tela de Clientes e pela
- * tela de Notas. A nota de implantação NUNCA é criada sozinha: uma nota
- * criada automaticamente já começaria a contar prazo de atesto.
+ * "Implantação a cobrar": contrato ATIVO (ou em aviso prévio — rodada 12-A:
+ * durante o aviso o contrato segue normal e a implantação feita continua
+ * devida), taxa de implantação combinada e nenhuma nota de implantação
+ * ativa (não cancelada). Regra ÚNICA — usada pelo Painel, pelo Dashboard
+ * (via Painel), pela tela de Clientes e pela tela de Notas. A nota de
+ * implantação NUNCA é criada sozinha: uma nota criada automaticamente já
+ * começaria a contar prazo de atesto.
  */
 export function temImplantacaoACobrar(c: { status_contrato: string; taxa_implantacao?: string | null; tem_implantacao_ativa?: boolean }): boolean {
-  return c.status_contrato === "ativo" && !!c.taxa_implantacao && !c.tem_implantacao_ativa;
+  return (c.status_contrato === "ativo" || c.status_contrato === "em_aviso_previo") && !!c.taxa_implantacao && !c.tem_implantacao_ativa;
 }
 

@@ -21,6 +21,8 @@ export interface ResumoDashboard {
   alertasCriticosAtivos: number;
   /** Clientes com implantação combinada ainda sem nota emitida (selo "Implantação a cobrar") — mesma conta do Painel. */
   implantacaoACobrar: { clientes: number; centavos: number };
+  /** Contratos em aviso prévio e o MRR que sai no término — mesma conta do Painel (rodada 12-A). */
+  avisoPrevio: PainelFinanceiro["kpis"]["avisoPrevio"];
 }
 
 export function montarResumoDashboard(painel: PainelFinanceiro, alertasCriticosAtivos: number): ResumoDashboard {
@@ -29,7 +31,8 @@ export function montarResumoDashboard(painel: PainelFinanceiro, alertasCriticosA
     contagemPorSituacao: painel.kpis.contagemPorSituacao,
     emAbertoCentavos: painel.kpis.aReceber?.totalCentavos ?? null,
     alertasCriticosAtivos,
-    implantacaoACobrar: painel.kpis.implantacao.aCobrar
+    implantacaoACobrar: painel.kpis.implantacao.aCobrar,
+    avisoPrevio: painel.kpis.avisoPrevio
   };
 }
 

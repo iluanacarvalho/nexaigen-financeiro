@@ -78,7 +78,9 @@ describe("temImplantacaoACobrar", () => {
     ["ativo, com taxa, sem nota", base, true],
     ["já tem nota ativa", { ...base, tem_implantacao_ativa: true }, false],
     ["sem taxa (Dispensa / em branco)", { ...base, taxa_implantacao: null }, false],
-    ["contrato suspenso", { ...base, status_contrato: "suspenso" }, false]
+    ["contrato em aviso prévio (segue normal até o término)", { ...base, status_contrato: "em_aviso_previo" }, true],
+    ["contrato suspenso", { ...base, status_contrato: "suspenso" }, false],
+    ["contrato encerrado", { ...base, status_contrato: "encerrado" }, false]
   ])("%s → %s", (_d, c, esperado) => {
     expect(temImplantacaoACobrar(c)).toBe(esperado);
   });

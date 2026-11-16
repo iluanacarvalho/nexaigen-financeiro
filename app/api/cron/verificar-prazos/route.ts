@@ -36,6 +36,17 @@
 // silenciosamente, sem devolver linha, e o e-mail ao cliente simplesmente
 // não é chamado de novo. Ver o comentário completo em
 // lib/notificacaoCliente.ts.
+//
+// AVISO PRÉVIO (rodada 12-A): ANTES das notas, contratos 'em_aviso_previo'
+// cujo término já passou (`termino < hoje` em America/Sao_Paulo — o dia
+// do término ainda é dia de contrato) viram 'encerrado' + evento de
+// auditoria (lib/cancelamentoServico.ts#encerrarAvisosVencidos), cada
+// cliente na sua transação — a falha de um não para os outros nem o resto
+// do job (contada no resumo + alerta de sistema). ENCERRAR NÃO CANCELA
+// DÍVIDA: a consulta de notas abaixo NÃO filtra pelo status do contrato
+// — nota em aberto de cliente 'encerrado' continua sendo avaliada, gera
+// alerta e e-mail de cobrança até o pagamento (de propósito; teste de
+// integração dedicado em route.integration.test.ts).
 
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
@@ -46,6 +57,8 @@ import { notificarClientePrefeitura } from "@/lib/notificacaoCliente";
 import { alertarErroSistema } from "@/lib/alertaErroSistema";
 import { bearerConfere } from "@/lib/segredoCompartilhado";
 import { limparContadoresExpirados } from "@/lib/rateLimit";
+import { encerrarAvisosVencidos } from "@/lib/cancelamentoServico";
+import { hojeEmSaoPaulo } from "@/lib/painelFinanceiro";
 
 export async function POST(req: NextRequest) {
   return executar(req);
@@ -57,6 +70,9 @@ interface ResumoVerificacaoPrazos {
   alertasCriados: number;
   emails: { enviados: number; falhos: number; semDestinatario: number };
   contadoresRateLimitRemovidos: number;
+  /** Contratos em aviso prévio encerrados nesta execução (término já passou) e falhas ao encerrar. */
+  contratosEncerrados: number;
+  falhasEncerramento: number;
 }
 
 interface NotaLinha {
@@ -85,6 +101,15 @@ async function executar(req: NextRequest) {
     return NextResponse.json({ erro: "Não autorizado." }, { status: 401 });
   }
 
+  const encerramento = await encerrarAvisosVencidos(hojeEmSaoPaulo(new Date()));
+  if (encerramento.falhas > 0) {
+    await alertarErroSistema(
+      "job_verificar_prazos",
+      `${encerramento.falhas} contrato(s) em aviso prévio com término vencido NÃO foram encerrados pelo job diário (os demais seguiram normalmente) — ver logs do servidor.`
+    );
+  }
+
+  // Sem filtro de status_contrato DE PROPÓSITO: nota de cliente encerrado continua sendo cobrada.
   const notas = await query<NotaLinha>(
     `select
        nf.id, nf.cliente_id, nf.numero_nf, nf.valor, nf.data_emissao, nf.data_atesto, nf.data_limite_pagamento, nf.status,
@@ -99,7 +124,9 @@ async function executar(req: NextRequest) {
     statusAtualizados: 0,
     alertasCriados: 0,
     emails: { enviados: 0, falhos: 0, semDestinatario: 0 },
-    contadoresRateLimitRemovidos: 0
+    contadoresRateLimitRemovidos: 0,
+    contratosEncerrados: encerramento.encerrados,
+    falhasEncerramento: encerramento.falhas
   };
   const contarEmail = (enviado: boolean) => {
     if (enviado) resultado.emails.enviados += 1;

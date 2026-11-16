@@ -8,9 +8,20 @@
 // outro. Num cliente já cadastrado, trocar de plano só repõe os padrões
 // depois de uma confirmação explícita. O plano não limita funcionalidade
 // nenhuma: muda só o preço.
+//
+// Rodada 12-A — cancelamento com aviso prévio: selo do status do contrato
+// (rótulos em português), "Registrar cancelamento" (data do ofício +
+// motivo, confirmação mostrando o término calculado), "Retratar
+// cancelamento" (confirmação) e o aviso "Contrato em aviso prévio —
+// término em …" com o botão "Criar nota final" (./CancelamentoContrato.tsx
+// e components/AvisoPrevio.tsx).
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import PdfVersionado from "@/components/PdfVersionado";
+import SeloStatusContrato from "@/components/SeloStatusContrato";
+import { AvisoContrato } from "@/components/AvisoPrevio";
+import { PainelRegistrarCancelamento, PainelRetratarCancelamento, acoesDeCancelamento } from "./CancelamentoContrato";
+import { hojeEmSaoPaulo } from "@/lib/painelFinanceiro";
 import { centavosParaTextoCampo, formatarMoeda, paraCentavos } from "@/lib/dinheiro";
 import { PLANOS, obterPlano, rotuloDoPlano, temImplantacaoACobrar, valoresPadrao, type IdPlano } from "@/lib/planos";
 import type { ClientePrefeitura } from "@/lib/tipos";
@@ -65,6 +76,9 @@ export default function ClientesPage() {
   // null = criando um cliente novo; um cliente = editando (PATCH /api/clientes/[id]).
   const [editando, setEditando] = useState<ClientePrefeitura | null>(null);
   const [erroForm, setErroForm] = useState<string | null>(null);
+  // Diálogo de cancelamento aberto (um por vez, logo abaixo da linha do cliente).
+  const [cancelamento, setCancelamento] = useState<{ clienteId: string; acao: "registrar" | "retratar" } | null>(null);
+  const hoje = hojeEmSaoPaulo(new Date());
 
   async function carregar() {
     setClientes(await buscarClientes());
@@ -156,40 +170,78 @@ export default function ClientesPage() {
             </tr>
           </thead>
           <tbody>
-            {clientes.map((c) => (
-              <tr key={c.id} className="border-t align-top" data-testid={`cliente-${c.id}`}>
-                <td className="p-3">
-                  {c.nome} — {c.uf}
-                  {temImplantacaoACobrar(c) && (
-                    <div className="mt-1 flex flex-wrap items-center gap-2">
-                      <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-                        Implantação a cobrar — {formatarMoeda(paraCentavos(c.taxa_implantacao!))}
+            {clientes.map((c) => {
+              const acoes = acoesDeCancelamento(c, hoje);
+              const dialogo = cancelamento?.clienteId === c.id ? cancelamento.acao : null;
+              const fechar = () => setCancelamento(null);
+              const concluir = () => {
+                setCancelamento(null);
+                carregar();
+              };
+              return (
+                <Fragment key={c.id}>
+                  <tr className="border-t align-top" data-testid={`cliente-${c.id}`}>
+                    <td className="p-3">
+                      <span className="mr-2">
+                        {c.nome} — {c.uf}
                       </span>
-                      <a href={`/notas?implantacao=${c.id}`} className="text-xs text-navy underline">
-                        Criar nota de implantação
-                      </a>
-                    </div>
+                      <SeloStatusContrato status={c.status_contrato} />
+                      <AvisoContrato cliente={c} />
+                      {temImplantacaoACobrar(c) && (
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                            Implantação a cobrar — {formatarMoeda(paraCentavos(c.taxa_implantacao!))}
+                          </span>
+                          <a href={`/notas?implantacao=${c.id}`} className="text-xs text-navy underline">
+                            Criar nota de implantação
+                          </a>
+                        </div>
+                      )}
+                    </td>
+                    <td className="p-3">{rotuloDoPlano(c.plano)}</td>
+                    <td className="p-3">{formatarMoeda(paraCentavos(c.valor_mensal))}</td>
+                    <td className="p-3">{c.sistema_portal ?? "—"}</td>
+                    <td className="p-3">
+                      <PdfVersionado
+                        urlArquivo={`/api/clientes/${c.id}/contrato`}
+                        rotulo="contrato"
+                        versaoAtual={c.contrato_versao_atual ?? null}
+                        nomeAtual={c.contrato_arquivo_nome}
+                        onEnviado={() => carregar()}
+                      />
+                    </td>
+                    <td className="p-3">
+                      <div className="flex flex-col items-start gap-1">
+                        <button onClick={() => abrirForm(c)} className="text-xs text-navy underline">
+                          Editar
+                        </button>
+                        {acoes.registrar && (
+                          <button onClick={() => setCancelamento({ clienteId: c.id, acao: "registrar" })} disabled={cancelamento !== null} className="text-xs text-red-700 underline disabled:opacity-50">
+                            Registrar cancelamento
+                          </button>
+                        )}
+                        {acoes.retratar && (
+                          <button onClick={() => setCancelamento({ clienteId: c.id, acao: "retratar" })} disabled={cancelamento !== null} className="text-xs text-navy underline disabled:opacity-50">
+                            Retratar cancelamento
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                  {dialogo && (
+                    <tr>
+                      <td colSpan={6} className="bg-amber-50 p-3">
+                        {dialogo === "registrar" ? (
+                          <PainelRegistrarCancelamento cliente={c} onConcluido={concluir} onDesistir={fechar} />
+                        ) : (
+                          <PainelRetratarCancelamento cliente={c} onConcluido={concluir} onDesistir={fechar} />
+                        )}
+                      </td>
+                    </tr>
                   )}
-                </td>
-                <td className="p-3">{rotuloDoPlano(c.plano)}</td>
-                <td className="p-3">{formatarMoeda(paraCentavos(c.valor_mensal))}</td>
-                <td className="p-3">{c.sistema_portal ?? "—"}</td>
-                <td className="p-3">
-                  <PdfVersionado
-                    urlArquivo={`/api/clientes/${c.id}/contrato`}
-                    rotulo="contrato"
-                    versaoAtual={c.contrato_versao_atual ?? null}
-                    nomeAtual={c.contrato_arquivo_nome}
-                    onEnviado={() => carregar()}
-                  />
-                </td>
-                <td className="p-3">
-                  <button onClick={() => abrirForm(c)} className="text-xs text-navy underline">
-                    Editar
-                  </button>
-                </td>
-              </tr>
-            ))}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>

@@ -21,7 +21,8 @@ const { queryMock, notificarTimeMock, notificarClienteMock, alertarErroSistemaMo
   alertarErroSistemaMock: vi.fn()
 }));
 
-vi.mock("@/lib/db", () => ({ query: queryMock }));
+// withTransaction (rodada 12-A — encerramento de aviso prévio, um cliente por transação): executor falso, mesmas queries.
+vi.mock("@/lib/db", () => ({ query: queryMock, withTransaction: async (fn: (c: object) => Promise<unknown>) => fn({}) }));
 vi.mock("@/lib/notificacao-interna", () => ({ notificarTimeDeCobranca: notificarTimeMock }));
 vi.mock("@/lib/notificacaoCliente", () => ({ notificarClientePrefeitura: notificarClienteMock }));
 // Rodada de alerta de falha de sistema: route.ts agora chama
@@ -186,7 +187,9 @@ describe("POST /api/cron/verificar-prazos — autenticação e resumo (rodada 07
       statusAtualizados: 1,
       alertasCriados: 1,
       emails: { enviados: 2, falhos: 0, semDestinatario: 0 }, // interno (60 dias) + cliente
-      contadoresRateLimitRemovidos: 0
+      contadoresRateLimitRemovidos: 0,
+      contratosEncerrados: 0,
+      falhasEncerramento: 0
     });
     expect(queryMock).toHaveBeenCalledWith(expect.stringContaining("delete from rate_limit_contador"), [], undefined);
   });
@@ -214,5 +217,35 @@ describe("POST /api/cron/verificar-prazos — autenticação e resumo (rodada 07
 
   it("não existe mais handler GET (o cron da Vercel foi removido; rota que grava em lote só aceita POST)", () => {
     expect("GET" in rota).toBe(false);
+  });
+});
+
+describe("POST /api/cron/verificar-prazos — encerramento de aviso prévio (rodada 12-A)", () => {
+  beforeEach(() => {
+    process.env.CRON_SECRET = SEGREDO;
+  });
+
+  it("falha ao encerrar UM contrato: os outros encerram, as notas seguem sendo avaliadas, resumo conta e alerta de sistema sai", async () => {
+    const base = criarQueryFake({ notas: [NOTA_VENCIDA], alertaResultado: null });
+    queryMock.mockImplementation((sql: string, params: unknown[]) => {
+      if (sql.includes("cancelamento_termino_em < $1::date")) return Promise.resolve([{ id: "falha" }, { id: "ok" }]);
+      if (sql.includes("for update")) {
+        if (params[0] === "falha") return Promise.reject(Object.assign(new Error("x"), { code: "57014" }));
+        return Promise.resolve([{ id: "ok", status_contrato: "em_aviso_previo", data_inicio_contrato: "2026-01-01", cancelamento_pedido_em: "2026-01-02", cancelamento_termino_em: "2026-02-01" }]);
+      }
+      return base(sql);
+    });
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const corpo = await (await POST(requisicao())).json();
+    expect(corpo).toMatchObject({ contratosEncerrados: 1, falhasEncerramento: 1, notasAvaliadas: 1 });
+    expect(alertarErroSistemaMock).toHaveBeenCalledWith("job_verificar_prazos", expect.stringContaining("1 contrato(s) em aviso prévio"));
+  });
+
+  it("a consulta de notas NÃO filtra pelo status do contrato (encerrar não cancela dívida)", async () => {
+    queryMock.mockImplementation(criarQueryFake({ notas: [], alertaResultado: null }));
+    await POST(requisicao());
+    const sqlNotas = queryMock.mock.calls.map(([sql]) => sql as string).find((sql) => sql.includes("from nota_fiscal nf"))!;
+    expect(sqlNotas).not.toMatch(/status_contrato/);
   });
 });

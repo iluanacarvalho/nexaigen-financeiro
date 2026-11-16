@@ -15,6 +15,7 @@ import { ClienteSchema } from "@/lib/clienteSchema";
 import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
 import { detalhesDoErro } from "@/lib/validacao";
 import { centavosParaNumeric } from "@/lib/dinheiro";
+import { clientesComNotaFinalEmitida } from "@/lib/cancelamentoServico";
 
 export async function GET(req: NextRequest) {
   const negado = exigirSessao(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value));
@@ -22,13 +23,17 @@ export async function GET(req: NextRequest) {
 
   // contrato_versao_atual: número da versão pra qual contrato_arquivo_chave aponta (0009) — lookup pela chave única.
   // tem_implantacao_ativa (0010): já existe nota de implantação não cancelada — é o que tira o selo "Implantação a cobrar".
-  const clientes = await query(
+  const clientes = await query<{ id: string; data_inicio_contrato: string; cancelamento_termino_em: string | null }>(
     `select c.*,
        (select v.versao from cliente_contrato_versao v where v.chave = c.contrato_arquivo_chave) as contrato_versao_atual,
        exists (select 1 from nota_fiscal n where n.cliente_id = c.id and n.tipo = 'implantacao' and n.status <> 'cancelada') as tem_implantacao_ativa
      from cliente_prefeitura c order by c.nome`
   );
-  return NextResponse.json({ clientes });
+  // nota_final_emitida (rodada 12-A): com aviso prévio registrado, a nota do último período já existe? (some o botão "Criar nota final")
+  const comNotaFinal = await clientesComNotaFinalEmitida(clientes);
+  return NextResponse.json({
+    clientes: clientes.map((c) => (c.cancelamento_termino_em === null ? c : { ...c, nota_final_emitida: comNotaFinal.has(c.id) }))
+  });
 }
 
 export async function POST(req: NextRequest) {

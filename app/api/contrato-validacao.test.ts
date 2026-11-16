@@ -12,7 +12,7 @@ process.env.JWT_SECRET = process.env.JWT_SECRET ?? "chave-de-teste-jwt-apenas-un
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { queryMock, withTransactionMock, trocarSenhaMock, servicoNotas } = vi.hoisted(() => ({
+const { queryMock, withTransactionMock, trocarSenhaMock, servicoNotas, servicoCancelamento } = vi.hoisted(() => ({
   queryMock: vi.fn(),
   withTransactionMock: vi.fn(),
   trocarSenhaMock: vi.fn(),
@@ -21,6 +21,12 @@ const { queryMock, withTransactionMock, trocarSenhaMock, servicoNotas } = vi.hoi
     listarNotas: vi.fn(),
     executarAcaoNota: vi.fn(),
     registrarVerificacaoSemMudanca: vi.fn()
+  },
+  servicoCancelamento: {
+    registrarCancelamento: vi.fn(),
+    retratarCancelamento: vi.fn(),
+    encerrarContrato: vi.fn(),
+    clientePorMunicipio: vi.fn()
   }
 }));
 vi.mock("@/lib/db", () => ({ query: queryMock, withTransaction: withTransactionMock }));
@@ -33,6 +39,7 @@ vi.mock("@/lib/rateLimit", async (original) => ({
 vi.mock("@/lib/auth", async (original) => ({ ...(await original<typeof import("@/lib/auth")>()), trocarSenha: trocarSenhaMock }));
 vi.mock("@/lib/notasServico", async (original) => ({ ...(await original<typeof import("@/lib/notasServico")>()), ...servicoNotas }));
 vi.mock("@/lib/alertaErroSistema", () => ({ alertarErroSistema: vi.fn() }));
+vi.mock("@/lib/cancelamentoServico", async (original) => ({ ...(await original<typeof import("@/lib/cancelamentoServico")>()), ...servicoCancelamento }));
 vi.mock("@/lib/versionamentoPdf", async (original) => ({ ...(await original<typeof import("@/lib/versionamentoPdf")>()), registrarVersaoPdf: vi.fn() }));
 
 import { NextRequest } from "next/server";
@@ -46,6 +53,8 @@ import { GET as LISTAR_NOTAS, POST as CRIAR_NOTA } from "./notas/route";
 import { POST as ACAO_NOTA } from "./notas/[id]/acoes/route";
 import { POST as VERIFICAR } from "./notas/[id]/verificar/route";
 import { POST as INTEGRACAO } from "./integracao/clientes/route";
+import { POST as REGISTRAR_CANCELAMENTO } from "./clientes/[id]/cancelamento/route";
+import { POST as INTEGRACAO_CANCELAMENTO } from "./integracao/clientes/[municipioIdExterno]/cancelamento/route";
 
 const ID = "7a1b2c3d-0000-4000-8000-0000000000aa";
 const SEGREDO_INTEGRACAO = "segredo-contrato-validacao";
@@ -103,6 +112,11 @@ beforeEach(async () => {
   servicoNotas.listarNotas.mockResolvedValue({ notas: [], total: 0 });
   servicoNotas.executarAcaoNota.mockResolvedValue({ ok: true, statusAnterior: "atestada", statusNovo: "paga" });
   servicoNotas.registrarVerificacaoSemMudanca.mockResolvedValue(true);
+  const contratoOk = { ok: true, mudou: true, clienteId: ID, statusContrato: "em_aviso_previo", pedidoEm: "2026-10-01", terminoEm: "2026-10-31" };
+  servicoCancelamento.registrarCancelamento.mockResolvedValue(contratoOk);
+  servicoCancelamento.retratarCancelamento.mockResolvedValue({ ...contratoOk, statusContrato: "ativo" });
+  servicoCancelamento.encerrarContrato.mockResolvedValue({ ...contratoOk, statusContrato: "encerrado" });
+  servicoCancelamento.clientePorMunicipio.mockResolvedValue(ID);
   process.env.INTEGRACAO_SECRET = SEGREDO_INTEGRACAO;
   cookie = `${NOME_COOKIE_ACCESS}=${await gerarAccessToken({ equipeId: ID, nome: "Teste", precisaTrocarSenha: false, tokenVersion: 1 })}`;
 });
@@ -283,5 +297,52 @@ describe("POST /api/integracao/clientes (contrato público com o Educa — não 
     const d = await esperar400ComDetalhes(await chamar(INTEGRACAO, "POST", { ...valido, municipioIdExterno: "nao-uuid", contratoArquivoBase64: "JVBERi0=" }, auth));
     expect(d.fieldErrors.municipioIdExterno).toHaveLength(1);
     expect(d.fieldErrors.contratoArquivoNome).toEqual(["contratoArquivoBase64 e contratoArquivoNome devem vir juntos (ou nenhum dos dois)."]);
+  });
+});
+
+describe("POST /api/clientes/[id]/cancelamento (estrito)", () => {
+  it("(a) válido passa", async () => {
+    expect((await chamar(REGISTRAR_CANCELAMENTO, "POST", { dataPedido: "2026-10-01", motivo: "Ofício 12" })).status).toBe(200);
+  });
+  it("(b) data em outro formato / inexistente e motivo vazio → 400 com fieldErrors (mensagens do projeto)", async () => {
+    const d = await esperar400ComDetalhes(await chamar(REGISTRAR_CANCELAMENTO, "POST", { dataPedido: "01/10/2026", motivo: "  " }));
+    expect(d.fieldErrors.dataPedido).toEqual(["Data de recebimento do ofício: use o formato aaaa-mm-dd."]);
+    expect(d.fieldErrors.motivo).toEqual(["Informe o motivo do cancelamento."]);
+    const inexistente = await esperar400ComDetalhes(await chamar(REGISTRAR_CANCELAMENTO, "POST", { dataPedido: "2026-02-30", motivo: "x" }));
+    expect(inexistente.fieldErrors.dataPedido).toEqual(["Data de recebimento do ofício: data que não existe no calendário."]);
+  });
+  it("(c) chave desconhecida → 400 (autor nunca vem do corpo)", async () => {
+    const d = await esperar400ComDetalhes(await chamar(REGISTRAR_CANCELAMENTO, "POST", { dataPedido: "2026-10-01", motivo: "x", equipe_id: ID }));
+    expect(d.formErrors.join(" ")).toContain("equipe_id");
+  });
+});
+
+describe("POST /api/integracao/clientes/[municipioIdExterno]/cancelamento (estrito)", () => {
+  function chamarIntegracao(corpo: unknown) {
+    return INTEGRACAO_CANCELAMENTO(
+      new NextRequest(`http://localhost:3001/api/integracao/clientes/${ID}/cancelamento`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${SEGREDO_INTEGRACAO}` },
+        body: JSON.stringify(corpo)
+      }),
+      { params: Promise.resolve({ municipioIdExterno: ID }) }
+    );
+  }
+  it("(a) as três ações válidas passam", async () => {
+    expect((await chamarIntegracao({ acao: "registrar", dataPedido: "2026-10-01", motivo: "Ofício" })).status).toBe(200);
+    expect((await chamarIntegracao({ acao: "retratar" })).status).toBe(200);
+    expect((await chamarIntegracao({ acao: "encerrar", imediato: true })).status).toBe(200);
+  });
+  it("(b) registrar sem dataPedido, imediato fora de encerrar, ação inexistente → 400 com fieldErrors", async () => {
+    const semData = await esperar400ComDetalhes(await chamarIntegracao({ acao: "registrar" }));
+    expect(semData.fieldErrors.dataPedido).toEqual(["Informe dataPedido (data de recebimento do ofício) para registrar o cancelamento."]);
+    const imediato = await esperar400ComDetalhes(await chamarIntegracao({ acao: "retratar", imediato: true }));
+    expect(imediato.fieldErrors.imediato).toEqual(["imediato só vale para acao 'encerrar'."]);
+    const acao = await esperar400ComDetalhes(await chamarIntegracao({ acao: "apagar" }));
+    expect(acao.fieldErrors.acao).toEqual(["acao inválida — use: registrar, retratar, encerrar."]);
+  });
+  it("(c) chave desconhecida → 400", async () => {
+    const d = await esperar400ComDetalhes(await chamarIntegracao({ acao: "retratar", status: "ativo" }));
+    expect(d.formErrors.join(" ")).toContain("status");
   });
 });

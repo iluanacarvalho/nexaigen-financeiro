@@ -14,6 +14,7 @@
 
 import { query, withTransaction, type Executor } from "./db";
 import { centavosParaNumeric } from "./dinheiro";
+import { aceitaMensalidade, competenciaAposTermino, competenciaNotaFinal } from "./cancelamentoContrato";
 import {
   LIMIAR_ATRASO_CRITICO_DIAS,
   PRAZO_PAGAMENTO_DIAS,
@@ -172,7 +173,8 @@ export type ResultadoCriacao =
   | { ok: false; motivo: "cliente_inativo"; statusContrato: string }
   | { ok: false; motivo: "numero_duplicado" }
   | { ok: false; motivo: "implantacao_sem_taxa" }
-  | { ok: false; motivo: "implantacao_duplicada" };
+  | { ok: false; motivo: "implantacao_duplicada" }
+  | { ok: false; motivo: "competencia_apos_termino"; terminoEm: string; ultimaCompetencia: string };
 
 class ClienteRecusado extends Error {
   constructor(readonly resultado: Exclude<ResultadoCriacao, { ok: true }>) {
@@ -183,18 +185,36 @@ class ClienteRecusado extends Error {
 export async function criarNota(dados: DadosNovaNota, feitoPor: string): Promise<ResultadoCriacao> {
   try {
     const id = await withTransaction(async (c) => {
-      // `for share`: impede o cliente de mudar de status (suspender/encerrar) no meio desta criação.
-      const clientes = await query<{ status_contrato: string; taxa_implantacao: string | null }>(
-        `select status_contrato, taxa_implantacao from cliente_prefeitura where id = $1 for share`,
+      // `for share`: impede o cliente de mudar de status (suspender/encerrar/registrar cancelamento) no meio desta criação.
+      const clientes = await query<{
+        status_contrato: string;
+        taxa_implantacao: string | null;
+        data_inicio_contrato: string;
+        cancelamento_termino_em: string | null;
+      }>(
+        `select status_contrato, taxa_implantacao, data_inicio_contrato, cancelamento_termino_em from cliente_prefeitura where id = $1 for share`,
         [dados.clienteId],
         c
       );
       if (clientes.length === 0) throw new ClienteRecusado({ ok: false, motivo: "cliente_inexistente" });
-      if (clientes[0].status_contrato !== "ativo") {
-        throw new ClienteRecusado({ ok: false, motivo: "cliente_inativo", statusContrato: clientes[0].status_contrato });
+      const cliente = clientes[0];
+      // Contrato em aviso prévio segue normal (rodada 12-A). Encerrado por aviso prévio ainda aceita a
+      // MENSALIDADE da nota final (o job diário pode encerrar antes de a equipe emitir) — implantação não.
+      const aceita = dados.tipo === "mensalidade" ? aceitaMensalidade(cliente) : cliente.status_contrato === "ativo" || cliente.status_contrato === "em_aviso_previo";
+      if (!aceita) {
+        throw new ClienteRecusado({ ok: false, motivo: "cliente_inativo", statusContrato: cliente.status_contrato });
+      }
+      // Mensalidade de período que COMEÇA depois do término do aviso prévio: não é devida.
+      if (dados.tipo === "mensalidade" && cliente.cancelamento_termino_em && competenciaAposTermino(dados.competencia, cliente.data_inicio_contrato, cliente.cancelamento_termino_em)) {
+        throw new ClienteRecusado({
+          ok: false,
+          motivo: "competencia_apos_termino",
+          terminoEm: cliente.cancelamento_termino_em,
+          ultimaCompetencia: competenciaNotaFinal(cliente.data_inicio_contrato, cliente.cancelamento_termino_em)
+        });
       }
       // Implantação só existe pra quem tem taxa combinada (os 3 portes — Dispensa nunca tem, CHECK da 0010).
-      if (dados.tipo === "implantacao" && clientes[0].taxa_implantacao === null) {
+      if (dados.tipo === "implantacao" && cliente.taxa_implantacao === null) {
         throw new ClienteRecusado({ ok: false, motivo: "implantacao_sem_taxa" });
       }
 
