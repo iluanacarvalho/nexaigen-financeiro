@@ -31,6 +31,7 @@ describe("Painel financeiro", () => {
     expect(card("Prazo médio de recebimento").textContent).toContain("—");
     expect(screen.getByText("Sem faturamento nem recebimento nos últimos 12 meses.")).toBeTruthy();
     expect(screen.getByText("Nenhum cliente cadastrado.")).toBeTruthy();
+    expect(screen.getByText("Nenhuma taxa de implantação a cobrar, em aberto ou recebida nos últimos 12 meses.")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/R\$\s*0,00/);
   });
 
@@ -61,4 +62,29 @@ describe("Painel financeiro", () => {
     expect(csv.hasAttribute("download")).toBe(true);
     expect(screen.queryByText(/Ainda não há notas fiscais/)).toBeNull();
   });
+
+  it("implantação (única): quadro com a cobrar / a receber / recebida, selo no cliente e plano pelo rótulo", async () => {
+    obterPainelMock.mockResolvedValue(
+      montarPainelFinanceiro({
+        hoje: HOJE,
+        clientes: [
+          { id: "c1", nome: "Prefeitura de Eta", uf: "SC", plano: "grande_porte", valor_mensal: "35000.00", status_contrato: "ativo", taxa_implantacao: "30000.00", tem_implantacao_ativa: false },
+          { id: "c2", nome: "Prefeitura de Teta", uf: "SC", plano: "pequeno_porte", valor_mensal: "8500.00", status_contrato: "ativo", taxa_implantacao: "15000.00", tem_implantacao_ativa: true }
+        ],
+        notas: [{ id: "n1", cliente_id: "c2", tipo: "implantacao", valor: "15000.00", competencia: "2026-10-01", status: "aguardando_atesto", data_emissao: "2026-10-20", data_atesto: null, data_limite_pagamento: null, data_pagamento: null }]
+      })
+    );
+    render(await PainelPage());
+
+    const quadro = screen.getByRole("region", { name: "Implantação (única)" });
+    expect(within(quadro).getByText("A cobrar (sem nota emitida)").nextElementSibling!.textContent).toMatch(/R\$\s*30\.000,00/);
+    expect(within(quadro).getByText("1 cliente")).toBeTruthy();
+    expect(within(quadro).getByText("A receber (nota emitida, em aberto)").nextElementSibling!.textContent).toMatch(/R\$\s*15\.000,00/);
+    // MRR só com mensalidades (35.000 + 8.500), implantação fora.
+    expect(card("Receita mensal recorrente (MRR)").textContent).toMatch(/R\$\s*43\.500,00/);
+    const eta = screen.getByText("Prefeitura de Eta — SC").closest("tr")!;
+    expect(within(eta).getByText("Grande Porte")).toBeTruthy();
+    expect(within(eta).getByText(/Implantação a cobrar — R\$\s*30\.000,00/)).toBeTruthy();
+  });
 });
+

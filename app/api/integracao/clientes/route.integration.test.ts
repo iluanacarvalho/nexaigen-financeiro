@@ -81,7 +81,7 @@ describe("POST /api/integracao/clientes — upsert real", () => {
     const r1 = await (
       await chamar({
         ...base,
-        plano: "completo",
+        plano: "medio_porte",
         contatoEmail: "contato@prefeitura.example",
         contratoArquivoBase64: Buffer.from("%PDF-1.4 teste").toString("base64"),
         contratoArquivoNome: "contrato.pdf"
@@ -97,7 +97,7 @@ describe("POST /api/integracao/clientes — upsert real", () => {
     expect(linha.valor_mensal).toBe("3500.00");
     expect(linha.observacao).toBe("retry");
     // Não enviados no retry — mantidos (coalesce), nunca resetados pro default/null.
-    expect(linha.plano).toBe("completo");
+    expect(linha.plano).toBe("medio_porte");
     expect(linha.contato_email).toBe("contato@prefeitura.example");
     expect(linha.contrato_arquivo_nome).toBe("contrato.pdf");
     // Desde a rodada 08 o contrato da integração é uma VERSÃO (0009), com a chave por cliente/envio.

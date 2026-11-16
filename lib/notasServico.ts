@@ -25,7 +25,7 @@ import {
   type AcaoNota,
   type SituacaoNota
 } from "./estadoNota";
-import type { EventoNota, NotaListada, TipoEventoNota } from "./tipos";
+import type { EventoNota, NotaListada, TipoEventoNota, TipoNota } from "./tipos";
 
 export type { EventoNota, NotaListada };
 
@@ -36,6 +36,7 @@ export type ColunaOrdenacao = (typeof COLUNAS_ORDENACAO)[number];
 
 export interface FiltrosNotas {
   situacao?: SituacaoNota;
+  tipo?: TipoNota;
   clienteId?: string;
   competencia?: string; // "aaaa-mm-01"
   busca?: string; // trecho do número da NF
@@ -87,6 +88,10 @@ export async function listarNotas(filtros: FiltrosNotas, hoje: string): Promise<
     params.push(filtros.situacao);
     condicoes.push(`(${situacaoSql}) = $${params.length}`);
   }
+  if (filtros.tipo) {
+    params.push(filtros.tipo);
+    condicoes.push(`nf.tipo = $${params.length}`);
+  }
   if (filtros.clienteId) {
     params.push(filtros.clienteId);
     condicoes.push(`nf.cliente_id = $${params.length}`);
@@ -109,7 +114,7 @@ export async function listarNotas(filtros: FiltrosNotas, hoje: string): Promise<
 
   const linhas = await query<NotaListada & { total: number }>(
     `select
-       nf.id, nf.cliente_id, nf.numero_nf, nf.valor, nf.competencia, nf.data_emissao, nf.data_atesto,
+       nf.id, nf.cliente_id, nf.tipo, nf.numero_nf, nf.valor, nf.competencia, nf.data_emissao, nf.data_atesto,
        nf.data_limite_pagamento, nf.data_pagamento, nf.status, nf.motivo_cancelamento, nf.cancelado_em,
        nf.arquivo_pdf_nome,
        (select v.versao from nota_fiscal_arquivo_versao v where v.chave = nf.arquivo_pdf_chave) as arquivo_pdf_versao_atual,
@@ -154,6 +159,7 @@ async function contarNotas(situacaoSql: string, condicoes: string[], params: unk
 
 export interface DadosNovaNota {
   clienteId: string;
+  tipo: TipoNota;
   competencia: string; // já normalizada (1º dia do mês)
   numeroNf: string | null;
   valorCentavos: number;
@@ -164,7 +170,9 @@ export type ResultadoCriacao =
   | { ok: true; id: string }
   | { ok: false; motivo: "cliente_inexistente" }
   | { ok: false; motivo: "cliente_inativo"; statusContrato: string }
-  | { ok: false; motivo: "numero_duplicado" };
+  | { ok: false; motivo: "numero_duplicado" }
+  | { ok: false; motivo: "implantacao_sem_taxa" }
+  | { ok: false; motivo: "implantacao_duplicada" };
 
 class ClienteRecusado extends Error {
   constructor(readonly resultado: Exclude<ResultadoCriacao, { ok: true }>) {
@@ -176,8 +184,8 @@ export async function criarNota(dados: DadosNovaNota, feitoPor: string): Promise
   try {
     const id = await withTransaction(async (c) => {
       // `for share`: impede o cliente de mudar de status (suspender/encerrar) no meio desta criação.
-      const clientes = await query<{ status_contrato: string }>(
-        `select status_contrato from cliente_prefeitura where id = $1 for share`,
+      const clientes = await query<{ status_contrato: string; taxa_implantacao: string | null }>(
+        `select status_contrato, taxa_implantacao from cliente_prefeitura where id = $1 for share`,
         [dados.clienteId],
         c
       );
@@ -185,11 +193,15 @@ export async function criarNota(dados: DadosNovaNota, feitoPor: string): Promise
       if (clientes[0].status_contrato !== "ativo") {
         throw new ClienteRecusado({ ok: false, motivo: "cliente_inativo", statusContrato: clientes[0].status_contrato });
       }
+      // Implantação só existe pra quem tem taxa combinada (os 3 portes — Dispensa nunca tem, CHECK da 0010).
+      if (dados.tipo === "implantacao" && clientes[0].taxa_implantacao === null) {
+        throw new ClienteRecusado({ ok: false, motivo: "implantacao_sem_taxa" });
+      }
 
       const [nota] = await query<{ id: string; status: string }>(
-        `insert into nota_fiscal (cliente_id, competencia, numero_nf, valor, data_emissao, status)
-         values ($1, $2, $3, $4::numeric, $5, 'aguardando_atesto') returning id, status`,
-        [dados.clienteId, dados.competencia, dados.numeroNf, centavosParaNumeric(dados.valorCentavos), dados.dataEmissao],
+        `insert into nota_fiscal (cliente_id, tipo, competencia, numero_nf, valor, data_emissao, status)
+         values ($1, $2, $3, $4, $5::numeric, $6, 'aguardando_atesto') returning id, status`,
+        [dados.clienteId, dados.tipo, dados.competencia, dados.numeroNf, centavosParaNumeric(dados.valorCentavos), dados.dataEmissao],
         c
       );
       await registrarEvento(c, { notaId: nota.id, tipo: "criacao", statusNovo: nota.status, feitoPor });
@@ -200,6 +212,8 @@ export async function criarNota(dados: DadosNovaNota, feitoPor: string): Promise
     if (erro instanceof ClienteRecusado) return erro.resultado;
     const pg = erro as { code?: string; constraint?: string };
     if (pg?.code === "23505" && pg.constraint === "uq_nota_fiscal_cliente_numero_nf") return { ok: false, motivo: "numero_duplicado" };
+    // Índice único parcial da 0010: no máximo UMA implantação não cancelada por cliente (vale também pra duas criações simultâneas).
+    if (pg?.code === "23505" && pg.constraint === "uq_nota_fiscal_implantacao_ativa") return { ok: false, motivo: "implantacao_duplicada" };
     throw erro;
   }
 }

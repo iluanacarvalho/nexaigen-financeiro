@@ -63,6 +63,8 @@ import {
   respostaLimiteExcedido
 } from "@/lib/rateLimit";
 import { detalhesDoErro } from "@/lib/validacao";
+import { centavosParaNumeric } from "@/lib/dinheiro";
+import { MENSAGEM_DISPENSA_SEM_TAXA, valoresPadrao, type IdPlano } from "@/lib/planos";
 
 const CATEGORIA_ALERTA = "integracao_educa";
 const AVISO_CONTRATO = "não foi possível salvar o contrato anexado";
@@ -100,22 +102,43 @@ export async function POST(req: NextRequest) {
     contratoPdf = pdf.buffer;
   }
 
+  // Preço (rodada 11-A, lib/planos.ts). INSERT: plano ausente → 'dispensa' (o mesmo destino que o antigo
+  // default 'essencial' teve na migration 0010); valor/taxa ausentes → padrão do plano. UPDATE (reenvio do
+  // Educa): ausente MANTÉM o valor salvo; presente sobrescreve — como sempre foi com valorMensal (que o
+  // Educa sempre envia: um reenvio dele substitui o valor editado à mão, comportamento preservado).
+  // Mudar pra Dispensa sem mandar taxa zera a taxa (Dispensa não tem implantação); taxa enviada com o
+  // cliente ficando Dispensa → CHECK do banco → 400 abaixo.
+  // Valores do ramo INSERT: o que veio, senão o padrão do plano efetivo. Não dá pra validar aqui "Dispensa sem
+  // taxa" pra plano AUSENTE — o mesmo corpo é INSERT (cliente novo, vira Dispensa) ou UPDATE (cliente que já é
+  // de porte, taxa legítima); quem decide é o CHECK do banco, traduzido em 400 no catch. Plano Dispensa ENVIADO
+  // junto com taxa já foi recusado pelo schema.
+  const planoInsert: IdPlano = c.plano ?? "dispensa";
+  const padraoInsert = valoresPadrao(planoInsert);
+  const valorInsertCentavos = c.valorMensal ?? padraoInsert.valorMensalCentavos;
+  const taxaInsertCentavos = c.taxaImplantacao !== undefined ? c.taxaImplantacao : padraoInsert.taxaImplantacaoCentavos;
+  const numericOuNull = (centavos: number | null | undefined) => (centavos === undefined || centavos === null ? null : centavosParaNumeric(centavos));
+
   let linhas: { id: string; criado: boolean }[];
   try {
     linhas = await query<{ id: string; criado: boolean }>(
       `insert into cliente_prefeitura
          (municipio_id_externo, nome, uf, valor_mensal, data_inicio_contrato, plano, dia_vencimento_contrato,
           cnpj, sistema_portal, portal_url, portal_usuario, contato_nome, contato_email, contato_telefone,
-          observacao)
-       values ($1, $2, $3, $4, $5, coalesce($6::text, 'essencial'), coalesce($7::int, 1),
-               $8, $9, $10, $11, $12, $13, $14, $15)
+          observacao, taxa_implantacao)
+       values ($1, $2, $3, $4::numeric, $5, coalesce($6::text, 'dispensa'), coalesce($7::int, 1),
+               $8, $9, $10, $11, $12, $13, $14, $15, $17::numeric)
        on conflict (municipio_id_externo) where municipio_id_externo is not null do update set
          nome = excluded.nome,
          uf = excluded.uf,
-         valor_mensal = excluded.valor_mensal,
+         valor_mensal = coalesce($16::numeric, cliente_prefeitura.valor_mensal),
          data_inicio_contrato = excluded.data_inicio_contrato,
          plano = coalesce($6::text, cliente_prefeitura.plano),
          dia_vencimento_contrato = coalesce($7::int, cliente_prefeitura.dia_vencimento_contrato),
+         taxa_implantacao = case
+           when $18::boolean then $19::numeric
+           when coalesce($6::text, cliente_prefeitura.plano) = 'dispensa' then null
+           else cliente_prefeitura.taxa_implantacao
+         end,
          cnpj = coalesce(excluded.cnpj, cliente_prefeitura.cnpj),
          sistema_portal = coalesce(excluded.sistema_portal, cliente_prefeitura.sistema_portal),
          portal_url = coalesce(excluded.portal_url, cliente_prefeitura.portal_url),
@@ -129,7 +152,7 @@ export async function POST(req: NextRequest) {
         c.municipioIdExterno,
         c.nome,
         c.uf,
-        c.valorMensal,
+        centavosParaNumeric(valorInsertCentavos),
         c.dataInicioContrato,
         c.plano ?? null,
         c.diaVencimentoContrato ?? null,
@@ -140,10 +163,19 @@ export async function POST(req: NextRequest) {
         c.contatoNome ?? null,
         c.contatoEmail ?? null,
         c.contatoTelefone ?? null,
-        c.observacao ?? null
+        c.observacao ?? null,
+        numericOuNull(c.valorMensal),
+        numericOuNull(taxaInsertCentavos),
+        c.taxaImplantacao !== undefined,
+        numericOuNull(c.taxaImplantacao)
       ]
     );
   } catch (erro) {
+    // Taxa enviada pra um cliente que fica Dispensa (plano não veio e o salvo é Dispensa): dado inválido, não falha de sistema.
+    const pg = erro as { code?: string; constraint?: string };
+    if (pg?.code === "23514" && pg.constraint === "ck_cliente_prefeitura_dispensa_sem_taxa") {
+      return NextResponse.json({ erro: "Dados inválidos", detalhes: { formErrors: [MENSAGEM_DISPENSA_SEM_TAXA], fieldErrors: {} } }, { status: 400 });
+    }
     // Nunca loga o erro cru (pode ecoar valores da linha) — só o código do pg.
     const codigo = (erro as { code?: string } | null)?.code ?? "desconhecido";
     console.error(`[integracao-educa] falha ao gravar cliente_prefeitura — código pg: ${codigo}.`);

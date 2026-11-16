@@ -52,7 +52,7 @@ async function criarCliente(): Promise<string> {
   const res = await CRIAR_CLIENTE(
     req("/api/clientes", {
       method: "POST",
-      corpo: { nome: `Prefeitura Ciclo ${sufixo} ${clientes.length}`, uf: "PR", valor_mensal: 3000, data_inicio_contrato: "2026-01-01" }
+      corpo: { nome: `Prefeitura Ciclo ${sufixo} ${clientes.length}`, uf: "PR", plano: "dispensa", valor_mensal: "3000", data_inicio_contrato: "2026-01-01" }
     })
   );
   const { id } = await res.json();
@@ -172,7 +172,10 @@ describe("ciclo de vida da nota — rotas reais, Postgres real", () => {
     expect((await criar({ valor: 10.5 })).status).toBe(400);
     const absurda = await criar({ competencia: "1990-01" });
     expect(absurda.status).toBe(400);
-    expect((await absurda.json()).detalhes.fieldErrors.competencia).toMatch(/2000/);
+    // Regra de negócio também no formato de contrato de `detalhes` (lista de mensagens por campo + formErrors).
+    const detalhesAbsurda = (await absurda.json()).detalhes;
+    expect(detalhesAbsurda.formErrors).toEqual([]);
+    expect(detalhesAbsurda.fieldErrors.competencia[0]).toMatch(/2000/);
     expect((await criar({ valor: "10,123" })).status).toBe(400);
     expect((await criar({ data_emissao: somarDias(HOJE, 1) })).status).toBe(400);
 

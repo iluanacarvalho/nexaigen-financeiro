@@ -84,6 +84,36 @@ export default async function PainelPage() {
         />
       </div>
 
+      <section aria-label="Implantação (única)" className="mt-4 rounded-lg border bg-white p-5 shadow-sm">
+        <h2 className="font-semibold text-navy">Implantação (única)</h2>
+        <p className="mb-3 text-xs text-slate-500">
+          Taxa de implantação e treinamento — cobrada uma vez, fora da mensalidade: não entra no MRR, mas entra em &quot;recebido&quot;, &quot;a receber&quot; e
+          inadimplência acima.
+        </p>
+        {kpis.implantacao.aCobrar.clientes === 0 && kpis.implantacao.aReceberCentavos === 0 && kpis.implantacao.recebidaCentavos === 0 ? (
+          // Estado vazio honesto: sem nada de implantação, uma frase — nunca três "R$ 0,00" fingindo dado.
+          <p className="text-sm text-slate-500">Nenhuma taxa de implantação a cobrar, em aberto ou recebida nos últimos 12 meses.</p>
+        ) : (
+        <dl className="grid gap-3 text-sm sm:grid-cols-3">
+            <div>
+              <dt className="text-slate-500">A cobrar (sem nota emitida)</dt>
+              <dd className={`text-xl font-bold ${kpis.implantacao.aCobrar.clientes > 0 ? "text-amber-700" : "text-navy"}`}>{formatarMoeda(kpis.implantacao.aCobrar.centavos)}</dd>
+              <dd className="text-xs text-slate-400">
+                {kpis.implantacao.aCobrar.clientes} {kpis.implantacao.aCobrar.clientes === 1 ? "cliente" : "clientes"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">A receber (nota emitida, em aberto)</dt>
+              <dd className="text-xl font-bold text-navy">{formatarMoeda(kpis.implantacao.aReceberCentavos)}</dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Recebida (últimos 12 meses)</dt>
+              <dd className="text-xl font-bold text-navy">{formatarMoeda(kpis.implantacao.recebidaCentavos)}</dd>
+            </div>
+          </dl>
+        )}
+      </section>
+
       <section className="mt-8 rounded-lg border bg-white p-5 shadow-sm">
         <h2 className="font-semibold text-navy">Faturado x recebido — últimos 12 meses</h2>
         <p className="mb-4 text-xs text-slate-500">

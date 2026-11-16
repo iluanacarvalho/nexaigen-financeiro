@@ -24,7 +24,7 @@ import {
 const HOJE = "2026-10-29";
 
 function cliente(extra: Partial<LinhaClientePainel> = {}): LinhaClientePainel {
-  return { id: "c1", nome: "Prefeitura A", uf: "PR", plano: "essencial", valor_mensal: "1000.00", status_contrato: "ativo", ...extra };
+  return { id: "c1", nome: "Prefeitura A", uf: "PR", plano: "dispensa", valor_mensal: "1000.00", status_contrato: "ativo", ...extra };
 }
 
 let seq = 0;
@@ -226,7 +226,7 @@ describe("montarPainelFinanceiro", () => {
 
 describe("ordenarClientesPorAtraso", () => {
   const base = (id: string, atraso: number, nome = id): ClientePainel => ({
-    id, nome, uf: "PR", plano: "essencial", statusContrato: "ativo", valorMensalCentavos: 0,
+    id, nome, uf: "PR", plano: "dispensa", planoRotulo: "Dispensa", statusContrato: "ativo", valorMensalCentavos: 0, implantacaoACobrarCentavos: null,
     notasEmAberto: 0, valorEmAbertoCentavos: 0, maiorAtrasoDias: atraso, situacao: classificarSituacaoCliente(atraso)
   });
 
@@ -254,14 +254,66 @@ describe("CSV — neutralização de fórmula e formato", () => {
   it("BOM UTF-8, separador ;, CRLF, vírgula decimal, nome malicioso neutralizado e aspas escapadas, sem contato", () => {
     const csv = gerarCsvClientes([
       {
-        id: "x", nome: '=cmd|"/C calc"!A0', uf: "PR", plano: "completo", statusContrato: "ativo",
+        id: "x", nome: '=cmd|"/C calc"!A0', uf: "PR", plano: "medio_porte", planoRotulo: "Médio Porte", statusContrato: "ativo", implantacaoACobrarCentavos: null,
         valorMensalCentavos: 450050, notasEmAberto: 2, valorEmAbertoCentavos: 5, maiorAtrasoDias: 61, situacao: "inadimplente"
       }
     ]);
     expect(csv.startsWith("﻿")).toBe(true);
     const linhas = csv.slice(1).split("\r\n");
     expect(linhas[0]).toBe("Cliente;UF;Plano;Valor mensal (R$);Notas em aberto;Valor em aberto (R$);Maior atraso (dias);Situação");
-    expect(linhas[1]).toBe(`"'=cmd|""/C calc""!A0";PR;completo;4500,50;2;0,05;61;Inadimplente`);
+    // Plano sai pelo RÓTULO (rodada 11-A), não pelo id.
+    expect(linhas[1]).toBe(`"'=cmd|""/C calc""!A0";PR;Médio Porte;4500,50;2;0,05;61;Inadimplente`);
     expect(csv).not.toMatch(/@|e-mail|telefone/i);
   });
 });
+
+describe("implantação (rodada 11-A) — cobrança única, fora do MRR", () => {
+  const porte = (extra: Partial<LinhaClientePainel> = {}) =>
+    cliente({ id: "p1", nome: "Prefeitura Porte", plano: "medio_porte", valor_mensal: "15000.00", taxa_implantacao: "20000.00", tem_implantacao_ativa: false, ...extra });
+
+  it("cliente ativo com taxa e sem nota de implantação → a cobrar; MRR só com a mensalidade", () => {
+    const p = montarPainelFinanceiro({ clientes: [porte()], notas: [], hoje: HOJE });
+    expect(p.kpis.mrr.valorCentavos).toBe(1500000);
+    expect(p.kpis.implantacao).toEqual({ aCobrar: { clientes: 1, centavos: 2000000 }, aReceberCentavos: 0, recebidaCentavos: 0 });
+    expect(p.clientes[0]).toMatchObject({ planoRotulo: "Médio Porte", implantacaoACobrarCentavos: 2000000 });
+  });
+
+  it.each([
+    ["já tem nota de implantação ativa", { tem_implantacao_ativa: true }],
+    ["contrato suspenso", { status_contrato: "suspenso" }],
+    ["sem taxa combinada", { taxa_implantacao: null }]
+  ])("%s → nada a cobrar", (_d, extra) => {
+    const p = montarPainelFinanceiro({ clientes: [porte(extra as Partial<LinhaClientePainel>)], notas: [], hoje: HOJE });
+    expect(p.kpis.implantacao.aCobrar).toEqual({ clientes: 0, centavos: 0 });
+    expect(p.clientes[0].implantacaoACobrarCentavos).toBeNull();
+  });
+
+  it("nota de implantação: entra em a receber/recebido/inadimplência, NUNCA no MRR; quebra própria no quadro de implantação", () => {
+    const p = montarPainelFinanceiro({
+      clientes: [porte({ tem_implantacao_ativa: true })],
+      notas: [
+        // implantação vencida (limite 2026-10-19 → 10 dias)
+        nota({ cliente_id: "p1", tipo: "implantacao", valor: "20000.00", status: "atestada", data_emissao: "2026-09-10", data_atesto: "2026-09-19", data_limite_pagamento: "2026-10-19", competencia: "2026-09-01" }),
+        // mensalidade paga em outubro
+        nota({ cliente_id: "p1", tipo: "mensalidade", valor: "15000.00", status: "paga", data_emissao: "2026-09-01", data_atesto: "2026-09-02", data_limite_pagamento: "2026-10-02", data_pagamento: "2026-10-01", competencia: "2026-09-01" })
+      ],
+      hoje: HOJE
+    });
+    expect(p.kpis.mrr.valorCentavos).toBe(1500000);
+    expect(p.kpis.aReceber?.totalCentavos).toBe(2000000);
+    expect(p.kpis.aReceber?.vencidasCentavos).toBe(2000000);
+    expect(p.kpis.recebidoMesCentavos).toBe(1500000);
+    expect(p.kpis.inadimplencia).toEqual({ percentual: 57.1, vencidoCentavos: 2000000, faturadoCentavos: 3500000 });
+    expect(p.kpis.implantacao).toEqual({ aCobrar: { clientes: 0, centavos: 0 }, aReceberCentavos: 2000000, recebidaCentavos: 0 });
+  });
+
+  it("implantação paga na janela → recebida", () => {
+    const p = montarPainelFinanceiro({
+      clientes: [porte({ tem_implantacao_ativa: true })],
+      notas: [nota({ cliente_id: "p1", tipo: "implantacao", valor: "20000.00", status: "paga", data_emissao: "2026-08-01", data_atesto: "2026-08-02", data_limite_pagamento: "2026-09-01", data_pagamento: "2026-08-20", competencia: "2026-08-01" })],
+      hoje: HOJE
+    });
+    expect(p.kpis.implantacao.recebidaCentavos).toBe(2000000);
+  });
+});
+

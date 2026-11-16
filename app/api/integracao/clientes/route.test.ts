@@ -142,26 +142,82 @@ describe("POST /api/integracao/clientes — upsert por municipio_id_externo", ()
 
     const [sql, params] = chamadaUpsert()!;
     expect(sql).toMatch(/on conflict \(municipio_id_externo\) where municipio_id_externo is not null do update/);
-    expect(sql).toMatch(/coalesce\(\$6::text, 'essencial'\)/);
+    // Plano ausente no INSERT → 'dispensa' (o destino do antigo default 'essencial' na migration 0010).
+    expect(sql).toMatch(/coalesce\(\$6::text, 'dispensa'\)/);
     expect(params[0]).toBe(MUNICIPIO_ID);
-    // plano/dia ausentes chegam como null — default só no INSERT, coalesce mantém o salvo no UPDATE.
+    // valorMensal 4500 (número JSON do Educa) → "4500.00" exato; plano/dia ausentes chegam null (coalesce no UPDATE).
+    expect(params[3]).toBe("4500.00");
     expect(params[5]).toBeNull();
     expect(params[6]).toBeNull();
-    // Contrato não entra mais no upsert (vira versão depois, em cliente_contrato_versao).
-    expect(params).toHaveLength(15);
+    // UPDATE: valor enviado sobrescreve ($16); taxa não enviada ($18=false) mantém a salva; INSERT Dispensa → taxa null ($17).
+    expect(params[15]).toBe("4500.00");
+    expect(params[16]).toBeNull();
+    expect(params[17]).toBe(false);
+    expect(params).toHaveLength(19);
     expect(sql).not.toContain("contrato_arquivo");
     expect(registrarVersaoMock).not.toHaveBeenCalled();
   });
 
   it("municipio_id_externo já existente — UPDATE, devolve { id, criado: false }", async () => {
     queryMock.mockResolvedValue([{ id: "cliente-existente", criado: false }]);
-    const res = await POST(requisicao(corpoValido({ plano: "completo", observacao: "retry do Educa" })));
+    const res = await POST(requisicao(corpoValido({ plano: "medio_porte", observacao: "retry do Educa" })));
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ id: "cliente-existente", criado: false });
     const [, params] = chamadaUpsert()!;
-    expect(params[5]).toBe("completo");
+    expect(params[5]).toBe("medio_porte");
     expect(params[14]).toBe("retry do Educa");
+  });
+
+  it.each([
+    ["dispensa", null],
+    ["pequeno_porte", "15000.00"],
+    ["medio_porte", "20000.00"],
+    ["grande_porte", "30000.00"]
+  ])("aceita o plano %s; sem valor/taxa enviados, o INSERT usa os padrões do plano", async (plano, taxaPadrao) => {
+    queryMock.mockResolvedValue([{ id: "c", criado: true }]);
+    const { valorMensal: _ignorado, ...semValor } = corpoValido({ plano });
+    void _ignorado;
+    const res = await POST(requisicao(semValor));
+    expect(res.status).toBe(200);
+    const [, params] = chamadaUpsert()!;
+    const padraoMensal = { dispensa: "5457.00", pequeno_porte: "8500.00", medio_porte: "15000.00", grande_porte: "35000.00" }[plano];
+    expect(params[3]).toBe(padraoMensal);
+    expect(params[15]).toBeNull(); // nada enviado: UPDATE mantém o valor salvo
+    expect(params[16]).toBe(taxaPadrao);
+  });
+
+  it("valor como TEXTO e taxa explícita: vão como vieram (o servidor não força o padrão)", async () => {
+    queryMock.mockResolvedValue([{ id: "c", criado: true }]);
+    await POST(requisicao(corpoValido({ plano: "pequeno_porte", valorMensal: "8000,50", taxaImplantacao: "12000" })));
+    const [, params] = chamadaUpsert()!;
+    expect(params[3]).toBe("8000.50");
+    expect(params[16]).toBe("12000.00");
+    expect(params[17]).toBe(true);
+    expect(params[18]).toBe("12000.00");
+  });
+
+  it.each(["essencial", "completo"])("plano descontinuado '%s' (Educa desatualizado) → 400 com mensagem clara, nunca mapeado", async (plano) => {
+    const res = await POST(requisicao(corpoValido({ plano })));
+    expect(res.status).toBe(400);
+    expect((await res.json()).detalhes.fieldErrors.plano[0]).toMatch(new RegExp(`plano "${plano}" foi descontinuado`));
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["Dispensa com taxa", { plano: "dispensa", taxaImplantacao: "100" }],
+    ["valor com 3 casas", { valorMensal: 4500.555 }],
+    ["valor negativo em texto", { valorMensal: "-1" }]
+  ])("%s → 400, nunca grava", async (_d, extra) => {
+    expect((await POST(requisicao(corpoValido(extra)))).status).toBe(400);
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it("taxa enviada pra cliente que FICA Dispensa (plano não veio): CHECK do banco → 400, sem alerta de sistema", async () => {
+    queryMock.mockRejectedValue(Object.assign(new Error("check"), { code: "23514", constraint: "ck_cliente_prefeitura_dispensa_sem_taxa" }));
+    const res = await POST(requisicao(corpoValido({ taxaImplantacao: "100" })));
+    expect(res.status).toBe(400);
+    expect(alertarErroSistemaMock).not.toHaveBeenCalled();
   });
 
   it("falha do banco — 500 e alerta de sistema SEM dado do cliente na mensagem", async () => {

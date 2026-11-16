@@ -142,17 +142,35 @@ describe("POST /api/equipe", () => {
 });
 
 describe("POST /api/clientes (criação — não estrito por contrato: chave extra é descartada)", () => {
-  const valido = { nome: "Prefeitura X", uf: "PR", valor_mensal: 1000, data_inicio_contrato: "2026-01-01" };
-  it("(a) válido passa e aplica os defaults de criação (plano essencial, dia 1)", async () => {
+  const valido = { nome: "Prefeitura X", uf: "PR", plano: "pequeno_porte", data_inicio_contrato: "2026-01-01" };
+  const paramsInsert = () => queryMock.mock.calls.find((c) => (c[0] as string).includes("insert into cliente_prefeitura"))![1] as unknown[];
+  it("(a) válido passa e aplica os padrões do plano na criação (mensalidade e taxa do Pequeno Porte, dia 1)", async () => {
     expect((await chamar(CRIAR_CLIENTE, "POST", valido)).status).toBe(200);
-    const params = queryMock.mock.calls.find((c) => (c[0] as string).includes("insert into cliente_prefeitura"))![1] as unknown[];
-    expect(params[3]).toBe("essencial");
+    const params = paramsInsert();
+    expect(params[3]).toBe("pequeno_porte");
+    expect(params[4]).toBe("8500.00");
     expect(params[5]).toBe(1);
+    expect(params[14]).toBe("15000.00");
+  });
+  it("(a) valor e taxa enviados (texto) valem como vieram — o servidor não força o padrão", async () => {
+    expect((await chamar(CRIAR_CLIENTE, "POST", { ...valido, valor_mensal: "7999,90", taxa_implantacao: "10000" })).status).toBe(200);
+    expect(paramsInsert()[4]).toBe("7999.90");
+    expect(paramsInsert()[14]).toBe("10000.00");
   });
   it("(b) data e URL inválidas → 400 com as mensagens do projeto", async () => {
     const d = await esperar400ComDetalhes(await chamar(CRIAR_CLIENTE, "POST", { ...valido, data_inicio_contrato: "01/01/2026", portal_url: "javascript:alert(1)" }));
     expect(d.fieldErrors.data_inicio_contrato).toEqual(["Use o formato YYYY-MM-DD."]);
     expect(d.fieldErrors.portal_url).toEqual(["Use um endereço http:// ou https://."]);
+  });
+  it("(b) plano ausente, plano descontinuado, valor float, Dispensa com taxa → 400 com fieldErrors", async () => {
+    const semPlano = await esperar400ComDetalhes(await chamar(CRIAR_CLIENTE, "POST", { ...valido, plano: undefined }));
+    expect(semPlano.fieldErrors.plano).toHaveLength(1);
+    const antigo = await esperar400ComDetalhes(await chamar(CRIAR_CLIENTE, "POST", { ...valido, plano: "essencial" }));
+    expect(antigo.fieldErrors.plano[0]).toMatch(/descontinuado/);
+    const float = await esperar400ComDetalhes(await chamar(CRIAR_CLIENTE, "POST", { ...valido, valor_mensal: 8500.5 }));
+    expect(float.fieldErrors.valor_mensal).toHaveLength(1);
+    const dispensa = await esperar400ComDetalhes(await chamar(CRIAR_CLIENTE, "POST", { ...valido, plano: "dispensa", taxa_implantacao: "100" }));
+    expect(dispensa.fieldErrors.taxa_implantacao[0]).toMatch(/Dispensa não tem taxa/);
   });
   it("chave extra é descartada (contrato de sempre desta rota), não vira 400", async () => {
     expect((await chamar(CRIAR_CLIENTE, "POST", { ...valido, campo_que_nao_existe: 1 })).status).toBe(200);
@@ -166,7 +184,7 @@ describe("PATCH /api/clientes/[id] (estrito)", () => {
     expect(sql).toContain("set observacao = $1 where");
   });
   it("(b) inválido → 400 com fieldErrors; PATCH vazio → formErrors", async () => {
-    const d = await esperar400ComDetalhes(await chamar(EDITAR_CLIENTE, "PATCH", { valor_mensal: -1 }));
+    const d = await esperar400ComDetalhes(await chamar(EDITAR_CLIENTE, "PATCH", { valor_mensal: "-1" }));
     expect(Object.keys(d.fieldErrors)).toEqual(["valor_mensal"]);
     const vazio = await esperar400ComDetalhes(await chamar(EDITAR_CLIENTE, "PATCH", {}));
     expect(vazio.formErrors).toEqual(["Envie ao menos um campo para atualizar."]);
@@ -205,6 +223,18 @@ describe("POST /api/notas (estrito)", () => {
   it("(b) valor como number (float) → 400 em fieldErrors.valor", async () => {
     const d = await esperar400ComDetalhes(await chamar(CRIAR_NOTA, "POST", { ...valido, valor: 100.5 }));
     expect(d.fieldErrors.valor).toHaveLength(1);
+  });
+  it("(a) implantação sem competência → competência = mês da emissão; mensalidade sem competência → 400", async () => {
+    expect((await chamar(CRIAR_NOTA, "POST", { cliente_id: ID, tipo: "implantacao", valor: "15000", data_emissao: "2026-10-05" })).status).toBe(201);
+    expect(servicoNotas.criarNota.mock.calls.at(-1)![0]).toMatchObject({ tipo: "implantacao", competencia: "2026-10-01" });
+    const semCompetencia = await esperar400ComDetalhes(await chamar(CRIAR_NOTA, "POST", { cliente_id: ID, valor: "10" }));
+    expect(semCompetencia.fieldErrors.competencia).toEqual(["Informe a competência (aaaa-mm)."]);
+  });
+  it("(b) implantação com competência diferente do mês da emissão → 400; tipo inválido → 400", async () => {
+    const d = await esperar400ComDetalhes(await chamar(CRIAR_NOTA, "POST", { cliente_id: ID, tipo: "implantacao", valor: "15000", data_emissao: "2026-10-05", competencia: "2026-09" }));
+    expect(d.fieldErrors.competencia[0]).toMatch(/mês da emissão/);
+    const tipo = await esperar400ComDetalhes(await chamar(CRIAR_NOTA, "POST", { ...valido, tipo: "multa" }));
+    expect(tipo.fieldErrors.tipo).toHaveLength(1);
   });
   it("(c) chave desconhecida → 400", async () => {
     const d = await esperar400ComDetalhes(await chamar(CRIAR_NOTA, "POST", { ...valido, status: "paga" }));

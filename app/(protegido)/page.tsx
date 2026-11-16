@@ -54,6 +54,16 @@ export default async function Dashboard() {
         </div>
       </div>
 
+      {resumo.implantacaoACobrar.clientes > 0 && (
+        <a href="/notas" className="mt-4 block rounded-lg border border-amber-300 bg-amber-50 p-5 text-sm shadow-sm hover:bg-amber-100">
+          <p className="font-semibold text-amber-900">
+            Implantação a cobrar: {resumo.implantacaoACobrar.clientes} {resumo.implantacaoACobrar.clientes === 1 ? "cliente" : "clientes"} —{" "}
+            {formatarMoeda(resumo.implantacaoACobrar.centavos)}
+          </p>
+          <p className="mt-1 text-xs text-amber-800">Taxas de implantação combinadas ainda sem nota emitida. Crie a nota em Notas fiscais quando puder ser cobrada.</p>
+        </a>
+      )}
+
       <p className="mt-8 text-xs text-slate-400">
         Status recalculado automaticamente pelo job diário (/api/cron/verificar-prazos), agendado pelo GitHub Actions
         — ver README, Seção 5.

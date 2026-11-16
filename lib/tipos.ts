@@ -52,7 +52,11 @@ export interface ClientePrefeitura {
   nome: string;
   uf: string;
   cnpj: string | null;
-  plano: "essencial" | "completo";
+  plano: "dispensa" | "pequeno_porte" | "medio_porte" | "grande_porte"; // lib/planos.ts
+  /** Taxa de implantação e treinamento COMBINADA (numeric em string, ex. "15000.00"); null = sem implantação. */
+  taxa_implantacao: string | null;
+  /** Já existe nota de implantação não cancelada (GET /api/clientes) — sem ela, o cliente tem "Implantação a cobrar". */
+  tem_implantacao_ativa?: boolean;
   valor_mensal: string;
   dia_vencimento_contrato: number;
   data_inicio_contrato: string;
@@ -95,7 +99,11 @@ export type VersaoArquivoNota = VersaoArquivoPdf;
 export type SituacaoNotaListada = "aguardando_atesto" | "atestada" | "vencida" | "atraso_critico" | "paga" | "cancelada";
 
 /** Uma linha de GET /api/notas (lib/notasServico.ts#listarNotas). */
+/** Mensalidade (recorrente) ou implantação (cobrança única) — nota_fiscal.tipo (0010). */
+export type TipoNota = "mensalidade" | "implantacao";
+
 export interface NotaListada {
+  tipo: TipoNota;
   id: string;
   cliente_id: string;
   numero_nf: string | null;

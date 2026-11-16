@@ -14,6 +14,7 @@ const CLIENTE = { id: "c1", nome: "Prefeitura de Alfa", uf: "PR", sistema_portal
 function nota(extra: Partial<NotaListada>): NotaListada {
   return {
     id: "n1",
+    tipo: "mensalidade",
     cliente_id: "c1",
     numero_nf: "100",
     valor: "1500.50",

@@ -68,9 +68,9 @@ describe("painel financeiro — fixtures em Postgres real, valores exatos", () =
     await emTransacaoDesfeita(async (c) => {
       await c.query(`delete from cliente_prefeitura`);
 
-      const alfa = await inserirCliente(c, "Prefeitura Alfa", "1500.50", "completo", "ativo");
-      const beta = await inserirCliente(c, "Prefeitura Beta", "2499.75", "essencial", "ativo");
-      const gama = await inserirCliente(c, "Prefeitura Gama", "800.00", "essencial", "suspenso");
+      const alfa = await inserirCliente(c, "Prefeitura Alfa", "1500.50", "medio_porte", "ativo");
+      const beta = await inserirCliente(c, "Prefeitura Beta", "2499.75", "dispensa", "ativo");
+      const gama = await inserirCliente(c, "Prefeitura Gama", "800.00", "dispensa", "suspenso");
 
       // Alfa: paga em out (33 dias da emissão) + uma aguardando atesto há 27 dias.
       await inserirNota(c, { clienteId: alfa, competencia: "2026-09-01", valor: "1500.50", emissao: "2026-09-05", atesto: "2026-09-10", pagamento: "2026-10-08", status: "paga" });
@@ -173,7 +173,7 @@ describe("GET /api/painel-financeiro — rota real", () => {
     expect(res.headers.get("cache-control")).toBe("no-store");
     const corpo = await res.json();
     expect(Object.keys(corpo.kpis).sort()).toEqual(
-      ["aReceber", "aguardandoAtestoMais15Dias", "contagemPorSituacao", "inadimplencia", "mrr", "prazoMedioRecebimentoDias", "recebidoMesCentavos"].sort()
+      ["aReceber", "aguardandoAtestoMais15Dias", "contagemPorSituacao", "implantacao", "inadimplencia", "mrr", "prazoMedioRecebimentoDias", "recebidoMesCentavos"].sort()
     );
     expect(corpo.serie).toHaveLength(12);
     expect(Array.isArray(corpo.clientes)).toBe(true);

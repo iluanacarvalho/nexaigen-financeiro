@@ -57,8 +57,13 @@ export default function TabelaClientesPainel({ clientes }: { clientes: ClientePa
                     {c.nome} — {c.uf}
                   </a>
                   {c.statusContrato !== "ativo" && <span className="ml-2 text-xs text-slate-400">({c.statusContrato})</span>}
+                  {c.implantacaoACobrarCentavos !== null && (
+                    <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                      Implantação a cobrar — {formatarMoeda(c.implantacaoACobrarCentavos)}
+                    </span>
+                  )}
                 </td>
-                <td className="p-3 capitalize">{c.plano}</td>
+                <td className="p-3">{c.planoRotulo}</td>
                 <td className="p-3 text-right">{formatarMoeda(c.valorMensalCentavos)}</td>
                 <td className="p-3 text-right">
                   {c.notasEmAberto === 0 ? "—" : `${c.notasEmAberto} · ${formatarMoeda(c.valorEmAbertoCentavos)}`}

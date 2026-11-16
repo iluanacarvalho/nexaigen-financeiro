@@ -38,3 +38,27 @@ export function centavosParaNumeric(centavos: number): string {
   const abs = Math.abs(centavos);
   return `${sinal}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
 }
+
+const VALOR_TEXTO = /^\d{1,10}(?:[.,]\d{1,2})?$/;
+
+/**
+ * Valor monetário recebido como TEXTO ("1500", "1500.5", "1500,50") —
+ * nunca como number do JSON, pra não passar por ponto flutuante. Até 10
+ * dígitos inteiros (cabe em numeric(12,2)), no máximo 2 casas, sem
+ * separador de milhar, positivo. Devolve centavos inteiros
+ * (lib/painelFinanceiro.ts#paraCentavos — a mesma conversão do Painel).
+ */
+export function lerValorMonetario(valor: string): { ok: true; centavos: number } | { ok: false; erro: string } {
+  const texto = valor.trim();
+  if (!VALOR_TEXTO.test(texto)) {
+    return { ok: false, erro: "Valor inválido — use só números, com vírgula ou ponto antes dos centavos (no máximo 2 casas), sem separador de milhar." };
+  }
+  const centavos = paraCentavos(texto.replace(",", "."));
+  if (centavos <= 0) return { ok: false, erro: "O valor precisa ser maior que zero." };
+  return { ok: true, centavos };
+}
+
+/** Centavos → texto pra um campo editável, no formato que a pessoa digita: 850000 → "8500,00" (sem separador de milhar). */
+export function centavosParaTextoCampo(centavos: number): string {
+  return `${Math.floor(centavos / 100)},${String(centavos % 100).padStart(2, "0")}`;
+}

@@ -4,30 +4,59 @@
 //   - PATCH /api/clientes/[id] (edição pela equipe, todos os campos opcionais),
 //   - POST /api/integracao/clientes (chamada pelo nexaigen-educa, camelCase).
 //
-// ZOD 4 (rodada 10-A) — por que os defaults NÃO ficam em CAMPOS_CLIENTE:
-// no zod 4 um `.default()` dentro de um campo opcional É APLICADO quando a
-// chave está ausente (no zod 3 a chave ficava ausente). Com o default no
-// campo-base, `.partial()` do PATCH e o `.optional()` da integração
-// passariam a gravar plano="essencial"/dia=1 em todo PATCH ou retry do
-// Educa que não mandasse esses campos — sobrescrevendo o valor salvo.
-// Então: campos-base SEM default; o default é aplicado só no schema de
-// CRIAÇÃO (ClienteSchema). lib/clienteSchema.test.ts e
-// app/api/clientes/[id]/route.test.ts provam os dois lados.
+// PLANOS (rodada 11-A): os 4 ids de lib/planos.ts; ids antigos
+// ('essencial'/'completo') dão 400 com mensagem clara, nunca mapeados.
+// DINHEIRO: valor_mensal e taxa_implantacao entram como TEXTO ("8500",
+// "8500,00") e saem em CENTAVOS inteiros (lib/dinheiro.ts#lerValorMonetario)
+// — nunca float. (A integração aceita também número JSON por
+// compatibilidade com o Educa — ver IntegracaoClienteSchema.)
+//
+// ZOD 4 — DEFAULTS SÓ NA CRIAÇÃO: no zod 4 um `.default()` dentro de campo
+// opcional É APLICADO quando a chave falta. Por isso nenhum campo-base tem
+// default: os padrões (plano → mensalidade/taxa de lib/planos.ts, dia de
+// vencimento 1) entram só no schema de CRIAÇÃO. No PATCH e na integração,
+// campo ausente continua ausente (nunca regrava o padrão por cima do
+// valor combinado).
 
 import { z } from "zod";
+import { lerValorMonetario } from "./dinheiro";
+import { IDS_PLANOS, IDS_PLANOS_DESCONTINUADOS, MENSAGEM_DISPENSA_SEM_TAXA, mensagemPlanoDescontinuado, precosDeCriacao } from "./planos";
+
+const planoSchema = z.enum(IDS_PLANOS, {
+  error: (issue) =>
+    typeof issue.input === "string" && (IDS_PLANOS_DESCONTINUADOS as readonly string[]).includes(issue.input)
+      ? mensagemPlanoDescontinuado(issue.input)
+      : `Plano inválido — use um destes: ${IDS_PLANOS.join(", ")}.`
+});
+
+/** Texto monetário → centavos inteiros (mesma regra do valor da nota fiscal). */
+function textoMonetario() {
+  return z
+    .string()
+    .max(20)
+    .transform((texto, ctx) => {
+      const r = lerValorMonetario(texto);
+      if (!r.ok) {
+        ctx.issues.push({ code: "custom", message: r.erro, input: texto });
+        return z.NEVER;
+      }
+      return r.centavos;
+    });
+}
 
 const CAMPOS_CLIENTE = {
   nome: z.string().min(3),
   uf: z.string().length(2),
   cnpj: z.string().optional(),
-  plano: z.enum(["essencial", "completo"]),
-  valor_mensal: z.number().positive(),
+  plano: planoSchema,
+  valor_mensal: textoMonetario(),
+  /** null = sem implantação combinada. */
+  taxa_implantacao: textoMonetario().nullable(),
   dia_vencimento_contrato: z.number().int().min(1).max(28),
   data_inicio_contrato: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { error: "Use o formato YYYY-MM-DD." }),
   sistema_portal: z.string().optional(),
   // Só http/https (rodada 10-A): portal_url vira um <a href> clicável na
-  // Fila de Checagem — `javascript:`/`data:` (que o zod 3 aceitava) seriam
-  // um XSS armazenado. Endereço de portal de prefeitura é sempre http(s).
+  // Fila de Checagem — `javascript:`/`data:` seriam um XSS armazenado.
   portal_url: z.url({ protocol: /^https?$/, error: "Use um endereço http:// ou https://." }).optional(),
   portal_usuario: z.string().optional(),
   contato_nome: z.string().optional(),
@@ -36,41 +65,79 @@ const CAMPOS_CLIENTE = {
   observacao: z.string().optional()
 };
 
-/** Criação (POST /api/clientes): defaults de plano e dia de vencimento só aqui. Chaves extras são descartadas, como sempre foram. */
-export const ClienteSchema = z.object({
-  ...CAMPOS_CLIENTE,
-  plano: CAMPOS_CLIENTE.plano.default("essencial"),
-  dia_vencimento_contrato: CAMPOS_CLIENTE.dia_vencimento_contrato.default(1)
-});
+/** Dispensa nunca tem taxa — vale pra criação, PATCH e integração (o banco também garante: ck_cliente_prefeitura_dispensa_sem_taxa). */
+function dispensaSemTaxa(plano: string | undefined, taxa: number | null | undefined, campoTaxa: string, ctx: z.RefinementCtx) {
+  if (plano === "dispensa" && taxa !== undefined && taxa !== null) {
+    ctx.addIssue({ code: "custom", message: MENSAGEM_DISPENSA_SEM_TAXA, path: [campoTaxa] });
+  }
+}
+
+/**
+ * Criação (POST /api/clientes): plano obrigatório; valor_mensal e
+ * taxa_implantacao opcionais — AUSENTES usam o padrão do plano
+ * (lib/planos.ts#precosDeCriacao); enviados valem como vieram (o servidor
+ * não força o padrão). Saída já em centavos, com os padrões resolvidos.
+ * Chaves extras são descartadas, como sempre foram nesta rota.
+ */
+export const ClienteSchema = z
+  .object({
+    ...CAMPOS_CLIENTE,
+    valor_mensal: CAMPOS_CLIENTE.valor_mensal.optional(),
+    taxa_implantacao: CAMPOS_CLIENTE.taxa_implantacao.optional(),
+    dia_vencimento_contrato: CAMPOS_CLIENTE.dia_vencimento_contrato.default(1)
+  })
+  .superRefine((c, ctx) => dispensaSemTaxa(c.plano, c.taxa_implantacao, "taxa_implantacao", ctx))
+  .transform((c) => {
+    const precos = precosDeCriacao(c.plano, { valorMensalCentavos: c.valor_mensal, taxaImplantacaoCentavos: c.taxa_implantacao });
+    // dispensaSemTaxa já recusou o único caso de erro de precosDeCriacao.
+    if (!precos.ok) throw new Error(precos.erro);
+    return { ...c, valor_mensal: precos.valorMensalCentavos, taxa_implantacao: precos.taxaImplantacaoCentavos };
+  });
+
+export type ClienteCriacao = z.output<typeof ClienteSchema>;
 
 /**
  * Edição (PATCH): todos os campos opcionais, só atualiza o que vier, SEM
- * default nenhum. Estrito: municipio_id_externo/contrato_arquivo_* (ou
- * qualquer outra chave) → 400 — contrato só muda pela rota de contrato, o
- * vínculo com o Educa só pela integração. PATCH vazio é dado inválido.
+ * default nenhum (trocar de plano NÃO reprecifica sozinho — a tela pede
+ * confirmação e manda os valores novos explicitamente). Estrito:
+ * municipio_id_externo/contrato_arquivo_* (ou qualquer outra chave) → 400.
+ * PATCH vazio é dado inválido.
  */
 export const ClientePatchSchema = z
   .strictObject(CAMPOS_CLIENTE)
   .partial()
+  .superRefine((c, ctx) => dispensaSemTaxa(c.plano, c.taxa_implantacao, "taxa_implantacao", ctx))
   .refine((c) => Object.values(c).some((v) => v !== undefined), { error: "Envie ao menos um campo para atualizar." });
 
-export type ClientePatch = z.infer<typeof ClientePatchSchema>;
+export type ClientePatch = z.output<typeof ClientePatchSchema>;
 
 const c = CAMPOS_CLIENTE;
 
 /**
+ * Dinheiro na integração: texto (preferido) OU número JSON — o Educa
+ * envia `valorMensal` como número desde a rodada 04, e trocar o tipo
+ * quebraria a integração em silêncio. O número é convertido pela sua
+ * representação DECIMAL (String(n) — "8500.5"), validada pela mesma regra
+ * de texto (até 2 casas); nunca há conta em ponto flutuante.
+ */
+function dinheiroDaIntegracao() {
+  return z.union([z.string(), z.number()]).pipe(z.transform((v) => (typeof v === "number" ? String(v) : v))).pipe(textoMonetario());
+}
+
+/**
  * Corpo de POST /api/integracao/clientes (nexaigen-educa → Financeiro).
  * camelCase porque é o contrato público entre os dois sistemas; cada
- * regra vem de CAMPOS_CLIENTE. plano/diaVencimentoContrato SEM default
- * (vêm da base): no UPDATE do upsert, campo ausente mantém o valor salvo
- * — o default só se aplica no INSERT, em SQL (ver a rota).
+ * regra vem de CAMPOS_CLIENTE. plano, valorMensal e taxaImplantacao SEM
+ * default aqui: no UPDATE do upsert, ausente mantém o valor salvo; no
+ * INSERT a rota usa os padrões do plano (lib/planos.ts).
  */
 export const IntegracaoClienteSchema = z
   .object({
     municipioIdExterno: z.uuid(),
     nome: c.nome,
     uf: c.uf,
-    valorMensal: c.valor_mensal,
+    valorMensal: dinheiroDaIntegracao().optional(),
+    taxaImplantacao: dinheiroDaIntegracao().nullable().optional(),
     dataInicioContrato: c.data_inicio_contrato,
     plano: c.plano.optional(),
     diaVencimentoContrato: c.dia_vencimento_contrato.optional(),
@@ -85,9 +152,10 @@ export const IntegracaoClienteSchema = z
     contratoArquivoBase64: z.string().min(1).optional(),
     contratoArquivoNome: z.string().min(1).max(255).optional()
   })
+  .superRefine((v, ctx) => dispensaSemTaxa(v.plano, v.taxaImplantacao, "taxaImplantacao", ctx))
   .refine((v) => (v.contratoArquivoBase64 === undefined) === (v.contratoArquivoNome === undefined), {
     error: "contratoArquivoBase64 e contratoArquivoNome devem vir juntos (ou nenhum dos dois).",
     path: ["contratoArquivoNome"]
   });
 
-export type IntegracaoCliente = z.infer<typeof IntegracaoClienteSchema>;
+export type IntegracaoCliente = z.output<typeof IntegracaoClienteSchema>;

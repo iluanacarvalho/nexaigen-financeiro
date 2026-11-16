@@ -35,14 +35,17 @@ export async function lerDadosPainel(
 ): Promise<{ clientes: LinhaClientePainel[]; notas: LinhaNotaPainel[] }> {
   const [clientes, notas] = await Promise.all([
     query<LinhaClientePainel>(
-      `select id, nome, uf, plano, valor_mensal, status_contrato
-       from cliente_prefeitura
-       order by nome`,
+      // tem_implantacao_ativa: subconsulta correlacionada por linha, na MESMA query (sem N+1) — olha TODAS as
+      // notas de implantação do cliente, não só as da janela (uma paga há 2 anos não pode virar "a cobrar").
+      `select c.id, c.nome, c.uf, c.plano, c.valor_mensal, c.status_contrato, c.taxa_implantacao,
+         exists (select 1 from nota_fiscal n where n.cliente_id = c.id and n.tipo = 'implantacao' and n.status <> 'cancelada') as tem_implantacao_ativa
+       from cliente_prefeitura c
+       order by c.nome`,
       [],
       executor
     ),
     query<LinhaNotaPainel>(
-      `select id, cliente_id, valor, competencia, status, data_emissao, data_atesto, data_limite_pagamento, data_pagamento
+      `select id, cliente_id, tipo, valor, competencia, status, data_emissao, data_atesto, data_limite_pagamento, data_pagamento
        from nota_fiscal
        where status <> 'cancelada'
          and (

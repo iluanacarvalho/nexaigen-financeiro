@@ -12,6 +12,10 @@
 //      409 cliente suspenso/encerrado ou número de NF repetido pro cliente.
 //      O PDF, se houver, vai depois em POST /api/notas/[id]/arquivo (upload
 //      versionado que já existe).
+//      tipo (rodada 11-A): "mensalidade" (padrão) ou "implantacao" — cobrança
+//      ÚNICA da taxa combinada do cliente: competência = mês da emissão,
+//      409 se o cliente não tem taxa ou já tem implantação ativa. Mesma
+//      máquina de estados e mesmos prazos (Lei 14.133, art. 141).
 
 import { NextRequest, NextResponse } from "next/server";
 import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
@@ -31,6 +35,7 @@ export async function GET(req: NextRequest) {
 
   const filtros: FiltrosNotas = {
     situacao: f.situacao as SituacaoNota | undefined,
+    tipo: f.tipo,
     clienteId: f.cliente_id,
     competencia: f.competencia ? normalizarCompetencia(f.competencia)! : undefined,
     busca: f.busca,
@@ -53,24 +58,38 @@ export async function POST(req: NextRequest) {
   const n = parsed.data;
   const hoje = hojeEmSaoPaulo(new Date());
 
-  const erros: Record<string, string> = {};
-  const competencia = normalizarCompetencia(n.competencia);
-  if (!competencia) erros.competencia = "Competência inválida — use aaaa-mm.";
-  else {
-    const erro = validarCompetencia(competencia, hoje);
-    if (erro) erros.competencia = erro;
-  }
-  const valor = lerValorMonetario(n.valor);
-  if (!valor.ok) erros.valor = valor.erro;
+  const erros: Record<string, string[]> = {};
   const dataEmissao = n.data_emissao ?? hoje;
   const erroEmissao = validarDataEmissao(dataEmissao, hoje);
-  if (erroEmissao) erros.data_emissao = erroEmissao;
+  if (erroEmissao) erros.data_emissao = [erroEmissao];
+
+  // Implantação (cobrança única): competência é SEMPRE o mês da emissão — calculada aqui; se vier
+  // outra, é erro (nunca "corrigida" em silêncio). Mensalidade: competência obrigatória, como sempre.
+  let competencia: string | null = null;
+  if (n.tipo === "implantacao") {
+    competencia = erroEmissao ? null : `${dataEmissao.slice(0, 7)}-01`;
+    if (competencia && n.competencia !== undefined && normalizarCompetencia(n.competencia) !== competencia) {
+      erros.competencia = ["Na nota de implantação a competência é o mês da emissão — deixe em branco ou use o mesmo mês."];
+    }
+  } else if (n.competencia === undefined) {
+    erros.competencia = ["Informe a competência (aaaa-mm)."];
+  } else {
+    competencia = normalizarCompetencia(n.competencia);
+    if (!competencia) erros.competencia = ["Competência inválida — use aaaa-mm."];
+    else {
+      const erro = validarCompetencia(competencia, hoje);
+      if (erro) erros.competencia = [erro];
+    }
+  }
+  const valor = lerValorMonetario(n.valor);
+  if (!valor.ok) erros.valor = [valor.erro];
   if (Object.keys(erros).length > 0 || !valor.ok || !competencia) {
-    return NextResponse.json({ erro: "Dados inválidos", detalhes: { fieldErrors: erros } }, { status: 400 });
+    // Mesmo formato de `detalhes` das falhas de schema (lib/validacao.ts) — contrato da API.
+    return NextResponse.json({ erro: "Dados inválidos", detalhes: { formErrors: [], fieldErrors: erros } }, { status: 400 });
   }
 
   const resultado = await criarNota(
-    { clienteId: n.cliente_id, competencia, numeroNf: n.numero_nf ?? null, valorCentavos: valor.centavos, dataEmissao },
+    { clienteId: n.cliente_id, tipo: n.tipo, competencia, numeroNf: n.numero_nf ?? null, valorCentavos: valor.centavos, dataEmissao },
     contexto!.equipeId
   );
   if (resultado.ok) return NextResponse.json({ id: resultado.id }, { status: 201 });
@@ -84,5 +103,15 @@ export async function POST(req: NextRequest) {
       );
     case "numero_duplicado":
       return NextResponse.json({ erro: "Já existe uma nota com este número para este cliente." }, { status: 409 });
+    case "implantacao_sem_taxa":
+      return NextResponse.json(
+        { erro: "Este cliente não tem taxa de implantação combinada (plano Dispensa ou taxa em branco) — não há implantação a cobrar." },
+        { status: 409 }
+      );
+    case "implantacao_duplicada":
+      return NextResponse.json(
+        { erro: "Este cliente já tem uma nota de implantação ativa — a implantação é cobrada uma única vez (cancele a anterior, se ela foi emitida errada)." },
+        { status: 409 }
+      );
   }
 }

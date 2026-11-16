@@ -8,10 +8,12 @@ import { COLUNAS_ORDENACAO } from "./notasServico";
 import { SITUACOES, normalizarCompetencia } from "./estadoNota";
 
 export const POR_PAGINA_MAXIMO = 100;
+export const TIPOS_NOTA = ["mensalidade", "implantacao"] as const;
 
 /** Query string de GET /api/notas. Parâmetro desconhecido → 400 (objeto estrito), nunca ignorado em silêncio. */
 export const FiltrosNotasSchema = z.strictObject({
     situacao: z.enum(SITUACOES).optional(),
+    tipo: z.enum(TIPOS_NOTA).optional(),
     cliente_id: z.uuid().optional(),
     competencia: z
       .string()
@@ -32,7 +34,11 @@ export const FiltrosNotasSchema = z.strictObject({
  */
 export const NovaNotaSchema = z.strictObject({
     cliente_id: z.uuid(),
-    competencia: z.string().min(7).max(10),
+    // Mensalidade (padrão) ou implantação (cobrança única da taxa combinada — rodada 11-A).
+    tipo: z.enum(TIPOS_NOTA).default("mensalidade"),
+    // Obrigatória na mensalidade; na implantação é SEMPRE o mês da emissão (a rota calcula —
+    // se vier diferente, 400).
+    competencia: z.string().min(7).max(10).optional(),
     numero_nf: z
       .string()
       .trim()

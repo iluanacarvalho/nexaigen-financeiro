@@ -441,3 +441,18 @@ Downloads de PDF passam do bucket pra resposta sem carregar o arquivo em memóri
 
 Migrado de zod 3.25 para **zod 4.6.7** (corrige GHSA-mrhx-c7xc-m3w5 — `npm audit --omit=dev` limpo). O contrato das respostas 400 não mudou: `detalhes` continua `{ formErrors, fieldErrors }`, montado num lugar só (`lib/validacao.ts#detalhesDoErro`, sobre `z.flattenError`); só os TEXTOS padrão das mensagens do próprio zod mudaram (as mensagens do projeto são as mesmas). Cuidado documentado em `lib/clienteSchema.ts`: no zod 4 um `.default()` dentro de campo opcional é APLICADO — por isso os defaults de cliente ficam só no schema de criação (sem isso, todo PATCH gravaria plano/dia padrão). `portal_url` passou a aceitar só http/https (vira link clicável na Fila de Checagem). Regressão de contrato de todas as rotas validadas em `app/api/contrato-validacao.test.ts`.
 
+## 22. Planos por porte de município e taxa de implantação (rodada 11-A)
+
+**Regra de produto: o plano NÃO limita funcionalidade — todo plano dá acesso a tudo; muda só o preço.** Fonte única: `lib/planos.ts`.
+
+| Plano | Mensalidade padrão | Faixa | Implantação e treinamento (padrão) |
+|---|---|---|---|
+| Dispensa | R$ 5.457,00 | — | não tem |
+| Pequeno Porte | R$ 8.500,00 | Até 50 mil hab. | R$ 15.000,00 |
+| Médio Porte | R$ 15.000,00 | 50 mil a 200 mil hab. | R$ 20.000,00 |
+| Grande Porte | R$ 35.000,00 | Acima de 200 mil hab. | R$ 30.000,00 |
+
+Os valores são o **padrão sugerido**: o combinado com cada prefeitura fica em `cliente_prefeitura.valor_mensal` / `taxa_implantacao` (editáveis na tela de Clientes; na criação, campo ausente = padrão do plano; trocar o plano de um cliente só repõe os padrões depois de confirmar na tela). Dispensa nunca tem taxa (o banco garante). Migration `0010_planos_por_porte.sql`: clientes `essencial`/`completo` (só existiam de teste) viraram `dispensa` mantendo o valor; ids antigos agora dão 400 com mensagem clara — **inclusive vindos do nexaigen-educa, que precisa ser atualizado pros 4 ids novos**.
+
+**Implantação**: cobrança ÚNICA, por uma nota de tipo `implantacao` criada À MÃO (botão "Criar nota de implantação" em Clientes e em Notas fiscais) — nunca automática, porque uma nota criada sozinha já começaria a contar prazo de atesto. Competência = mês da emissão; mesma máquina de estados e mesmos prazos (Lei 14.133, art. 141); no máximo uma nota de implantação não cancelada por cliente (409 na segunda). Até a nota existir, o cliente aparece com o selo **"Implantação a cobrar"** (Clientes, Notas, Dashboard e Painel). No Painel, a implantação tem quadro próprio (a cobrar / a receber / recebida): **não entra no MRR**, mas entra em recebido, a receber e inadimplência.
+

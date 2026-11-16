@@ -19,6 +19,8 @@ export interface ResumoDashboard {
   /** Total em aberto (não pago, não cancelado), em centavos. null sem nenhuma nota. */
   emAbertoCentavos: number | null;
   alertasCriticosAtivos: number;
+  /** Clientes com implantação combinada ainda sem nota emitida (selo "Implantação a cobrar") — mesma conta do Painel. */
+  implantacaoACobrar: { clientes: number; centavos: number };
 }
 
 export function montarResumoDashboard(painel: PainelFinanceiro, alertasCriticosAtivos: number): ResumoDashboard {
@@ -26,7 +28,8 @@ export function montarResumoDashboard(painel: PainelFinanceiro, alertasCriticosA
     semNotas: painel.semNotas,
     contagemPorSituacao: painel.kpis.contagemPorSituacao,
     emAbertoCentavos: painel.kpis.aReceber?.totalCentavos ?? null,
-    alertasCriticosAtivos
+    alertasCriticosAtivos,
+    implantacaoACobrar: painel.kpis.implantacao.aCobrar
   };
 }
 

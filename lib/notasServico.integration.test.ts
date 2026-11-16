@@ -136,7 +136,7 @@ describe("listagem — filtros, busca, ordenação, paginação", () => {
 });
 
 describe("criarNota", () => {
-  const dados = (clienteId: string, numero: string | null) => ({ clienteId, competencia: "2026-02-01", numeroNf: numero, valorCentavos: 123456, dataEmissao: "2026-02-03" });
+  const dados = (clienteId: string, numero: string | null) => ({ clienteId, tipo: "mensalidade" as const, competencia: "2026-02-01", numeroNf: numero, valorCentavos: 123456, dataEmissao: "2026-02-03" });
 
   it("grava valor exato (centavos → numeric), status aguardando_atesto e evento de criação com autor", async () => {
     const cliente = await criarCliente();

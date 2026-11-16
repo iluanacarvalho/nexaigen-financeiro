@@ -28,6 +28,7 @@
 import { paraCentavos } from "./dinheiro";
 import { LIMIAR_ATRASO_CRITICO_DIAS, diagnosticarNota } from "./prazos";
 import { statusPersistidoDe, type SituacaoNota } from "./estadoNota";
+import { rotuloDoPlano, temImplantacaoACobrar } from "./planos";
 
 /** Notas sem atesto há MAIS que isto (dias desde a emissão) entram no KPI 6. */
 export const LIMIAR_PAINEL_SEM_ATESTO_DIAS = 15;
@@ -40,11 +41,17 @@ export interface LinhaClientePainel {
   plano: string;
   valor_mensal: string;
   status_contrato: string;
+  /** Taxa de implantação combinada (numeric em string) — ausente/null = sem implantação. */
+  taxa_implantacao?: string | null;
+  /** Já tem nota de implantação não cancelada (o repositório calcula com um `exists`, sem N+1). */
+  tem_implantacao_ativa?: boolean;
 }
 
 export interface LinhaNotaPainel {
   id: string;
   cliente_id: string;
+  /** "mensalidade" (padrão, quando ausente) ou "implantacao" (0010). */
+  tipo?: "mensalidade" | "implantacao";
   valor: string;
   competencia: string;
   status: string;
@@ -69,8 +76,12 @@ export interface ClientePainel {
   nome: string;
   uf: string;
   plano: string;
+  /** Rótulo do plano pra exibição ("Pequeno Porte") — lib/planos.ts. */
+  planoRotulo: string;
   statusContrato: string;
   valorMensalCentavos: number;
+  /** Taxa de implantação ainda SEM nota emitida (selo "Implantação a cobrar"); null = nada a cobrar. */
+  implantacaoACobrarCentavos: number | null;
   notasEmAberto: number;
   valorEmAbertoCentavos: number;
   maiorAtrasoDias: number;
@@ -109,6 +120,19 @@ export interface PainelFinanceiro {
      * Notas e o job diário usam). null sem nenhuma nota.
      */
     contagemPorSituacao: Record<Exclude<SituacaoNota, "paga" | "cancelada">, number> | null;
+    /**
+     * Implantação (cobrança ÚNICA, rodada 11-A) — à parte da recorrência:
+     * NÃO entra no MRR; ENTRA em "recebido", "a receber" e inadimplência
+     * (as notas de implantação são notas como as outras). Aqui a quebra só
+     * da implantação: a cobrar (cliente ativo com taxa combinada e sem nota
+     * de implantação ativa — nada emitido ainda), a receber (nota emitida
+     * em aberto) e recebida (paga nos últimos 12 meses).
+     */
+    implantacao: {
+      aCobrar: { clientes: number; centavos: number };
+      aReceberCentavos: number;
+      recebidaCentavos: number;
+    };
   };
   serie: PontoSerieMensal[];
   clientes: ClientePainel[];
@@ -277,6 +301,11 @@ export function ordenarClientesPorAtraso(clientes: ClientePainel[], direcao: "de
 
 // --- Montagem do painel ---------------------------------------------------
 
+/** Taxa a cobrar do cliente (regra única: lib/planos.ts#temImplantacaoACobrar), senão null. */
+export function implantacaoACobrar(c: LinhaClientePainel): number | null {
+  return temImplantacaoACobrar(c) ? paraCentavos(c.taxa_implantacao!) : null;
+}
+
 export function montarPainelFinanceiro(entrada: { clientes: LinhaClientePainel[]; notas: LinhaNotaPainel[]; hoje: string }): PainelFinanceiro {
   const { clientes, hoje } = entrada;
   const notas = entrada.notas.filter((n) => n.status !== "cancelada");
@@ -322,8 +351,10 @@ export function montarPainelFinanceiro(entrada: { clientes: LinhaClientePainel[]
       nome: c.nome,
       uf: c.uf,
       plano: c.plano,
+      planoRotulo: rotuloDoPlano(c.plano),
       statusContrato: c.status_contrato,
       valorMensalCentavos: paraCentavos(c.valor_mensal),
+      implantacaoACobrarCentavos: implantacaoACobrar(c),
       notasEmAberto: doCliente.length,
       valorEmAbertoCentavos: doCliente.reduce((soma, a) => soma + a.centavos, 0),
       maiorAtrasoDias,
@@ -343,7 +374,17 @@ export function montarPainelFinanceiro(entrada: { clientes: LinhaClientePainel[]
       inadimplencia: calcularInadimplencia(vencidoNaJanela, faturadoNaJanela),
       prazoMedioRecebimentoDias: calcularPrazoMedioRecebimento(notas, inicioJanela, hoje),
       aguardandoAtestoMais15Dias: semNotas ? null : aguardandoAtesto,
-      contagemPorSituacao: semNotas ? null : contagemPorSituacao
+      contagemPorSituacao: semNotas ? null : contagemPorSituacao,
+      implantacao: {
+        aCobrar: linhasClientes.reduce(
+          (t, c) => (c.implantacaoACobrarCentavos === null ? t : { clientes: t.clientes + 1, centavos: t.centavos + c.implantacaoACobrarCentavos }),
+          { clientes: 0, centavos: 0 }
+        ),
+        aReceberCentavos: abertas.filter((a) => a.nota.tipo === "implantacao").reduce((soma, a) => soma + a.centavos, 0),
+        recebidaCentavos: notas
+          .filter((n) => n.tipo === "implantacao" && n.data_pagamento !== null && n.data_pagamento >= inicioJanela && n.data_pagamento <= hoje)
+          .reduce((soma, n) => soma + paraCentavos(n.valor), 0)
+      }
     },
     serie: montarSerieMensal(notas, meses),
     clientes: ordenarClientesPorAtraso(linhasClientes)
@@ -391,7 +432,7 @@ export function gerarCsvClientes(clientes: ClientePainel[]): string {
     [
       celulaTexto(c.nome),
       celulaTexto(c.uf),
-      celulaTexto(c.plano),
+      celulaTexto(c.planoRotulo),
       centavosCsv(c.valorMensalCentavos),
       String(c.notasEmAberto),
       centavosCsv(c.valorEmAbertoCentavos),

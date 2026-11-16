@@ -20,7 +20,7 @@ beforeEach(() => {
     originais[v] = process.env[v];
     process.env[v] = `${SENTINELA}-${v}`;
   }
-  obterResumoMock.mockResolvedValue({ semNotas: false, contagemPorSituacao: { aguardando_atesto: 2, atestada: 1, vencida: 3, atraso_critico: 1 }, emAbertoCentavos: 1234567, alertasCriticosAtivos: 1 });
+  obterResumoMock.mockResolvedValue({ semNotas: false, contagemPorSituacao: { aguardando_atesto: 2, atestada: 1, vencida: 3, atraso_critico: 1 }, emAbertoCentavos: 1234567, alertasCriticosAtivos: 1, implantacaoACobrar: { clientes: 0, centavos: 0 } });
 });
 
 afterEach(() => {
@@ -53,10 +53,19 @@ describe("Dashboard", () => {
   });
 
   it("banco sem notas: '—' nos cards (nunca 0 fingindo dado) e mensagem", async () => {
-    obterResumoMock.mockResolvedValue({ semNotas: true, contagemPorSituacao: null, emAbertoCentavos: null, alertasCriticosAtivos: 0 });
+    obterResumoMock.mockResolvedValue({ semNotas: true, contagemPorSituacao: null, emAbertoCentavos: null, alertasCriticosAtivos: 0, implantacaoACobrar: { clientes: 0, centavos: 0 } });
     render(await Dashboard());
     expect(screen.getByText("Aguardando atesto").nextElementSibling!.textContent).toBe("—");
     expect(screen.getByText("Valor total em aberto").nextElementSibling!.textContent).toBe("—");
     expect(screen.getByText(/Nenhuma nota fiscal ainda/)).toBeTruthy();
   });
+
+  it("implantação a cobrar: cartão com contagem e valor (mesma conta do Painel), só quando há o que cobrar", async () => {
+    obterResumoMock.mockResolvedValue({ semNotas: false, contagemPorSituacao: { aguardando_atesto: 0, atestada: 0, vencida: 0, atraso_critico: 0 }, emAbertoCentavos: 0, alertasCriticosAtivos: 0, implantacaoACobrar: { clientes: 2, centavos: 4500000 } });
+    render(await Dashboard());
+    const cartao = screen.getByText(/Implantação a cobrar: 2 clientes/);
+    expect(cartao.textContent).toMatch(/R\$\s*45\.000,00/);
+    expect(cartao.closest("a")!.getAttribute("href")).toBe("/notas");
+  });
 });
+

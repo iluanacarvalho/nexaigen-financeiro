@@ -12,15 +12,30 @@
 import { useEffect, useState } from "react";
 import Paginacao from "@/components/Paginacao";
 import PdfVersionado from "@/components/PdfVersionado";
-import { formatarMoeda, paraCentavos } from "@/lib/dinheiro";
+import { centavosParaTextoCampo, formatarMoeda, paraCentavos } from "@/lib/dinheiro";
+import { temImplantacaoACobrar } from "@/lib/planos";
 import { ROTULO_SITUACAO_NOTA, SITUACOES, acoesPermitidas, faseDaSituacao, type AcaoNota, type SituacaoNota } from "@/lib/estadoNota";
 import { hojeEmSaoPaulo } from "@/lib/painelFinanceiro";
-import type { ClientePrefeitura, EventoNota, NotaListada, TipoEventoNota } from "@/lib/tipos";
+import type { ClientePrefeitura, EventoNota, NotaListada, TipoEventoNota, TipoNota } from "@/lib/tipos";
 
 const POR_PAGINA = 25;
 
+const ROTULO_TIPO: Record<TipoNota, string> = { mensalidade: "Mensalidade", implantacao: "Implantação" };
+
+/** Formulário de nota aberto já preenchido (nota de implantação: tipo, cliente e valor = taxa combinada, editável). */
+interface InicialNota {
+  tipo: TipoNota;
+  clienteId: string;
+  valor: string;
+}
+
+function inicialImplantacao(c: ClientePrefeitura): InicialNota {
+  return { tipo: "implantacao", clienteId: c.id, valor: centavosParaTextoCampo(paraCentavos(c.taxa_implantacao!)) };
+}
+
 interface Filtros {
   situacao: string;
+  tipo: string;
   cliente_id: string;
   competencia: string;
   busca: string;
@@ -28,7 +43,7 @@ interface Filtros {
   direcao: "asc" | "desc";
 }
 
-const FILTROS_INICIAIS: Filtros = { situacao: "", cliente_id: "", competencia: "", busca: "", ordenar: "data_emissao", direcao: "desc" };
+const FILTROS_INICIAIS: Filtros = { situacao: "", tipo: "", cliente_id: "", competencia: "", busca: "", ordenar: "data_emissao", direcao: "desc" };
 
 const ROTULO_ACAO: Record<AcaoNota, string> = {
   registrar_atesto: "Registrar atesto",
@@ -65,6 +80,7 @@ type AcaoPendente = { nota: NotaListada; acao: AcaoNota; data: string; motivo: s
 function montarQuery(filtros: Filtros, pagina: number): string {
   const p = new URLSearchParams({ ordenar: filtros.ordenar, direcao: filtros.direcao, pagina: String(pagina), por_pagina: String(POR_PAGINA) });
   if (filtros.situacao) p.set("situacao", filtros.situacao);
+  if (filtros.tipo) p.set("tipo", filtros.tipo);
   if (filtros.cliente_id) p.set("cliente_id", filtros.cliente_id);
   if (filtros.competencia) p.set("competencia", filtros.competencia);
   if (filtros.busca.trim()) p.set("busca", filtros.busca.trim());
@@ -94,6 +110,8 @@ export default function NotasPage() {
   const [carregando, setCarregando] = useState(true);
   const [clientes, setClientes] = useState<ClientePrefeitura[]>([]);
   const [mostrarForm, setMostrarForm] = useState(false);
+  // Nota de IMPLANTAÇÃO (rodada 11-A): formulário aberto já com tipo, cliente e valor = taxa combinada.
+  const [inicialForm, setInicialForm] = useState<InicialNota | null>(null);
   const [acaoPendente, setAcaoPendente] = useState<AcaoPendente | null>(null);
   const [expandida, setExpandida] = useState<string | null>(null);
   const [eventos, setEventos] = useState<Record<string, EventoNota[] | "erro">>({});
@@ -118,13 +136,26 @@ export default function NotasPage() {
       else setDados(r);
       setCarregando(false);
     });
+    // `?implantacao=<clienteId>` (botão "Criar nota de implantação" da tela de Clientes) já abre o formulário.
+    const idImplantacao = new URLSearchParams(window.location.search).get("implantacao");
     buscarClientes().then((lista) => {
-      if (ativo) setClientes(lista);
+      if (!ativo) return;
+      setClientes(lista);
+      const alvo = idImplantacao ? lista.find((c) => c.id === idImplantacao) : undefined;
+      if (alvo && temImplantacaoACobrar(alvo)) {
+        setInicialForm(inicialImplantacao(alvo));
+        setMostrarForm(true);
+      }
     });
     return () => {
       ativo = false;
     };
   }, []);
+
+  function abrirImplantacao(c: ClientePrefeitura) {
+    setInicialForm(inicialImplantacao(c));
+    setMostrarForm(true);
+  }
 
   function aplicarFiltros(novos: Partial<Filtros>) {
     const f = { ...filtros, ...novos };
@@ -166,34 +197,76 @@ export default function NotasPage() {
   }
 
   const clientesAtivos = clientes.filter((c) => c.status_contrato === "ativo");
+  const aCobrar = clientes.filter(temImplantacaoACobrar);
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-navy">Notas fiscais</h1>
-        <button type="button" onClick={() => setMostrarForm(!mostrarForm)} className="rounded bg-navy px-4 py-2 text-sm text-white">
+        <button
+          type="button"
+          onClick={() => {
+            setInicialForm(null);
+            setMostrarForm(!mostrarForm);
+          }}
+          className="rounded bg-navy px-4 py-2 text-sm text-white"
+        >
           {mostrarForm ? "Fechar" : "+ Nova nota"}
         </button>
       </div>
 
+      {aCobrar.length > 0 && (
+        <section aria-label="Implantação a cobrar" className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm">
+          <p className="font-semibold text-amber-900">Implantação a cobrar</p>
+          <p className="mb-2 text-xs text-amber-800">
+            Clientes com taxa de implantação combinada e sem nota de implantação emitida. A nota não é criada sozinha — emita quando a implantação puder ser
+            cobrada (o prazo de atesto começa a contar na emissão).
+          </p>
+          <ul className="space-y-1">
+            {aCobrar.map((c) => (
+              <li key={c.id} className="flex flex-wrap items-center gap-3">
+                <span>
+                  {c.nome} — {c.uf} · {formatarMoeda(paraCentavos(c.taxa_implantacao!))}
+                </span>
+                <button type="button" onClick={() => abrirImplantacao(c)} className="rounded border border-amber-400 bg-white px-2 py-1 text-xs text-amber-900">
+                  Criar nota de implantação
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {mostrarForm && (
         <FormNovaNota
+          key={inicialForm ? `implantacao-${inicialForm.clienteId}` : "mensalidade"}
           clientes={clientesAtivos}
+          inicial={inicialForm}
           onCriada={() => {
             setMostrarForm(false);
+            setInicialForm(null);
             carregar();
+            buscarClientes().then(setClientes);
           }}
         />
       )}
 
       <form
         aria-label="Filtros"
-        className="mb-4 grid gap-3 rounded-lg border bg-white p-4 text-sm shadow-sm sm:grid-cols-3 lg:grid-cols-6"
+        className="mb-4 grid gap-3 rounded-lg border bg-white p-4 text-sm shadow-sm sm:grid-cols-3 lg:grid-cols-7"
         onSubmit={(e) => {
           e.preventDefault();
           aplicarFiltros({ busca: String(new FormData(e.currentTarget).get("busca") ?? "") });
         }}
       >
+        <label className="block">
+          <span className="text-slate-600">Tipo</span>
+          <select value={filtros.tipo} onChange={(e) => aplicarFiltros({ tipo: e.target.value })} className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5">
+            <option value="">Todos</option>
+            <option value="mensalidade">{ROTULO_TIPO.mensalidade}</option>
+            <option value="implantacao">{ROTULO_TIPO.implantacao}</option>
+          </select>
+        </label>
         <label className="block">
           <span className="text-slate-600">Situação</span>
           <select value={filtros.situacao} onChange={(e) => aplicarFiltros({ situacao: e.target.value })} className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5">
@@ -257,6 +330,7 @@ export default function NotasPage() {
           <thead className="bg-navy text-white">
             <tr>
               <th className="p-3 text-left">NF</th>
+              <th className="p-3 text-left">Tipo</th>
               <th className="p-3 text-left">Cliente</th>
               <th className="p-3 text-left">Competência</th>
               <th className="p-3 text-right">Valor</th>
@@ -284,7 +358,7 @@ export default function NotasPage() {
             ))}
             {!carregando && dados.notas.length === 0 && (
               <tr>
-                <td colSpan={8} className="p-6 text-center text-slate-400">
+                <td colSpan={9} className="p-6 text-center text-slate-400">
                   Nenhuma nota encontrada{JSON.stringify(filtros) !== JSON.stringify(FILTROS_INICIAIS) ? " com estes filtros" : ""}.
                 </td>
               </tr>
@@ -334,6 +408,7 @@ function LinhaNota({
     <>
       <tr className="border-t align-top" data-testid={`nota-${nota.id}`}>
         <td className="p-3">{nota.numero_nf ?? "—"}</td>
+        <td className="p-3">{ROTULO_TIPO[nota.tipo]}</td>
         <td className="p-3">
           {nota.cliente.nome} — {nota.cliente.uf}
         </td>
@@ -365,14 +440,14 @@ function LinhaNota({
       </tr>
       {acaoPendente && (
         <tr>
-          <td colSpan={8} className="bg-amber-50 p-3">
+          <td colSpan={9} className="bg-amber-50 p-3">
             <PainelConfirmacao pendente={acaoPendente} onAlterar={onAlterarAcao} onConfirmar={onConfirmar} onDesistir={onDesistir} />
           </td>
         </tr>
       )}
       {expandida && (
         <tr>
-          <td colSpan={8} className="bg-slate-50 p-3">
+          <td colSpan={9} className="bg-slate-50 p-3">
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <p className="mb-1 font-semibold text-navy">PDF da nota</p>
@@ -472,11 +547,12 @@ function HistoricoEventos({ eventos }: { eventos: EventoNota[] | "erro" | undefi
   );
 }
 
-function FormNovaNota({ clientes, onCriada }: { clientes: ClientePrefeitura[]; onCriada: () => void }) {
+function FormNovaNota({ clientes, inicial, onCriada }: { clientes: ClientePrefeitura[]; inicial: InicialNota | null; onCriada: () => void }) {
   const [erros, setErros] = useState<Record<string, string>>({});
   const [erroGeral, setErroGeral] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const [tipo, setTipo] = useState<TipoNota>(inicial?.tipo ?? "mensalidade");
 
   async function enviar(form: HTMLFormElement) {
     const fd = new FormData(form);
@@ -486,7 +562,9 @@ function FormNovaNota({ clientes, onCriada }: { clientes: ClientePrefeitura[]; o
     setEnviando(true);
     const corpo = {
       cliente_id: String(fd.get("cliente_id") ?? ""),
-      competencia: String(fd.get("competencia") ?? ""),
+      tipo,
+      // Implantação: a competência é o mês da emissão — o servidor calcula, não vai no corpo.
+      competencia: tipo === "mensalidade" ? String(fd.get("competencia") ?? "") : undefined,
       numero_nf: String(fd.get("numero_nf") ?? ""),
       valor: String(fd.get("valor") ?? ""),
       data_emissao: String(fd.get("data_emissao") ?? "") || undefined
@@ -529,8 +607,14 @@ function FormNovaNota({ clientes, onCriada }: { clientes: ClientePrefeitura[]; o
         enviar(e.currentTarget);
       }}
     >
+      <Campo rotulo="Tipo da nota" erro={erros.tipo}>
+        <select value={tipo} onChange={(e) => setTipo(e.target.value as TipoNota)} className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5">
+          <option value="mensalidade">{ROTULO_TIPO.mensalidade}</option>
+          <option value="implantacao">{ROTULO_TIPO.implantacao}</option>
+        </select>
+      </Campo>
       <Campo rotulo="Cliente (contrato ativo)" erro={erros.cliente_id}>
-        <select name="cliente_id" required className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5">
+        <select name="cliente_id" required defaultValue={inicial?.clienteId ?? ""} className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5">
           <option value="">Selecione…</option>
           {clientes.map((c) => (
             <option key={c.id} value={c.id}>
@@ -539,14 +623,22 @@ function FormNovaNota({ clientes, onCriada }: { clientes: ClientePrefeitura[]; o
           ))}
         </select>
       </Campo>
-      <Campo rotulo="Competência (mês)" erro={erros.competencia}>
-        <input name="competencia" type="month" required className="mt-1 w-full rounded border border-slate-300 px-2 py-1" />
-      </Campo>
+      {tipo === "mensalidade" ? (
+        <Campo rotulo="Competência (mês)" erro={erros.competencia}>
+          <input name="competencia" type="month" required className="mt-1 w-full rounded border border-slate-300 px-2 py-1" />
+        </Campo>
+      ) : (
+        <div className="text-xs text-slate-600">
+          <span className="font-medium text-slate-700">Competência</span>
+          <p className="mt-1">Na implantação, é o mês da data de emissão (calculado automaticamente).</p>
+          {erros.competencia && <span className="mt-1 block text-red-600">{erros.competencia}</span>}
+        </div>
+      )}
       <Campo rotulo="Número da NF" erro={erros.numero_nf}>
         <input name="numero_nf" maxLength={60} className="mt-1 w-full rounded border border-slate-300 px-2 py-1" />
       </Campo>
       <Campo rotulo="Valor (R$) — ex.: 4500,50" erro={erros.valor}>
-        <input name="valor" inputMode="decimal" required className="mt-1 w-full rounded border border-slate-300 px-2 py-1" />
+        <input name="valor" inputMode="decimal" required defaultValue={inicial?.valor ?? ""} className="mt-1 w-full rounded border border-slate-300 px-2 py-1" />
       </Campo>
       <Campo rotulo="Data de emissão (vazio = hoje)" erro={erros.data_emissao}>
         <input name="data_emissao" type="date" max={hojeEmSaoPaulo(new Date())} className="mt-1 w-full rounded border border-slate-300 px-2 py-1" />
@@ -562,7 +654,7 @@ function FormNovaNota({ clientes, onCriada }: { clientes: ClientePrefeitura[]; o
         )}
         {aviso && <p className="mb-2 text-amber-700">{aviso}</p>}
         <button type="submit" disabled={enviando} className="w-full rounded bg-teal px-4 py-2 font-medium text-white disabled:opacity-50">
-          {enviando ? "Salvando..." : "Criar nota"}
+          {enviando ? "Salvando..." : tipo === "implantacao" ? "Criar nota de implantação" : "Criar nota"}
         </button>
       </div>
     </form>
