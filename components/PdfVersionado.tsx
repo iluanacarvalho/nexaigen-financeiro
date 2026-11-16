@@ -79,8 +79,15 @@ export default function PdfVersionado({
     onEnviado();
   }
 
-  function escolher(arquivo: File) {
+  // Só PDF: confere extensão/tipo E os primeiros bytes ("%PDF-") antes de qualquer
+  // envio. O servidor revalida (lib/validacaoPdf.ts) — isto só dá o aviso na hora.
+  async function escolher(arquivo: File) {
     setErro(null);
+    const pareceUmPdf = arquivo.type === "application/pdf" || arquivo.name.toLowerCase().endsWith(".pdf");
+    if (!pareceUmPdf || (await arquivo.slice(0, 5).text()) !== "%PDF-") {
+      setErro(`O ${rotulo} precisa ser um arquivo PDF (.pdf). Outros formatos, como Word ou imagem, não são aceitos.`);
+      return;
+    }
     if (nomeAtual) setSubstituicao({ arquivo, motivo: "" });
     else enviar(arquivo, "");
   }
@@ -118,6 +125,7 @@ export default function PdfVersionado({
         >
           {enviando ? "Enviando..." : nomeAtual ? "Enviar nova versão" : `Anexar ${rotulo}`}
         </button>
+        <span className="text-xs text-slate-500">Somente PDF, até 10 MB.</span>
       </div>
 
       {substituicao && (
