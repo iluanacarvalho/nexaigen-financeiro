@@ -8,7 +8,7 @@
 // `Authorization: Bearer <segredo>`, comparação em tempo constante via
 // lib/segredoCompartilhado.ts); o valor é o MESMO configurado como
 // INTEGRACAO_FINANCEIRO_SECRET no Educa. app/api/protecao-rotas.test.ts
-// confirma que esta rota nunca passa por exigirSessao().
+// confirma que esta rota nunca passa por exigirSessao()/exigirPapel().
 //
 // LIMITES (rodada 07, lib/rateLimit.ts), por IP: 60 requisições/min no
 // total, e 10 falhas de autenticação em 15 min → 429 mesmo com o segredo

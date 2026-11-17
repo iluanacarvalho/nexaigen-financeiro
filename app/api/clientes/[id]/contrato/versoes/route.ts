@@ -4,12 +4,12 @@
 // com o Educa têm enviado_por_nome nulo (o motivo diz a origem).
 
 import { NextRequest, NextResponse } from "next/server";
-import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
+import { NOME_COOKIE_ACCESS, exigirPapel, obterContextoAutenticado } from "@/lib/auth";
 import { ALVO_CONTRATO, donoExiste, listarVersoesPdf } from "@/lib/versionamentoPdf";
 import { ehUuid } from "@/lib/validacao";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const negado = exigirSessao(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value));
+  const negado = exigirPapel(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value), "clientes");
   if (negado) return negado;
 
   const { id: clienteId } = await params;

@@ -28,7 +28,7 @@ import { GET as LISTAR_NOTAS, POST as CRIAR_NOTA } from "@/app/api/notas/route";
 import { POST as ACAO } from "@/app/api/notas/[id]/acoes/route";
 import { GET as EVENTOS } from "@/app/api/notas/[id]/eventos/route";
 import { GET as PAINEL } from "@/app/api/painel-financeiro/route";
-import Dashboard from "@/app/(protegido)/page";
+import Dashboard from "@/app/(protegido)/Dashboard";
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL não configurada. Rode: docker compose up -d && npm run migrate && npm run test:integration");

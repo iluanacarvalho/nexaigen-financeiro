@@ -20,6 +20,7 @@ vi.mock("@/lib/db", () => ({ query: queryMock }));
 
 import { SignJWT } from "jose";
 import {
+  exigirPapel,
   exigirSessao,
   gerarAccessToken,
   gerarRefreshToken,
@@ -144,16 +145,24 @@ describe("obterContextoAutenticado — sessão válida/inválida/ausente/expirad
 
   it("token válido, conta ativa, token_version bate — devolve o contexto completo", async () => {
     const token = await gerarAccessToken({ equipeId: "equipe-1", nome: "Luana Carvalho", precisaTrocarSenha: true, tokenVersion: 3 });
-    queryMock.mockResolvedValue([{ token_version: 3, ativo: true }]);
+    queryMock.mockResolvedValue([{ token_version: 3, ativo: true, papel: "financeiro" }]);
 
     const contexto = await obterContextoAutenticado(token);
-    expect(contexto).toEqual({ equipeId: "equipe-1", nome: "Luana Carvalho", precisaTrocarSenha: true });
+    expect(contexto).toEqual({ equipeId: "equipe-1", nome: "Luana Carvalho", precisaTrocarSenha: true, papel: "financeiro" });
+    // O papel vem do BANCO (mesma query da sessão), nunca do token.
+    expect(queryMock).toHaveBeenCalledWith(expect.stringContaining("select token_version, ativo, papel from equipe_nexaigen"), ["equipe-1"]);
+  });
+
+  it("papel fora da lista (defesa extra além do CHECK da 0012) — devolve null", async () => {
+    const token = await gerarAccessToken({ equipeId: "equipe-1", nome: "Luana", precisaTrocarSenha: false, tokenVersion: 1 });
+    queryMock.mockResolvedValue([{ token_version: 1, ativo: true, papel: "diretor" }]);
+    expect(await obterContextoAutenticado(token)).toBeNull();
   });
 });
 
 describe("exigirSessao", () => {
   function contexto(overrides: Partial<ContextoAutenticado> = {}): ContextoAutenticado {
-    return { equipeId: "equipe-1", nome: "Luana Carvalho", precisaTrocarSenha: false, ...overrides };
+    return { equipeId: "equipe-1", nome: "Luana Carvalho", precisaTrocarSenha: false, papel: "admin", ...overrides };
   }
 
   it("contexto ausente (null) — 401", async () => {
@@ -174,6 +183,26 @@ describe("exigirSessao", () => {
 
   it("contexto válido, senha já trocada — libera (null)", () => {
     expect(exigirSessao(contexto())).toBeNull();
+  });
+});
+
+describe("exigirPapel", () => {
+  const contexto = (papel: ContextoAutenticado["papel"], precisaTrocarSenha = false): ContextoAutenticado => ({ equipeId: "e", nome: "N", precisaTrocarSenha, papel });
+
+  it("sem sessão → 401; senha temporária → 403 (antes do papel)", async () => {
+    expect(exigirPapel(null, "clientes")!.status).toBe(401);
+    const r = exigirPapel(contexto("admin", true), "clientes")!;
+    expect(r.status).toBe(403);
+    expect((await r.json()).precisa_trocar_senha).toBe(true);
+  });
+
+  it("papel sem acesso → 403 com mensagem; com acesso → null", async () => {
+    const negado = exigirPapel(contexto("vendas"), "clientes")!;
+    expect(negado.status).toBe(403);
+    expect(await negado.json()).toEqual({ erro: "Seu perfil de acesso não permite esta função." });
+    expect(exigirPapel(contexto("financeiro"), "clientes")).toBeNull();
+    expect(exigirPapel(contexto("financeiro"), "equipe")!.status).toBe(403);
+    expect(exigirPapel(contexto("admin"), "equipe")).toBeNull();
   });
 });
 

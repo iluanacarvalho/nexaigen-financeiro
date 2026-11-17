@@ -3,11 +3,13 @@
 // Mesmo contrato de robustez do login de equipe do projeto irmão
 // nexaigen-educa (bcrypt custo 12, JWT HS256 15min de access token via
 // `jose`, refresh token de 7 dias com hash sha256 gravado em `sessao`,
-// cookies httpOnly) — mas SEM multi-tenant: este projeto só tem UM tipo de
-// usuário (a própria equipe NEXAIGEN), sem papel, sem hierarquia. Qualquer
-// pessoa da equipe logada pode cadastrar outra (ver POST /api/equipe) —
-// não existe um "exigirPapel" aqui porque não existe papel nenhum pra
-// checar, só "existe sessão válida ou não" (exigirSessao, abaixo).
+// cookies httpOnly) — mas SEM multi-tenant: só a própria equipe NEXAIGEN.
+// Desde a rodada 15-A cada pessoa tem um PAPEL (admin, financeiro,
+// vendas, rh — equipe_nexaigen.papel, migration 0012) e toda rota declara
+// a sua ÁREA: exigirPapel(contexto, area) nega com 403 o papel sem acesso
+// (matriz em lib/papeis.ts, negação por padrão). O papel vem do BANCO a
+// cada requisição (obterContextoAutenticado), nunca do JWT — mudar o
+// papel de alguém vale na hora.
 //
 // SEM camada de repositório (diferente do nexaigen-educa): este projeto
 // nunca teve uma — toda rota já chama `query()`/`withTransaction()`
@@ -33,6 +35,7 @@ import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import { NextResponse } from "next/server";
 import { query } from "./db";
+import { ehPapel, podeAcessar, type Area, type Papel } from "./papeis";
 
 export const CUSTO_BCRYPT = 12;
 const DURACAO_ACCESS_TOKEN = "15m";
@@ -193,6 +196,8 @@ export interface ContextoAutenticado {
   equipeId: string;
   nome: string;
   precisaTrocarSenha: boolean;
+  /** Lido do banco nesta requisição (0012) — nunca do token. */
+  papel: Papel;
 }
 
 /**
@@ -215,26 +220,28 @@ export async function obterContextoAutenticado(accessToken: string | undefined |
   const claims = await verificarAccessToken(accessToken);
   if (!claims) return null;
 
-  const linhas = await query<{ token_version: number; ativo: boolean }>(
-    `select token_version, ativo from equipe_nexaigen where id = $1`,
+  const linhas = await query<{ token_version: number; ativo: boolean; papel: string }>(
+    `select token_version, ativo, papel from equipe_nexaigen where id = $1`,
     [claims.sub]
   );
   const conta = linhas[0];
   if (!conta) return null;
   if (!conta.ativo) return null;
   if (conta.token_version !== claims.token_version) return null;
+  // Papel fora da lista (o CHECK da 0012 impede; isto é defesa extra) → sem acesso nenhum.
+  if (!ehPapel(conta.papel)) return null;
 
-  return { equipeId: claims.sub, nome: claims.nome, precisaTrocarSenha: claims.precisa_trocar_senha };
+  return { equipeId: claims.sub, nome: claims.nome, precisaTrocarSenha: claims.precisa_trocar_senha, papel: conta.papel };
 }
 
 /**
  * Nega o acesso (401 sem sessão, 403 com senha temporária pendente) ou
- * libera (retorna null) — mesmo espírito de exigirPapel() do
- * nexaigen-educa, sem parâmetro de papel: não existe papel nesta
- * identidade, só "está logado" ou não. Uso típico numa rota:
+ * libera (retorna null). É a primeira metade de exigirPapel (abaixo) —
+ * desde a rodada 15-A as rotas chamam exigirPapel, que inclui esta
+ * checagem e a do papel. Uso típico numa rota:
  *
  *   const contexto = await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value);
- *   const negado = exigirSessao(contexto);
+ *   const negado = exigirPapel(contexto, "clientes");
  *   if (negado) return negado;
  *   // dali pra baixo, contexto! é garantidamente não-nulo E já trocou a senha temporária
  *
@@ -255,6 +262,21 @@ export function exigirSessao(contexto: ContextoAutenticado | null): NextResponse
   if (!contexto) return NextResponse.json({ erro: "Não autenticado." }, { status: 401 });
   if (contexto.precisaTrocarSenha) {
     return NextResponse.json({ erro: "Troque sua senha temporária antes de continuar.", precisa_trocar_senha: true }, { status: 403 });
+  }
+  return null;
+}
+
+/**
+ * exigirSessao + papel: 401 sem sessão, 403 com senha temporária pendente,
+ * 403 se o papel não tem acesso à `area` (lib/papeis.ts — negação por
+ * padrão). null = liberado. Toda rota de API da equipe chama isto, nunca
+ * só exigirSessao (app/api/protecao-rotas.test.ts confere rota × papel).
+ */
+export function exigirPapel(contexto: ContextoAutenticado | null, area: Area): NextResponse | null {
+  const negado = exigirSessao(contexto);
+  if (negado) return negado;
+  if (!podeAcessar(contexto!.papel, area)) {
+    return NextResponse.json({ erro: "Seu perfil de acesso não permite esta função." }, { status: 403 });
   }
   return null;
 }

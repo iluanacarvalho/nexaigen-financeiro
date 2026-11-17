@@ -9,8 +9,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { itensNavDoPapel, rotuloDoPapel, type Papel } from "@/lib/papeis";
 
-export default function NavBar({ nome }: { nome: string }) {
+// Itens por papel (rodada 15-A): só o que o papel pode acessar
+// (lib/papeis.ts#itensNavDoPapel) — esconder o link é só UX; o bloqueio de
+// verdade é o layout de cada página e o exigirPapel de cada rota de API.
+export default function NavBar({ nome, papel }: { nome: string; papel: Papel }) {
   const router = useRouter();
   const [saindo, setSaindo] = useState(false);
 
@@ -26,18 +30,18 @@ export default function NavBar({ nome }: { nome: string }) {
   }
 
   return (
-    <nav className="border-b bg-white px-6 py-3">
+    <nav aria-label="Navegação principal" className="border-b bg-white px-6 py-3">
       <div className="mx-auto flex max-w-5xl items-center gap-6 text-sm">
         <span className="font-bold text-navy">NEXAIGEN Financeiro</span>
-        <Link href="/" className="text-slate-600 hover:text-navy">Dashboard</Link>
-        <Link href="/painel" className="text-slate-600 hover:text-navy">Painel</Link>
-        <Link href="/notas" className="text-slate-600 hover:text-navy">Notas fiscais</Link>
-        <Link href="/checagem" className="text-slate-600 hover:text-navy">Fila de Checagem</Link>
-        <Link href="/clientes" className="text-slate-600 hover:text-navy">Clientes</Link>
-        <Link href="/alertas" className="text-slate-600 hover:text-navy">Alertas de Cobrança</Link>
-        <Link href="/equipe" className="text-slate-600 hover:text-navy">Equipe</Link>
+        {itensNavDoPapel(papel).map((item) => (
+          <Link key={item.href} href={item.href} className="text-slate-600 hover:text-navy">
+            {item.rotulo}
+          </Link>
+        ))}
         <span className="ml-auto flex items-center gap-3 text-slate-500">
-          <span>{nome}</span>
+          <span>
+            {nome} <span className="text-xs text-slate-400">({rotuloDoPapel(papel)})</span>
+          </span>
           <button onClick={sair} disabled={saindo} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
             {saindo ? "Saindo..." : "Sair"}
           </button>

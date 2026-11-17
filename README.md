@@ -469,3 +469,36 @@ Os valores são o **padrão sugerido**: o combinado com cada prefeitura fica em 
 - **Job diário:** encerra os avisos vencidos antes de avaliar as notas, cada cliente na sua transação (falha de um → `falhasEncerramento` no resumo + alerta de sistema; os outros seguem). Resumo ganhou `contratosEncerrados` e `falhasEncerramento`.
 - **Painel/Dashboard:** MRR = ativos + em aviso prévio (até o término); encerrado e suspenso saem. Cartão "Em aviso prévio" (quantidade, MRR em risco, próximo término) — mesma conta no Dashboard e no Painel. Clientes encerrados continuam na tabela com a situação financeira das notas em aberto.
 - **Nota para o nexaigen-educa:** precisa chamar a rota de cancelamento quando registrar/retratar/encerrar o contrato de um município (o Financeiro não busca isso sozinho).
+
+## 24. Perfis de acesso da equipe e relatório de novos contratos (rodada 15-A)
+
+**Papéis** (`equipe_nexaigen.papel`, migration `0012_papel_equipe.sql`; quem já existia virou `admin`, e o primeiro login do bootstrap também nasce admin). A matriz mora em **um lugar só**, `lib/papeis.ts`, com **negação por padrão**: área nova sem regra = só admin.
+
+| Área (tela / API) | admin | financeiro | vendas | rh |
+|---|:-:|:-:|:-:|:-:|
+| Página inicial (`/`) | Dashboard | Dashboard | boas-vindas | boas-vindas |
+| Dashboard, Painel, Novos contratos | ✅ | ✅ | — | — |
+| Notas fiscais, Fila de Checagem, Clientes, Alertas de cobrança | ✅ | ✅ | — | — |
+| Equipe (cadastro e papéis), status de configuração | ✅ | — | — | — |
+
+- **Vendas e RH** estão reservados para o CRM e o RH: hoje não veem nenhuma tela financeira, só "Bem-vindo, seu acesso de … ainda não tem módulos".
+- **Financeiro** também vê o Dashboard (é a página inicial financeira) e os Alertas de cobrança (é o trabalho de cobrança). Para mudar isso basta editar uma linha de `lib/papeis.ts`.
+- **API:** toda rota da equipe chama `exigirPapel(contexto, área)` (`lib/auth.ts`) e devolve 401 sem sessão ou 403 para papel sem acesso.
+- **Páginas:** cada pasta de `app/(protegido)` tem um `layout.tsx` com `exigirAreaPagina(área)` (`lib/authPagina.ts`), que redireciona para `/login` sem sessão ou para `/` sem acesso.
+- **NavBar:** mostra só os itens permitidos. Esconder o link é só conforto; o bloqueio de verdade está no servidor.
+- **O papel é lido do banco a cada requisição**, nunca do token. Mudar o papel (tela Equipe, `PATCH /api/equipe/[id]`, só admin) também derruba as sessões da pessoa (`token_version` + sessões revogadas). O último admin ativo não pode deixar de ser admin (409).
+- **Cadastro de colega:** agora exige o papel.
+- **Teste de proteção:** `app/api/protecao-rotas.test.ts` cobre a matriz completa rota × papel e falha se aparecer uma rota de API sem entrada na matriz.
+
+**Relatório "Novos contratos"** (`/contratos`; `GET /api/relatorios/novos-contratos?mes=aaaa-mm&formato=json|csv|xlsx`; admin e financeiro).
+- **Regra do negócio:** a vigência começa na **assinatura**, então "novo no mês" = `data_inicio_contrato` dentro do mês. O mês padrão é o atual em America/Sao_Paulo.
+- **Cartões:**
+  - novos contratos, MRR novo (valor mensal combinado atual) e implantação a cobrar dos novos;
+  - variação contra o mês anterior, absoluta e em % (sem base → "—", nunca divide por zero);
+  - encerrados no mês (eventos `contrato_encerrado`) e em aviso prévio no fim do mês (ou hoje, no mês atual), ambos lidos da trilha `cliente_evento_contrato`;
+  - saldo líquido (novos − encerrados);
+  - "MRR da carteira hoje", que é a mesma conta do Painel e do Dashboard.
+- **Tabela e gráfico:** tabela ordenável (prefeitura, UF, plano, valores, início, status, origem: cadastro manual ou integração Educa) e gráfico SVG dos últimos 12 meses (novos por mês + MRR novo acumulado).
+- **Exportação CSV e XLSX:** os mesmos dados da tela. Cabeçalho "NEXAIGEN — Relatório de novos contratos" + mês + data de geração. CSV com BOM e `;`, fórmulas neutralizadas e variação em células numéricas. O XLSX é gerado sem dependência nova (`lib/xlsx.ts`).
+- **Mês sem contrato novo:** a tela diz "Nenhum contrato novo neste mês", nunca mostra zeros fingindo dado.
+- **Limitação:** encerramentos anteriores à trilha de eventos (0011) não têm evento e não entram em "encerrados no mês".

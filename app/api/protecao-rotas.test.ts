@@ -11,14 +11,28 @@
 // RODADA DE MIGRAÇÃO DE INFRAESTRUTURA: mocka @/lib/db (`query`) em vez
 // de @/lib/supabase/server (`supabaseAdmin`) — mesma garantia de antes,
 // só o alvo do mock muda.
+//
+// RODADA 15-A — PERFIS DE ACESSO: matriz COMPLETA rota × papel. Pra cada
+// rota da equipe (tabela ROTAS abaixo, com a ÁREA que ela deveria exigir,
+// escrita à mão) e cada papel (admin, financeiro, vendas, rh):
+//   - papel SEM acesso → 403 e nenhuma consulta de dado (só a da sessão);
+//   - papel COM acesso → passa da autorização (chega ao banco/validação).
+// E um teste lê app/api/**/route.ts do disco: rota nova (ou método novo)
+// que não estiver na tabela — nem entre as rotas de segredo/autenticação —
+// FALHA aqui. Sem rota sem teste.
 
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+process.env.JWT_SECRET = process.env.JWT_SECRET ?? "chave-de-teste-jwt-apenas-unitario";
 
-const { queryMock } = vi.hoisted(() => ({
-  queryMock: vi.fn(() => {
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync, readdirSync } from "node:fs";
+import { join, relative } from "node:path";
+
+const { queryMock, lancarSempre } = vi.hoisted(() => {
+  const lancarSempre = () => {
     throw new Error("query() NUNCA deveria ser chamada sem sessão válida.");
-  })
-}));
+  };
+  return { queryMock: vi.fn(lancarSempre), lancarSempre };
+});
 vi.mock("@/lib/db", () => ({ query: queryMock, withTransaction: queryMock }));
 
 // Cron continua com seu próprio mock de notificação (mesmo padrão do
@@ -39,6 +53,8 @@ vi.mock("@/lib/rateLimit", async (importOriginal) => ({
 }));
 
 import { NextRequest } from "next/server";
+import { gerarAccessToken, NOME_COOKIE_ACCESS } from "@/lib/auth";
+import { PAPEIS, podeAcessar, type Area } from "@/lib/papeis";
 import { GET as clientesGet, POST as clientesPost } from "./clientes/route";
 import { GET as notasGet, POST as notasPost } from "./notas/route";
 import { POST as verificarPost } from "./notas/[id]/verificar/route";
@@ -49,6 +65,7 @@ import { GET as eventosNotaGet } from "./notas/[id]/eventos/route";
 import { GET as versoesContratoGet } from "./clientes/[id]/contrato/versoes/route";
 import { GET as alertasGet } from "./alertas/route";
 import { GET as equipeGet, POST as equipePost } from "./equipe/route";
+import { PATCH as equipePapelPatch } from "./equipe/[id]/route";
 import { POST as cronPost } from "./cron/verificar-prazos/route";
 import { GET as clienteGet, PATCH as clientePatch } from "./clientes/[id]/route";
 import { GET as contratoGet, POST as contratoPost } from "./clientes/[id]/contrato/route";
@@ -57,51 +74,136 @@ import { GET as painelGet } from "./painel-financeiro/route";
 import { GET as configuracaoStatusGet } from "./configuracao/status/route";
 import { DELETE as cancelamentoDelete, POST as cancelamentoPost } from "./clientes/[id]/cancelamento/route";
 import { POST as integracaoCancelamentoPost } from "./integracao/clientes/[municipioIdExterno]/cancelamento/route";
+import { GET as relatorioContratosGet } from "./relatorios/novos-contratos/route";
 
-function reqSemSessao(url: string, method: string): NextRequest {
+type Handler = (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => Promise<Response>;
+
+function req(url: string, method: string, cookie?: string): NextRequest {
   return new NextRequest(`http://localhost:3001${url}`, {
     method,
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}) },
     body: method === "GET" ? undefined : "{}"
   });
 }
+
+const ID = "7a1b2c3d-0000-4000-8000-0000000000aa";
+const ctx = { params: Promise.resolve({ id: ID }) };
+
+/**
+ * TODAS as rotas da equipe, com a área que cada uma DEVE exigir (escrita à
+ * mão — se o código usar outra área, algum papel diverge e o teste falha).
+ * `rota` = "MÉTODO /caminho/do/arquivo" (como no disco: [id] literal).
+ */
+const ROTAS: { rota: string; url: string; area: Area; handler: Handler }[] = [
+  { rota: "GET /api/alertas", url: "/api/alertas", area: "alertas", handler: alertasGet as Handler },
+  { rota: "GET /api/clientes", url: "/api/clientes", area: "clientes", handler: clientesGet as Handler },
+  { rota: "POST /api/clientes", url: "/api/clientes", area: "clientes", handler: clientesPost as Handler },
+  { rota: "GET /api/clientes/[id]", url: `/api/clientes/${ID}`, area: "clientes", handler: clienteGet as Handler },
+  { rota: "PATCH /api/clientes/[id]", url: `/api/clientes/${ID}`, area: "clientes", handler: clientePatch as Handler },
+  { rota: "POST /api/clientes/[id]/cancelamento", url: `/api/clientes/${ID}/cancelamento`, area: "clientes", handler: cancelamentoPost as Handler },
+  { rota: "DELETE /api/clientes/[id]/cancelamento", url: `/api/clientes/${ID}/cancelamento`, area: "clientes", handler: cancelamentoDelete as Handler },
+  { rota: "GET /api/clientes/[id]/contrato", url: `/api/clientes/${ID}/contrato`, area: "clientes", handler: contratoGet as Handler },
+  { rota: "POST /api/clientes/[id]/contrato", url: `/api/clientes/${ID}/contrato`, area: "clientes", handler: contratoPost as Handler },
+  { rota: "GET /api/clientes/[id]/contrato/versoes", url: `/api/clientes/${ID}/contrato/versoes`, area: "clientes", handler: versoesContratoGet as Handler },
+  { rota: "GET /api/configuracao/status", url: "/api/configuracao/status", area: "configuracao", handler: configuracaoStatusGet as Handler },
+  { rota: "GET /api/equipe", url: "/api/equipe", area: "equipe", handler: equipeGet as Handler },
+  { rota: "POST /api/equipe", url: "/api/equipe", area: "equipe", handler: equipePost as Handler },
+  { rota: "PATCH /api/equipe/[id]", url: `/api/equipe/${ID}`, area: "equipe", handler: equipePapelPatch as Handler },
+  { rota: "GET /api/notas", url: "/api/notas", area: "notas", handler: notasGet as Handler },
+  { rota: "POST /api/notas", url: "/api/notas", area: "notas", handler: notasPost as Handler },
+  { rota: "POST /api/notas/[id]/acoes", url: `/api/notas/${ID}/acoes`, area: "notas", handler: acoesNotaPost as Handler },
+  { rota: "GET /api/notas/[id]/arquivo", url: `/api/notas/${ID}/arquivo`, area: "notas", handler: arquivoGet as Handler },
+  { rota: "POST /api/notas/[id]/arquivo", url: `/api/notas/${ID}/arquivo`, area: "notas", handler: arquivoPost as Handler },
+  { rota: "GET /api/notas/[id]/arquivo/versoes", url: `/api/notas/${ID}/arquivo/versoes`, area: "notas", handler: versoesGet as Handler },
+  { rota: "GET /api/notas/[id]/eventos", url: `/api/notas/${ID}/eventos`, area: "notas", handler: eventosNotaGet as Handler },
+  { rota: "POST /api/notas/[id]/verificar", url: `/api/notas/${ID}/verificar`, area: "checagem", handler: verificarPost as Handler },
+  { rota: "GET /api/painel-financeiro", url: "/api/painel-financeiro", area: "painel", handler: painelGet as Handler },
+  { rota: "GET /api/relatorios/novos-contratos", url: "/api/relatorios/novos-contratos", area: "contratos", handler: relatorioContratosGet as Handler }
+];
+
+/** Rotas que NÃO usam sessão de equipe, de propósito (cada uma com teste próprio abaixo ou em app/api/auth). */
+const ROTAS_SEM_PAPEL = [
+  "POST /api/auth/login",
+  "POST /api/auth/logout",
+  "POST /api/auth/trocar-senha",
+  "POST /api/cron/verificar-prazos",
+  "POST /api/integracao/clientes",
+  "POST /api/integracao/clientes/[municipioIdExterno]/cancelamento"
+];
 
 beforeEach(() => {
   queryMock.mockClear();
 });
 
-describe("achado crítico de segurança — toda rota antes aberta agora exige sessão (401 sem cookie)", () => {
-  it.each([
-    ["GET /api/clientes", () => clientesGet(reqSemSessao("/api/clientes", "GET"))],
-    ["POST /api/clientes", () => clientesPost(reqSemSessao("/api/clientes", "POST"))],
-    ["GET /api/notas", () => notasGet(reqSemSessao("/api/notas", "GET"))],
-    ["GET /api/notas?situacao=paga&pagina=2", () => notasGet(reqSemSessao("/api/notas?situacao=paga&pagina=2", "GET"))],
-    ["POST /api/notas", () => notasPost(reqSemSessao("/api/notas", "POST"))],
-    ["POST /api/notas/[id]/verificar", () => verificarPost(reqSemSessao("/api/notas/nota-1/verificar", "POST"), { params: Promise.resolve({ id: "nota-1" }) })],
-    ["POST /api/notas/[id]/arquivo", () => arquivoPost(reqSemSessao("/api/notas/nota-1/arquivo", "POST"), { params: Promise.resolve({ id: "nota-1" }) })],
-    ["GET /api/notas/[id]/arquivo", () => arquivoGet(reqSemSessao("/api/notas/nota-1/arquivo", "GET"), { params: Promise.resolve({ id: "nota-1" }) })],
-    ["GET /api/notas/[id]/arquivo?versao=1", () => arquivoGet(reqSemSessao("/api/notas/nota-1/arquivo?versao=1", "GET"), { params: Promise.resolve({ id: "nota-1" }) })],
-    ["GET /api/notas/[id]/arquivo/versoes", () => versoesGet(reqSemSessao("/api/notas/nota-1/arquivo/versoes", "GET"), { params: Promise.resolve({ id: "nota-1" }) })],
-    ["POST /api/notas/[id]/acoes", () => acoesNotaPost(reqSemSessao("/api/notas/nota-1/acoes", "POST"), { params: Promise.resolve({ id: "nota-1" }) })],
-    ["GET /api/notas/[id]/eventos", () => eventosNotaGet(reqSemSessao("/api/notas/nota-1/eventos", "GET"), { params: Promise.resolve({ id: "nota-1" }) })],
-    ["GET /api/clientes/[id]/contrato/versoes", () => versoesContratoGet(reqSemSessao("/api/clientes/cliente-1/contrato/versoes", "GET"), { params: Promise.resolve({ id: "cliente-1" }) })],
-    ["GET /api/clientes/[id]/contrato?versao=1", () => contratoGet(reqSemSessao("/api/clientes/cliente-1/contrato?versao=1", "GET"), { params: Promise.resolve({ id: "cliente-1" }) })],
-    ["GET /api/clientes/[id]", () => clienteGet(reqSemSessao("/api/clientes/cliente-1", "GET"), { params: Promise.resolve({ id: "cliente-1" }) })],
-    ["PATCH /api/clientes/[id]", () => clientePatch(reqSemSessao("/api/clientes/cliente-1", "PATCH"), { params: Promise.resolve({ id: "cliente-1" }) })],
-    ["POST /api/clientes/[id]/contrato", () => contratoPost(reqSemSessao("/api/clientes/cliente-1/contrato", "POST"), { params: Promise.resolve({ id: "cliente-1" }) })],
-    ["GET /api/clientes/[id]/contrato", () => contratoGet(reqSemSessao("/api/clientes/cliente-1/contrato", "GET"), { params: Promise.resolve({ id: "cliente-1" }) })],
-    ["GET /api/alertas", () => alertasGet(reqSemSessao("/api/alertas", "GET"))],
-    ["GET /api/painel-financeiro", () => painelGet(reqSemSessao("/api/painel-financeiro", "GET"))],
-    ["GET /api/configuracao/status", () => configuracaoStatusGet(reqSemSessao("/api/configuracao/status", "GET"))],
-    ["GET /api/painel-financeiro?formato=csv", () => painelGet(reqSemSessao("/api/painel-financeiro?formato=csv", "GET"))],
-    ["GET /api/equipe", () => equipeGet(reqSemSessao("/api/equipe", "GET"))],
-    ["POST /api/clientes/[id]/cancelamento", () => cancelamentoPost(reqSemSessao("/api/clientes/cliente-1/cancelamento", "POST"), { params: Promise.resolve({ id: "cliente-1" }) })],
-    ["DELETE /api/clientes/[id]/cancelamento", () => cancelamentoDelete(reqSemSessao("/api/clientes/cliente-1/cancelamento", "DELETE"), { params: Promise.resolve({ id: "cliente-1" }) })],
-    ["POST /api/equipe", () => equipePost(reqSemSessao("/api/equipe", "POST"))]
-  ])("%s — 401, nunca chama query()", async (_descricao, chamar) => {
-    const res = await chamar();
+describe("toda rota de API está coberta por este arquivo (sem rota sem teste)", () => {
+  it("cada método exportado em app/api/**/route.ts está na matriz rota × papel ou na lista de rotas de segredo/autenticação", () => {
+    const raiz = join(process.cwd(), "app", "api");
+    const encontradas = (readdirSync(raiz, { recursive: true }) as string[])
+      .filter((f) => f.endsWith("route.ts"))
+      .flatMap((arquivo) => {
+        const caminho = "/api/" + relative(raiz, join(raiz, arquivo)).replace(/\\/g, "/").replace(/\/?route\.ts$/, "");
+        const metodos = [...readFileSync(join(raiz, arquivo), "utf-8").matchAll(/export async function (GET|POST|PUT|PATCH|DELETE)\b/g)].map((m) => m[1]);
+        return metodos.map((m) => `${m} ${caminho}`);
+      })
+      .sort();
+    expect(encontradas).toEqual([...ROTAS.map((r) => r.rota), ...ROTAS_SEM_PAPEL].sort());
+  });
+});
+
+describe("achado crítico de segurança — toda rota da equipe exige sessão (401 sem cookie)", () => {
+  it.each(ROTAS.map((r) => [r.rota, r] as const))("%s — 401, nunca chama query()", async (_rota, r) => {
+    const res = await r.handler(req(r.url, r.rota.split(" ")[0]), ctx);
     expect(res.status).toBe(401);
     expect(queryMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("perfis de acesso (rodada 15-A) — matriz completa rota × papel", () => {
+  const DADO_TOCADO = "consulta de DADO alcançada (passou da autorização)";
+  let papelDaSessao = "admin";
+  const cookies: Record<string, string> = {};
+
+  beforeEach(async () => {
+    for (const papel of PAPEIS) {
+      cookies[papel] ??= `${NOME_COOKIE_ACCESS}=${await gerarAccessToken({ equipeId: ID, nome: "Teste", precisaTrocarSenha: false, tokenVersion: 1 })}`;
+    }
+    // Só a consulta da SESSÃO responde (com o papel do caso); qualquer outra lança — é o sinal de "passou da autorização".
+    // withTransaction também é este mock (recebe uma função, não SQL) — conta como dado alcançado.
+    queryMock.mockImplementation(((sql: unknown) => {
+      if (typeof sql === "string" && sql.includes("select token_version, ativo, papel from equipe_nexaigen")) return Promise.resolve([{ token_version: 1, ativo: true, papel: papelDaSessao }]);
+      throw new Error(DADO_TOCADO);
+    }) as unknown as typeof lancarSempre);
+  });
+
+  afterEach(() => {
+    queryMock.mockImplementation(lancarSempre);
+  });
+
+  const casos = ROTAS.flatMap((r) => PAPEIS.map((papel) => [r.rota, papel, r] as const));
+
+  it.each(casos)("%s × %s", async (_rota, papel, r) => {
+    papelDaSessao = papel;
+    const executar = () => r.handler(req(r.url, r.rota.split(" ")[0], cookies[papel]), ctx);
+    const consultasDeDado = () => queryMock.mock.calls.filter((chamada) => !String((chamada as unknown[])[0]).includes("from equipe_nexaigen where id")).length;
+
+    if (podeAcessar(papel, r.area)) {
+      // Liberado: chega ao banco (lança o sinal) ou para numa validação/404 — nunca 401/403.
+      const res = await executar().catch((erro: Error) => {
+        expect(erro.message).toBe(DADO_TOCADO);
+        return null;
+      });
+      if (res) expect([401, 403]).not.toContain(res.status);
+    } else {
+      const res = await executar();
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ erro: "Seu perfil de acesso não permite esta função." });
+      expect(consultasDeDado()).toBe(0);
+    }
+  });
+
+  it("a matriz tem de fato rotas negadas pra cada papel não-admin (o teste não passa por vacuidade)", () => {
+    for (const papel of ["financeiro", "vendas", "rh"]) expect(ROTAS.some((r) => !podeAcessar(papel, r.area))).toBe(true);
+    expect(ROTAS.every((r) => podeAcessar("admin", r.area))).toBe(true);
   });
 });
 

@@ -9,7 +9,7 @@ import { render, screen } from "@testing-library/react";
 const { obterResumoMock } = vi.hoisted(() => ({ obterResumoMock: vi.fn() }));
 vi.mock("@/lib/resumoDashboard", () => ({ obterResumoDashboard: obterResumoMock }));
 
-import Dashboard from "./page";
+import Dashboard from "./Dashboard";
 
 const SENTINELA = "SENTINELA-nao-pode-aparecer-3e9";
 const SEM_AVISO = { quantidade: 0, mrrEmRiscoCentavos: 0, proximoTermino: null };

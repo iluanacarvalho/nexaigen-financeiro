@@ -1,5 +1,5 @@
 // Cancelamento de contrato pela equipe (tela de Clientes, rodada 12-A).
-// Exige sessão (exigirSessao); o autor do evento de auditoria é SEMPRE a
+// Exige sessão (exigirPapel); o autor do evento de auditoria é SEMPRE a
 // sessão, nunca o corpo da requisição.
 //
 // POST   { dataPedido, motivo } → registra o ofício: 'ativo' → 'em_aviso_previo',
@@ -12,7 +12,7 @@
 // lib/cancelamentoServico.ts.
 
 import { NextRequest, NextResponse } from "next/server";
-import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
+import { NOME_COOKIE_ACCESS, exigirPapel, obterContextoAutenticado } from "@/lib/auth";
 import { RegistrarCancelamentoSchema } from "@/lib/cancelamentoSchemas";
 import { registrarCancelamento, retratarCancelamento, type ResultadoContrato } from "@/lib/cancelamentoServico";
 import { hojeEmSaoPaulo } from "@/lib/painelFinanceiro";
@@ -37,7 +37,7 @@ function responder(r: ResultadoContrato, semMudanca: string): NextResponse {
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const contexto = await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value);
-  const negado = exigirSessao(contexto);
+  const negado = exigirPapel(contexto, "clientes");
   if (negado) return negado;
 
   const { id } = await params;
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const contexto = await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value);
-  const negado = exigirSessao(contexto);
+  const negado = exigirPapel(contexto, "clientes");
   if (negado) return negado;
 
   const { id } = await params;

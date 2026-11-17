@@ -55,6 +55,8 @@ import { POST as VERIFICAR } from "./notas/[id]/verificar/route";
 import { POST as INTEGRACAO } from "./integracao/clientes/route";
 import { POST as REGISTRAR_CANCELAMENTO } from "./clientes/[id]/cancelamento/route";
 import { POST as INTEGRACAO_CANCELAMENTO } from "./integracao/clientes/[municipioIdExterno]/cancelamento/route";
+import { PATCH as ALTERAR_PAPEL } from "./equipe/[id]/route";
+import { GET as RELATORIO_CONTRATOS } from "./relatorios/novos-contratos/route";
 
 const ID = "7a1b2c3d-0000-4000-8000-0000000000aa";
 const SEGREDO_INTEGRACAO = "segredo-contrato-validacao";
@@ -101,10 +103,11 @@ async function naoFoiErroDeValidacao(res: Response) {
 beforeEach(async () => {
   queryMock.mockReset();
   queryMock.mockImplementation(async (sql: string) => {
-    if (sql.includes("select token_version, ativo from equipe_nexaigen")) return [{ token_version: 1, ativo: true }];
+    if (sql.includes("select token_version, ativo, papel from equipe_nexaigen")) return [{ token_version: 1, ativo: true, papel: "admin" }];
     if (sql.includes("insert into cliente_prefeitura")) return [{ id: ID, criado: true }];
     if (sql.includes("update cliente_prefeitura")) return [{ id: ID }];
     if (sql.includes("insert into equipe_nexaigen")) return [{ id: ID }];
+    if (sql.includes("from cliente_prefeitura c") || sql.includes("from cliente_evento_contrato")) return [];
     return [];
   });
   trocarSenhaMock.mockResolvedValue({ sucesso: true });
@@ -145,12 +148,18 @@ describe("POST /api/auth/trocar-senha", () => {
 
 describe("POST /api/equipe", () => {
   it("(a) válido passa — e o e-mail com espaços nas pontas é aparado ANTES de validar o formato", async () => {
-    const res = await chamar(EQUIPE, "POST", { nome: "Nova Pessoa", email: "  Nova.Pessoa@nexaigen.com.br  " });
+    const res = await chamar(EQUIPE, "POST", { nome: "Nova Pessoa", email: "  Nova.Pessoa@nexaigen.com.br  ", papel: "financeiro" });
     expect(res.status).toBe(200);
-    expect((await res.json()).email).toBe("nova.pessoa@nexaigen.com.br");
+    expect(await res.json()).toMatchObject({ email: "nova.pessoa@nexaigen.com.br", papel: "financeiro" });
+  });
+  it("(b) sem papel ou papel inexistente → 400 em fieldErrors.papel (nunca um papel default silencioso)", async () => {
+    const sem = await esperar400ComDetalhes(await chamar(EQUIPE, "POST", { nome: "Nova Pessoa", email: "a@b.com.br" }));
+    expect(sem.fieldErrors.papel).toEqual(["Papel inválido — use um destes: admin, financeiro, vendas, rh."]);
+    const outro = await esperar400ComDetalhes(await chamar(EQUIPE, "POST", { nome: "Nova Pessoa", email: "a@b.com.br", papel: "diretor" }));
+    expect(outro.fieldErrors.papel).toHaveLength(1);
   });
   it("(b) e-mail inválido → 400, fieldErrors.email = ['E-mail inválido.']", async () => {
-    const d = await esperar400ComDetalhes(await chamar(EQUIPE, "POST", { nome: "Nova Pessoa", email: "sem-arroba" }));
+    const d = await esperar400ComDetalhes(await chamar(EQUIPE, "POST", { nome: "Nova Pessoa", email: "sem-arroba", papel: "rh" }));
     expect(d.fieldErrors.email).toEqual(["E-mail inválido."]);
   });
 });
@@ -344,5 +353,46 @@ describe("POST /api/integracao/clientes/[municipioIdExterno]/cancelamento (estri
   it("(c) chave desconhecida → 400", async () => {
     const d = await esperar400ComDetalhes(await chamarIntegracao({ acao: "retratar", status: "ativo" }));
     expect(d.formErrors.join(" ")).toContain("status");
+  });
+});
+
+describe("PATCH /api/equipe/[id] (estrito)", () => {
+  it("(a) válido passa (serviço chamado)", async () => {
+    withTransactionMock.mockResolvedValueOnce({ ok: true, mudou: true, papel: "vendas" });
+    const res = await chamar(ALTERAR_PAPEL, "PATCH", { papel: "vendas" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ papel: "vendas", mudou: true, sessaoEncerrada: true });
+  });
+  it("(b) papel inválido → 400 em fieldErrors.papel", async () => {
+    const d = await esperar400ComDetalhes(await chamar(ALTERAR_PAPEL, "PATCH", { papel: "dono" }));
+    expect(d.fieldErrors.papel).toEqual(["Papel inválido — use um destes: admin, financeiro, vendas, rh."]);
+  });
+  it("(c) chave desconhecida → 400 (só o papel muda por aqui)", async () => {
+    const d = await esperar400ComDetalhes(await chamar(ALTERAR_PAPEL, "PATCH", { papel: "rh", ativo: false }));
+    expect(d.formErrors.join(" ")).toContain("ativo");
+  });
+});
+
+describe("GET /api/relatorios/novos-contratos (query estrita)", () => {
+  const url = (q: string) => ({ url: `/api/relatorios/novos-contratos${q}` });
+  it("(a) válido passa — mês 2026-01 e formatos", async () => {
+    expect((await chamar(RELATORIO_CONTRATOS, "GET", undefined, url("?mes=2026-01"))).status).toBe(200);
+    const csv = await chamar(RELATORIO_CONTRATOS, "GET", undefined, url("?mes=2026-01&formato=csv"));
+    expect(csv.headers.get("content-type")).toBe("text/csv; charset=utf-8");
+  });
+  it("(b) mês inválido/futuro e formato inválido → 400 com fieldErrors (mensagens do projeto)", async () => {
+    const res = await chamar(RELATORIO_CONTRATOS, "GET", undefined, url("?mes=2026-13"));
+    expect(res.status).toBe(400);
+    const corpo = await res.json();
+    expect(corpo.erro).toBe("Filtros inválidos");
+    conferirFormato(corpo.detalhes);
+    expect(corpo.detalhes.fieldErrors.mes).toEqual(["Mês inválido — use aaaa-mm."]);
+    expect((await (await chamar(RELATORIO_CONTRATOS, "GET", undefined, url("?mes=2999-01"))).json()).detalhes.fieldErrors.mes).toEqual(["Esse mês ainda não chegou."]);
+    expect((await (await chamar(RELATORIO_CONTRATOS, "GET", undefined, url("?formato=pdf"))).json()).detalhes.fieldErrors.formato).toEqual(["formato inválido — use json, csv ou xlsx."]);
+  });
+  it("(c) parâmetro desconhecido → 400", async () => {
+    const res = await chamar(RELATORIO_CONTRATOS, "GET", undefined, url("?mes=2026-01&cliente=1"));
+    expect(res.status).toBe(400);
+    expect((await res.json()).detalhes.formErrors.join(" ")).toContain("cliente");
   });
 });

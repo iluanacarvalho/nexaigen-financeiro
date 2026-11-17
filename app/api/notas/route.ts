@@ -1,5 +1,5 @@
 // Notas fiscais — listagem (filtros, busca, ordenação e paginação NO
-// SERVIDOR) e criação. Exige sessão da equipe (exigirSessao). Regras em
+// SERVIDOR) e criação. Exige sessão da equipe (exigirPapel). Regras em
 // lib/estadoNota.ts (puras) e lib/notasServico.ts (transações); esta rota
 // só valida a forma (lib/notaSchemas.ts) e traduz o resultado em HTTP.
 //
@@ -22,7 +22,7 @@
 //      máquina de estados e mesmos prazos (Lei 14.133, art. 141).
 
 import { NextRequest, NextResponse } from "next/server";
-import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
+import { NOME_COOKIE_ACCESS, exigirPapel, obterContextoAutenticado } from "@/lib/auth";
 import { hojeEmSaoPaulo } from "@/lib/painelFinanceiro";
 import { FiltrosNotasSchema, NovaNotaSchema } from "@/lib/notaSchemas";
 import { criarNota, listarNotas, type FiltrosNotas } from "@/lib/notasServico";
@@ -31,7 +31,7 @@ import { detalhesDoErro } from "@/lib/validacao";
 import { formatarDataBr, rotuloStatusContrato } from "@/lib/cancelamentoContrato";
 
 export async function GET(req: NextRequest) {
-  const negado = exigirSessao(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value));
+  const negado = exigirPapel(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value), "notas");
   if (negado) return negado;
 
   const parsed = FiltrosNotasSchema.safeParse(Object.fromEntries(req.nextUrl.searchParams));
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const contexto = await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value);
-  const negado = exigirSessao(contexto);
+  const negado = exigirPapel(contexto, "notas");
   if (negado) return negado;
 
   const parsed = NovaNotaSchema.safeParse(await req.json().catch(() => null));

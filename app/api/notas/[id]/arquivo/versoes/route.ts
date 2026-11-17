@@ -5,12 +5,12 @@
 // compartilhada com o contrato: lib/versionamentoPdf.ts.
 
 import { NextRequest, NextResponse } from "next/server";
-import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
+import { NOME_COOKIE_ACCESS, exigirPapel, obterContextoAutenticado } from "@/lib/auth";
 import { ALVO_PDF_NOTA, donoExiste, listarVersoesPdf } from "@/lib/versionamentoPdf";
 import { ehUuid } from "@/lib/validacao";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const negado = exigirSessao(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value));
+  const negado = exigirPapel(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value), "notas");
   if (negado) return negado;
 
   const { id: notaId } = await params;

@@ -1,4 +1,4 @@
-// Exige sessão (lib/auth.ts#exigirSessao) desde a rodada de correção do
+// Exige sessão (lib/auth.ts#exigirPapel) desde a rodada de correção do
 // achado crítico de segurança — expõe contato_email/contato_telefone da
 // prefeitura junto com o valor da NF, dado de contato real. Postgres
 // direto via lib/db.ts desde a rodada de migração de infraestrutura
@@ -14,10 +14,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
+import { NOME_COOKIE_ACCESS, exigirPapel, obterContextoAutenticado } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
-  const negado = exigirSessao(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value));
+  const negado = exigirPapel(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value), "alertas");
   if (negado) return negado;
 
   const alertas = await query(

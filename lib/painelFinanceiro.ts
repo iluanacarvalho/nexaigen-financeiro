@@ -26,6 +26,7 @@
 // "Vencida"/"atraso crítico" aqui = statusDerivado "vencida"/"atraso_critico".
 
 import { paraCentavos } from "./dinheiro";
+import { celulaTextoCsv, centavosCsv } from "./exportacao";
 import { LIMIAR_ATRASO_CRITICO_DIAS, diagnosticarNota } from "./prazos";
 import { statusPersistidoDe, type SituacaoNota } from "./estadoNota";
 import { rotuloDoPlano, temImplantacaoACobrar } from "./planos";
@@ -428,33 +429,10 @@ export function montarPainelFinanceiro(entrada: { clientes: LinhaClientePainel[]
 
 // --- CSV ------------------------------------------------------------------
 
-const INICIO_FORMULA = /^[=+\-@\t\r]/;
-
-/**
- * Neutraliza injeção de fórmula (CSV injection): texto que começa com
- * = + - @ TAB ou CR ganha um apóstrofo na frente, e a planilha passa a
- * tratá-lo como texto literal. Aplicado SÓ a células de texto — número
- * formatado por nós mesmos não passa por aqui.
- */
-export function neutralizarFormula(texto: string): string {
-  return INICIO_FORMULA.test(texto) ? `'${texto}` : texto;
-}
-
-function celulaTexto(texto: string): string {
-  return celula(neutralizarFormula(texto));
-}
-
-/** Aspas quando necessário (separador, aspas, quebra de linha), aspas internas duplicadas. */
-function celula(valor: string): string {
-  return /[;"\r\n]/.test(valor) ? `"${valor.replace(/"/g, '""')}"` : valor;
-}
-
-/** Centavos → "4500,50" (vírgula decimal, sem separador de milhar — abre como número no Excel pt-BR). */
-function centavosCsv(centavos: number): string {
-  const sinal = centavos < 0 ? "-" : "";
-  const abs = Math.abs(centavos);
-  return `${sinal}${Math.floor(abs / 100)},${String(abs % 100).padStart(2, "0")}`;
-}
+// neutralizarFormula/célula/centavos moram em lib/exportacao.ts desde a
+// rodada 15-A (o relatório de novos contratos usa as mesmas regras);
+// neutralizarFormula reexportada pra quem já importava daqui.
+export { neutralizarFormula } from "./exportacao";
 
 /**
  * CSV da tabela de clientes: BOM UTF-8 (Excel reconhece os acentos),
@@ -465,14 +443,14 @@ export function gerarCsvClientes(clientes: ClientePainel[]): string {
   const cabecalho = ["Cliente", "UF", "Plano", "Valor mensal (R$)", "Notas em aberto", "Valor em aberto (R$)", "Maior atraso (dias)", "Situação"];
   const linhas = clientes.map((c) =>
     [
-      celulaTexto(c.nome),
-      celulaTexto(c.uf),
-      celulaTexto(c.planoRotulo),
+      celulaTextoCsv(c.nome),
+      celulaTextoCsv(c.uf),
+      celulaTextoCsv(c.planoRotulo),
       centavosCsv(c.valorMensalCentavos),
       String(c.notasEmAberto),
       centavosCsv(c.valorEmAbertoCentavos),
       String(c.maiorAtrasoDias),
-      celulaTexto(ROTULO_SITUACAO[c.situacao])
+      celulaTextoCsv(ROTULO_SITUACAO[c.situacao])
     ].join(";")
   );
   return "﻿" + [cabecalho.join(";"), ...linhas].join("\r\n") + "\r\n";

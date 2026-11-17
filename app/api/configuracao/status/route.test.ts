@@ -34,7 +34,7 @@ beforeEach(() => {
     process.env[nome] = `${SENTINELA}-${nome}`;
   }
   queryMock.mockReset();
-  queryMock.mockResolvedValue([{ token_version: 1, ativo: true }]);
+  queryMock.mockResolvedValue([{ token_version: 1, ativo: true, papel: "admin" }]);
 });
 
 afterEach(() => {

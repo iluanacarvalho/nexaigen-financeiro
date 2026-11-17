@@ -10,7 +10,7 @@
 // GET [?versao=N] — download pelo servidor, em streaming (padrão: atual).
 
 import { NextRequest, NextResponse } from "next/server";
-import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
+import { NOME_COOKIE_ACCESS, exigirPapel, obterContextoAutenticado } from "@/lib/auth";
 import { lerPdfDoFormData } from "@/lib/validacaoPdf";
 import { lerMotivo, lerParametroVersao } from "@/lib/versaoArquivo";
 import { ALVO_CONTRATO, donoExiste, localizarPdf, registrarVersaoPdf, respostaDownloadPdf } from "@/lib/versionamentoPdf";
@@ -20,7 +20,7 @@ const NAO_ENCONTRADO = () => NextResponse.json({ erro: "Cliente não encontrado.
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const contexto = await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value);
-  const negado = exigirSessao(contexto);
+  const negado = exigirPapel(contexto, "clientes");
   if (negado) return negado;
 
   const { id: clienteId } = await params;
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const negado = exigirSessao(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value));
+  const negado = exigirPapel(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value), "clientes");
   if (negado) return negado;
 
   const { id: clienteId } = await params;

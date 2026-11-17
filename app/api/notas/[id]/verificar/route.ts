@@ -18,7 +18,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
+import { NOME_COOKIE_ACCESS, exigirPapel, obterContextoAutenticado } from "@/lib/auth";
 import { hojeEmSaoPaulo } from "@/lib/painelFinanceiro";
 import { executarAcaoNota, registrarVerificacaoSemMudanca } from "@/lib/notasServico";
 import { detalhesDoErro, ehUuid } from "@/lib/validacao";
@@ -32,7 +32,7 @@ const VerificacaoSchema = z.strictObject({
 // UPGRADE Next.js 16: `params` de route handlers dinâmicos é uma Promise.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const contexto = await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value);
-  const negado = exigirSessao(contexto);
+  const negado = exigirPapel(contexto, "checagem");
   if (negado) return negado;
 
   const parsed = VerificacaoSchema.safeParse(await req.json().catch(() => null));

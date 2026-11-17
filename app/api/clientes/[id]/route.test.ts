@@ -30,7 +30,7 @@ async function patch(corpo: unknown, id = CLIENTE_ID) {
 beforeEach(() => {
   queryMock.mockReset();
   queryMock.mockImplementation(async (sql: string) => {
-    if (sql.includes("from equipe_nexaigen")) return [{ token_version: 1, ativo: true }];
+    if (sql.includes("from equipe_nexaigen")) return [{ token_version: 1, ativo: true, papel: "admin" }];
     if (sql.includes("update cliente_prefeitura")) return [{ id: CLIENTE_ID }];
     throw new Error(`SQL não esperada: ${sql}`);
   });
@@ -68,7 +68,7 @@ describe("PATCH /api/clientes/[id]", () => {
 
   it("CHECK Dispensa-sem-taxa do banco (ex.: taxa num cliente Dispensa) vira 400 explicando, nunca 500", async () => {
     queryMock.mockImplementation(async (sql: string) => {
-      if (sql.includes("from equipe_nexaigen")) return [{ token_version: 1, ativo: true }];
+      if (sql.includes("from equipe_nexaigen")) return [{ token_version: 1, ativo: true, papel: "admin" }];
       throw Object.assign(new Error("check"), { code: "23514", constraint: "ck_cliente_prefeitura_dispensa_sem_taxa" });
     });
     const res = await patch({ taxa_implantacao: "100" });

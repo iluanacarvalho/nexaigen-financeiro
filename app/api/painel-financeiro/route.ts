@@ -1,5 +1,5 @@
 // GET /api/painel-financeiro — visão gerencial (KPIs, série de 12 meses,
-// tabela de clientes). Exige sessão da equipe (exigirSessao), mesmo padrão
+// tabela de clientes). Exige sessão da equipe (exigirPapel), mesmo padrão
 // de toda rota administrativa: é dado financeiro consolidado da NEXAIGEN.
 // Cálculo em lib/painelFinanceiro.ts (puro), leitura em
 // lib/painelFinanceiroRepositorio.ts. Valores monetários em CENTAVOS
@@ -10,12 +10,12 @@
 // checagem de sessão, mesmos números da tela.
 
 import { NextRequest, NextResponse } from "next/server";
-import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
+import { NOME_COOKIE_ACCESS, exigirPapel, obterContextoAutenticado } from "@/lib/auth";
 import { obterPainelFinanceiro } from "@/lib/painelFinanceiroRepositorio";
 import { gerarCsvClientes } from "@/lib/painelFinanceiro";
 
 export async function GET(req: NextRequest) {
-  const negado = exigirSessao(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value));
+  const negado = exigirPapel(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value), "painel");
   if (negado) return negado;
 
   const painel = await obterPainelFinanceiro();

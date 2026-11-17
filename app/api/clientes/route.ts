@@ -1,4 +1,4 @@
-// Exige sessão (lib/auth.ts#exigirSessao) desde a rodada de correção do
+// Exige sessão (lib/auth.ts#exigirPapel) desde a rodada de correção do
 // achado crítico de segurança — esta rota (dado de cliente real: CNPJ,
 // valor mensal, contato) chegou a ficar completamente aberta. Postgres
 // direto via lib/db.ts desde a rodada de migração de infraestrutura
@@ -12,13 +12,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { ClienteSchema } from "@/lib/clienteSchema";
-import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
+import { NOME_COOKIE_ACCESS, exigirPapel, obterContextoAutenticado } from "@/lib/auth";
 import { detalhesDoErro } from "@/lib/validacao";
 import { centavosParaNumeric } from "@/lib/dinheiro";
 import { clientesComNotaFinalEmitida } from "@/lib/cancelamentoServico";
 
 export async function GET(req: NextRequest) {
-  const negado = exigirSessao(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value));
+  const negado = exigirPapel(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value), "clientes");
   if (negado) return negado;
 
   // contrato_versao_atual: número da versão pra qual contrato_arquivo_chave aponta (0009) — lookup pela chave única.
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const negado = exigirSessao(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value));
+  const negado = exigirPapel(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value), "clientes");
   if (negado) return negado;
 
   const parsed = ClienteSchema.safeParse(await req.json());

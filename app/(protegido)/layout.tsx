@@ -5,8 +5,8 @@
 // URL (Next.js) — /clientes continua em /clientes, só o arquivo mora em
 // app/(protegido)/clientes/page.tsx.
 //
-// Server Component: lê o cookie de sessão via next/headers#cookies() e
-// passa pra obterContextoAutenticado() (que recebe o token como
+// Server Component: lê o cookie de sessão (lib/authPagina.ts#contextoDaPagina,
+// via next/headers#cookies()) e passa pra obterContextoAutenticado() (que recebe o token como
 // parâmetro, por testabilidade — ver o comentário completo em
 // lib/auth.ts), redirecionando pra /login se não houver sessão válida.
 // Isto é a checagem de SEGURANÇA de verdade pras páginas — cada rota de
@@ -19,14 +19,15 @@
 // segunda porque precisa renderizar mesmo com precisa_trocar_senha=true
 // (checado dentro da própria página, não aqui).
 
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { NOME_COOKIE_ACCESS, obterContextoAutenticado } from "@/lib/auth";
+import { contextoDaPagina } from "@/lib/authPagina";
 import NavBar from "../NavBar";
 
+// Papel (rodada 15-A): este layout só exige SESSÃO — o acesso por área de
+// cada página fica no layout.tsx da própria pasta (lib/authPagina.ts#exigirAreaPagina);
+// a NavBar recebe o papel e mostra só os itens permitidos.
 export default async function ProtegidoLayout({ children }: { children: React.ReactNode }) {
-  const cookieStore = await cookies();
-  const contexto = await obterContextoAutenticado(cookieStore.get(NOME_COOKIE_ACCESS)?.value);
+  const contexto = await contextoDaPagina();
   if (!contexto) {
     redirect("/login");
   }
@@ -41,7 +42,7 @@ export default async function ProtegidoLayout({ children }: { children: React.Re
 
   return (
     <>
-      <NavBar nome={contexto.nome} />
+      <NavBar nome={contexto.nome} papel={contexto.papel} />
       {children}
     </>
   );

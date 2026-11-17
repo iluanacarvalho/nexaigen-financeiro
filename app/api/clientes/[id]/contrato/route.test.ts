@@ -60,7 +60,7 @@ function baixar(c?: string, qs = "", id = DONO_ID) {
 
 beforeEach(() => {
   for (const m of [queryMock, donoExisteMock, registrarMock, localizarMock, downloadMock]) m.mockReset();
-  queryMock.mockResolvedValue([{ token_version: 1, ativo: true }]); // só a checagem de sessão toca o banco aqui
+  queryMock.mockResolvedValue([{ token_version: 1, ativo: true, papel: "admin" }]); // só a checagem de sessão toca o banco aqui
   donoExisteMock.mockResolvedValue(true);
 });
 

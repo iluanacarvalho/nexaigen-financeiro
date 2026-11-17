@@ -3,12 +3,12 @@
 // mais recente, com o NOME de quem fez (nunca e-mail). Exige sessão.
 
 import { NextRequest, NextResponse } from "next/server";
-import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
+import { NOME_COOKIE_ACCESS, exigirPapel, obterContextoAutenticado } from "@/lib/auth";
 import { listarEventos } from "@/lib/notasServico";
 import { ehUuid } from "@/lib/validacao";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const negado = exigirSessao(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value));
+  const negado = exigirPapel(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value), "notas");
   if (negado) return negado;
 
   const { id } = await params;

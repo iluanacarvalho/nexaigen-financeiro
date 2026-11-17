@@ -5,11 +5,11 @@
 // Nenhum valor de variável sai daqui, nem pra log.
 
 import { NextRequest, NextResponse } from "next/server";
-import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
+import { NOME_COOKIE_ACCESS, exigirPapel, obterContextoAutenticado } from "@/lib/auth";
 import { avisosDeConfiguracao, lerStatusConfiguracao } from "@/lib/statusConfiguracao";
 
 export async function GET(req: NextRequest) {
-  const negado = exigirSessao(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value));
+  const negado = exigirPapel(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value), "configuracao");
   if (negado) return negado;
 
   const status = lerStatusConfiguracao();

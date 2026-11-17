@@ -16,7 +16,7 @@
 // Não existe — de propósito — nenhum fluxo de remover PDF.
 
 import { NextRequest, NextResponse } from "next/server";
-import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
+import { NOME_COOKIE_ACCESS, exigirPapel, obterContextoAutenticado } from "@/lib/auth";
 import { lerPdfDoFormData } from "@/lib/validacaoPdf";
 import { lerMotivo, lerParametroVersao } from "@/lib/versaoArquivo";
 import { ALVO_PDF_NOTA, donoExiste, localizarPdf, registrarVersaoPdf, respostaDownloadPdf } from "@/lib/versionamentoPdf";
@@ -26,7 +26,7 @@ const NAO_ENCONTRADA = () => NextResponse.json({ erro: "Nota fiscal não encontr
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const contexto = await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value);
-  const negado = exigirSessao(contexto);
+  const negado = exigirPapel(contexto, "notas");
   if (negado) return negado;
 
   const { id: notaId } = await params;
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const contexto = await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value);
-  const negado = exigirSessao(contexto);
+  const negado = exigirPapel(contexto, "notas");
   if (negado) return negado;
 
   const { id: notaId } = await params;

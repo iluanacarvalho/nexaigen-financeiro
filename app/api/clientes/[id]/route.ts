@@ -1,5 +1,5 @@
 // GET/PATCH de UM cliente_prefeitura — uso normal da equipe (sessão,
-// exigirSessao), não da integração com o Educa. PATCH só atualiza os
+// exigirPapel), não da integração com o Educa. PATCH só atualiza os
 // campos enviados (ClientePatchSchema — mesmas regras por campo do POST
 // /api/clientes, todas opcionais). Os campos de vínculo/arquivo
 // (municipio_id_externo, contrato_arquivo_*) ficam DE FORA de propósito:
@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { ClientePatchSchema } from "@/lib/clienteSchema";
-import { NOME_COOKIE_ACCESS, exigirSessao, obterContextoAutenticado } from "@/lib/auth";
+import { NOME_COOKIE_ACCESS, exigirPapel, obterContextoAutenticado } from "@/lib/auth";
 import { detalhesDoErro, ehUuid } from "@/lib/validacao";
 import { centavosParaNumeric } from "@/lib/dinheiro";
 import { MENSAGEM_DISPENSA_SEM_TAXA } from "@/lib/planos";
@@ -19,7 +19,7 @@ import { MENSAGEM_DISPENSA_SEM_TAXA } from "@/lib/planos";
 // "não encontrado" antes de chegar no banco, nunca um 500.
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const negado = exigirSessao(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value));
+  const negado = exigirPapel(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value), "clientes");
   if (negado) return negado;
 
   const { id } = await params;
@@ -31,7 +31,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const negado = exigirSessao(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value));
+  const negado = exigirPapel(await obterContextoAutenticado(req.cookies.get(NOME_COOKIE_ACCESS)?.value), "clientes");
   if (negado) return negado;
 
   const { id } = await params;
