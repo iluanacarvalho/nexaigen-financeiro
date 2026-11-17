@@ -167,16 +167,22 @@ export async function localizarPdf(alvo: AlvoVersionamento, donoId: string, vers
 
 /**
  * Resposta HTTP do download, em STREAMING: o corpo do objeto passa direto
- * do bucket pro cliente. Content-Length (quando o bucket informa — sempre,
- * no S3), Content-Type application/pdf, nosniff, no-store e nome
- * sanitizado (lib/versaoArquivo.ts#montarContentDisposition).
+ * do bucket pro cliente. Content-Type application/pdf, nosniff, no-store e
+ * nome sanitizado (lib/versaoArquivo.ts#montarContentDisposition).
+ *
+ * SEM Content-Length (rodada 13-A): desde o Next 16.4.5 (correção do
+ * GHSA-pc58-hwjq-p385) o servidor DESCARTA content-length/content-encoding
+ * de toda Response de route handler (next/dist/server/send-response.js,
+ * FORBIDDEN_HEADERS) — declarar aqui seria código morto. A resposta sai
+ * em transfer-encoding chunked.
  *
  * Erro ANTES de começar a transmitir (bucket fora do ar) → 502 JSON, sem
  * corpo de PDF nenhum. Objeto que sumiu do bucket → 404. Se a conexão com
  * o bucket cair NO MEIO da transmissão, o stream da resposta termina com
- * erro e a conexão é abortada — com Content-Length declarado, o navegador
- * sabe que o download ficou incompleto (nunca entrega um PDF truncado como
- * se estivesse completo).
+ * erro: o Next aborta o pipe e DESTRÓI a conexão (pipe-readable.js —
+ * writer.abort → res.destroy), sem mandar o bloco final do chunked — o
+ * navegador sabe que o download ficou incompleto (nunca entrega um PDF
+ * truncado como se estivesse completo).
  */
 export async function respostaDownloadPdf(chave: string, nome: string): Promise<Response> {
   const leitura = await armazenamentoObjetos.abrirLeituraArquivo(chave);
@@ -191,6 +197,5 @@ export async function respostaDownloadPdf(chave: string, nome: string): Promise<
     "cache-control": "no-store",
     "x-content-type-options": "nosniff"
   };
-  if (leitura.tamanhoBytes !== null) headers["content-length"] = String(leitura.tamanhoBytes);
   return new Response(leitura.corpo, { headers });
 }

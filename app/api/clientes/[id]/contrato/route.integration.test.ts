@@ -106,7 +106,7 @@ describe("contrato versionado — Postgres real", () => {
     const atual = await baixar(clienteId);
     expect(Buffer.from(await atual.arrayBuffer()).equals(v2)).toBe(true);
     const antiga = await baixar(clienteId, "?versao=1");
-    expect(antiga.headers.get("content-length")).toBe(String(v1.length));
+    expect(antiga.headers.get("content-length")).toBeNull(); // o Next 16.4.5+ descartaria — ver lib/downloadPdfNoServidorNext.test.ts
     expect(antiga.headers.get("content-type")).toBe("application/pdf");
     expect(antiga.headers.get("x-content-type-options")).toBe("nosniff");
     expect(antiga.headers.get("cache-control")).toBe("no-store");

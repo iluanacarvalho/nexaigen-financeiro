@@ -145,7 +145,7 @@ describe("respostaDownloadPdf — streaming", () => {
     });
   }
 
-  it("repassa o corpo do bucket byte a byte, com Content-Length, application/pdf, nosniff, no-store e nome sanitizado", async () => {
+  it("repassa o corpo do bucket byte a byte, application/pdf, nosniff, no-store e nome sanitizado — sem Content-Length (o Next 16.4.5+ descarta; ver lib/downloadPdfNoServidorNext.test.ts)", async () => {
     const a = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]);
     const b = new TextEncoder().encode("1.4 resto do arquivo");
     abrirMock.mockResolvedValue({ ok: true, corpo: streamDe(a, b), tamanhoBytes: a.length + b.length });
@@ -154,7 +154,7 @@ describe("respostaDownloadPdf — streaming", () => {
 
     expect(res.status).toBe(200);
     expect(Buffer.from(await res.arrayBuffer()).equals(Buffer.concat([a, b]))).toBe(true);
-    expect(res.headers.get("content-length")).toBe(String(a.length + b.length));
+    expect(res.headers.get("content-length")).toBeNull();
     expect(res.headers.get("content-type")).toBe("application/pdf");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
     expect(res.headers.get("cache-control")).toBe("no-store");
