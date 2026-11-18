@@ -502,3 +502,43 @@ Os valores são o **padrão sugerido**: o combinado com cada prefeitura fica em 
 - **Exportação CSV e XLSX:** os mesmos dados da tela. Cabeçalho "NEXAIGEN — Relatório de novos contratos" + mês + data de geração. CSV com BOM e `;`, fórmulas neutralizadas e variação em células numéricas. O XLSX é gerado sem dependência nova (`lib/xlsx.ts`).
 - **Mês sem contrato novo:** a tela diz "Nenhum contrato novo neste mês", nunca mostra zeros fingindo dado.
 - **Limitação:** encerramentos anteriores à trilha de eventos (0011) não têm evento e não entram em "encerrados no mês".
+
+## 25. Mapa público das prefeituras atendidas (rodada 15-B)
+
+**Regra central: só aparece quem autorizou POR ESCRITO** (cláusula de divulgação no contrato), marcado à mão na tela de Clientes. O público só vê **nome, UF e posição aproximada** do município.
+
+- **Quem aparece:**
+  - autorizado (`autorizacao_divulgacao`), com posição gravada, e com contrato **ativo** ou **em aviso prévio** ainda vigente;
+  - suspenso e encerrado nunca aparecem, mesmo autorizados;
+  - nenhum cliente existente foi autorizado pela migration `0013`: o padrão é `false`.
+- **Código IBGE e posição (tela do cliente → seção "Divulgação pública", admin e financeiro):**
+  - "Buscar posição" consulta a API pública do IBGE **só nessa hora**: nome/UF oficiais e o centroide da malha do município, com tempo-limite de 5 s;
+  - grava o código e a posição no cliente;
+  - se o nome/UF não bate com o cadastro, a tela avisa sem bloquear;
+  - com o IBGE fora do ar, o código é salvo com **posição pendente**, e autorizar fica bloqueado até ter posição (o banco também garante, por CHECK).
+- **Autorizar e revogar:** sempre com confirmação. Revogar tira do banco na hora; o cache público segura no máximo 1 minuto. Fica registrado quem autorizou e quando, e os eventos `divulgacao_autorizada`/`divulgacao_revogada` vão para a trilha `cliente_evento_contrato`.
+- **Listagem de Clientes:** coluna "Mapa público", com as situações No mapa / Sem autorização / Sem código IBGE / Posição pendente / Autorizado, fora do mapa.
+- **Endpoint público:** `GET /api/publico/mapa-clientes`, **sem login**.
+  - Devolve só `{ atualizadoEm, total, municipios: [{ nome, uf, lat, lon }] }`.
+  - Cabeçalhos: `Cache-Control: public, s-maxage=60, max-age=60`; rate limit de 120/min por IP; só GET (outros métodos → 405).
+  - **Nunca chama o IBGE.**
+- **Página pública:** `/mapa`, sem login e sem a NavBar interna.
+  - Mapa do Brasil em SVG próprio: os contornos dos estados são um arquivo estático gerado uma vez a partir da malha pública do IBGE (`npm run gerar-mapa-brasil` → `lib/mapaBrasil.gerado.ts`). A projeção é equiretangular.
+  - Pontos com nome/UF ao passar o mouse ou tocar, e lista textual para leitor de tela.
+  - Sem tiles, sem Google, sem cookies, sem fontes de fora. A CSP da página proíbe qualquer recurso de outro domínio.
+
+**Variável `MAPA_PUBLICO_ORIGENS`** (ver `.env.example`): lista de origens separadas por vírgula, por exemplo `https://www.nexaigen.com.br,https://nexaigen.com.br`.
+- **O que libera:** o CORS do endpoint público e o `frame-ancestors` da página `/mapa`.
+- **Vazia:** só a própria origem.
+- **Valores descartados:** item inválido (sem protocolo, com caminho, `*`) é ignorado e nunca vira curinga.
+- **Quando vale:** é lida em tempo de execução (`proxy.ts`), então basta reiniciar o servidor.
+- **Resto do app:** continua recusando iframe (`X-Frame-Options: DENY` + `frame-ancestors 'none'`, em `next.config.js`).
+
+**Como incorporar no site institucional** (depois de pôr a origem do site em `MAPA_PUBLICO_ORIGENS`):
+
+```html
+<iframe src="https://<endereço-do-financeiro>/mapa" title="Prefeituras atendidas pela NEXAIGEN"
+        width="100%" height="720" style="border:0" loading="lazy"></iframe>
+```
+
+Ou leia o JSON direto (`fetch("https://<endereço-do-financeiro>/api/publico/mapa-clientes")`) e desenhe no próprio site.

@@ -57,6 +57,7 @@ import { POST as REGISTRAR_CANCELAMENTO } from "./clientes/[id]/cancelamento/rou
 import { POST as INTEGRACAO_CANCELAMENTO } from "./integracao/clientes/[municipioIdExterno]/cancelamento/route";
 import { PATCH as ALTERAR_PAPEL } from "./equipe/[id]/route";
 import { GET as RELATORIO_CONTRATOS } from "./relatorios/novos-contratos/route";
+import { PUT as DIVULGACAO } from "./clientes/[id]/divulgacao/route";
 
 const ID = "7a1b2c3d-0000-4000-8000-0000000000aa";
 const SEGREDO_INTEGRACAO = "segredo-contrato-validacao";
@@ -394,5 +395,26 @@ describe("GET /api/relatorios/novos-contratos (query estrita)", () => {
     const res = await chamar(RELATORIO_CONTRATOS, "GET", undefined, url("?mes=2026-01&cliente=1"));
     expect(res.status).toBe(400);
     expect((await res.json()).detalhes.formErrors.join(" ")).toContain("cliente");
+  });
+});
+
+describe("PUT /api/clientes/[id]/divulgacao (estrito, união por acao)", () => {
+  it("(a) válidos passam da validação (autorizar/revogar chegam ao serviço; limpar o código não consulta o IBGE)", async () => {
+    withTransactionMock.mockResolvedValue({ ok: true, nome: "Prefeitura X", uf: "PR" });
+    expect((await chamar(DIVULGACAO, "PUT", { acao: "autorizar" })).status).toBe(200);
+    expect((await chamar(DIVULGACAO, "PUT", { acao: "revogar" })).status).toBe(200);
+    const limpar = await chamar(DIVULGACAO, "PUT", { acao: "definir_codigo", codigoIbge: null });
+    expect(limpar.status).toBe(200);
+    expect(await limpar.json()).toEqual({ codigoIbge: null, posicao: null, ibge: null, confere: null });
+  });
+  it("(b) código com formato errado e acao inexistente → 400 com fieldErrors (mensagens do projeto)", async () => {
+    const d = await esperar400ComDetalhes(await chamar(DIVULGACAO, "PUT", { acao: "definir_codigo", codigoIbge: "41069" }));
+    expect(d.fieldErrors.codigoIbge).toEqual(["O código IBGE do município tem exatamente 7 dígitos."]);
+    const acao = await esperar400ComDetalhes(await chamar(DIVULGACAO, "PUT", { acao: "publicar" }));
+    expect(acao.fieldErrors.acao).toEqual(["acao inválida — use definir_codigo, autorizar ou revogar."]);
+  });
+  it("(c) chave desconhecida → 400 (quem autoriza nunca vem do corpo)", async () => {
+    const d = await esperar400ComDetalhes(await chamar(DIVULGACAO, "PUT", { acao: "autorizar", autorizacao_divulgacao_por: ID }));
+    expect(d.formErrors.join(" ")).toContain("autorizacao_divulgacao_por");
   });
 });

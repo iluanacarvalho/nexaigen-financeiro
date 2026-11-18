@@ -8,6 +8,7 @@
 
 import { query, type Executor } from "./db";
 import { hojeEmSaoPaulo } from "./painelFinanceiro";
+import { TIPOS_EVENTO_CONTRATO } from "./cancelamentoServico";
 import { montarRelatorioContratos, type LinhaClienteRelatorio, type LinhaEventoContrato, type RelatorioContratos } from "./relatorioContratos";
 
 export async function lerDadosRelatorio(executor?: Executor): Promise<{ clientes: LinhaClienteRelatorio[]; eventos: LinhaEventoContrato[] }> {
@@ -21,7 +22,8 @@ export async function lerDadosRelatorio(executor?: Executor): Promise<{ clientes
       [],
       executor
     ),
-    query<LinhaEventoContrato>(`select cliente_id, tipo, data_evento, criado_em from cliente_evento_contrato`, [], executor)
+    // Só os eventos de CONTRATO — a trilha também guarda a divulgação no mapa público (15-B).
+    query<LinhaEventoContrato>(`select cliente_id, tipo, data_evento, criado_em from cliente_evento_contrato where tipo = any($1::text[])`, [TIPOS_EVENTO_CONTRATO], executor)
   ]);
   return { clientes, eventos };
 }

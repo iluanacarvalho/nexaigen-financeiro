@@ -68,6 +68,15 @@ export interface ClientePrefeitura {
   cancelamento_motivo: string | null;
   /** GET /api/clientes: já existe nota de mensalidade (não cancelada) da competência do último período — some o botão "Criar nota final". */
   nota_final_emitida?: boolean;
+  /** Mapa público (0013): código IBGE do município (7 dígitos) e centroide gravado (numeric em string). */
+  codigo_ibge: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  /** Autorizado POR ESCRITO a aparecer no mapa público (lib/mapaPublico.ts). */
+  autorizacao_divulgacao: boolean;
+  autorizacao_divulgacao_em: string | null;
+  /** GET /api/clientes: nome de quem autorizou (nunca o e-mail). */
+  autorizacao_divulgacao_por_nome?: string | null;
   sistema_portal: string | null;
   portal_url: string | null;
   portal_usuario: string | null;

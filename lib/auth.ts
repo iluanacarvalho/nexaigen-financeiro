@@ -247,8 +247,9 @@ export async function obterContextoAutenticado(accessToken: string | undefined |
  *
  * O bloqueio de senha temporária fica CENTRALIZADO aqui (não em cada
  * rota, nem só na página /trocar-senha) DE PROPÓSITO: este projeto não
- * tem middleware/proxy.ts (diferente do nexaigen-educa, que faz essa
- * checagem lá) — todo chamador de exigirSessao() é exatamente uma rota
+ * autentica no proxy (diferente do nexaigen-educa, que faz essa checagem
+ * lá; o proxy.ts daqui, desde a rodada 15-B, só põe cabeçalhos de
+ * segurança na página pública /mapa) — todo chamador de exigirSessao() é exatamente uma rota
  * que deveria ficar bloqueada enquanto a senha temporária não for
  * trocada (equipe, clientes, notas, alertas); as rotas de
  * login/logout/trocar-senha nunca chamam exigirSessao(), então nunca são

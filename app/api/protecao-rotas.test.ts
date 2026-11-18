@@ -75,6 +75,8 @@ import { GET as configuracaoStatusGet } from "./configuracao/status/route";
 import { DELETE as cancelamentoDelete, POST as cancelamentoPost } from "./clientes/[id]/cancelamento/route";
 import { POST as integracaoCancelamentoPost } from "./integracao/clientes/[municipioIdExterno]/cancelamento/route";
 import { GET as relatorioContratosGet } from "./relatorios/novos-contratos/route";
+import { PUT as divulgacaoPut } from "./clientes/[id]/divulgacao/route";
+import * as rotaMapaPublico from "./publico/mapa-clientes/route";
 
 type Handler = (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => Promise<Response>;
 
@@ -104,6 +106,7 @@ const ROTAS: { rota: string; url: string; area: Area; handler: Handler }[] = [
   { rota: "DELETE /api/clientes/[id]/cancelamento", url: `/api/clientes/${ID}/cancelamento`, area: "clientes", handler: cancelamentoDelete as Handler },
   { rota: "GET /api/clientes/[id]/contrato", url: `/api/clientes/${ID}/contrato`, area: "clientes", handler: contratoGet as Handler },
   { rota: "POST /api/clientes/[id]/contrato", url: `/api/clientes/${ID}/contrato`, area: "clientes", handler: contratoPost as Handler },
+  { rota: "PUT /api/clientes/[id]/divulgacao", url: `/api/clientes/${ID}/divulgacao`, area: "clientes", handler: divulgacaoPut as Handler },
   { rota: "GET /api/clientes/[id]/contrato/versoes", url: `/api/clientes/${ID}/contrato/versoes`, area: "clientes", handler: versoesContratoGet as Handler },
   { rota: "GET /api/configuracao/status", url: "/api/configuracao/status", area: "configuracao", handler: configuracaoStatusGet as Handler },
   { rota: "GET /api/equipe", url: "/api/equipe", area: "equipe", handler: equipeGet as Handler },
@@ -120,6 +123,14 @@ const ROTAS: { rota: string; url: string; area: Area; handler: Handler }[] = [
   { rota: "GET /api/painel-financeiro", url: "/api/painel-financeiro", area: "painel", handler: painelGet as Handler },
   { rota: "GET /api/relatorios/novos-contratos", url: "/api/relatorios/novos-contratos", area: "contratos", handler: relatorioContratosGet as Handler }
 ];
+
+/**
+ * PÚBLICAS DE PROPÓSITO (rodada 15-B): sem login nenhum, pra serem lidas
+ * pelo site institucional. Cada uma precisa de entrada AQUI (o teste de
+ * completude abaixo falha se aparecer rota sem regra) e de teste próprio
+ * de que responde sem sessão — e que não expõe nada além do previsto.
+ */
+const ROTAS_PUBLICAS = ["GET /api/publico/mapa-clientes"];
 
 /** Rotas que NÃO usam sessão de equipe, de propósito (cada uma com teste próprio abaixo ou em app/api/auth). */
 const ROTAS_SEM_PAPEL = [
@@ -146,7 +157,7 @@ describe("toda rota de API está coberta por este arquivo (sem rota sem teste)",
         return metodos.map((m) => `${m} ${caminho}`);
       })
       .sort();
-    expect(encontradas).toEqual([...ROTAS.map((r) => r.rota), ...ROTAS_SEM_PAPEL].sort());
+    expect(encontradas).toEqual([...ROTAS.map((r) => r.rota), ...ROTAS_SEM_PAPEL, ...ROTAS_PUBLICAS].sort());
   });
 });
 
@@ -340,5 +351,34 @@ describe("/api/integracao/clientes/[municipioIdExterno]/cancelamento — mesmo s
     );
     expect(queryMock).toHaveBeenCalled();
     expect(res.status).toBe(500);
+  });
+});
+
+describe("rota PÚBLICA de propósito: GET /api/publico/mapa-clientes (rodada 15-B)", () => {
+  afterEach(() => {
+    queryMock.mockImplementation(lancarSempre);
+  });
+
+  it("responde 200 SEM sessão nenhuma, só com as 4 chaves por município, e só exporta GET (o Next responde 405 aos outros métodos)", async () => {
+    // A única consulta da rota: a leitura do mapa (rate limit está mockado neste arquivo).
+    queryMock.mockImplementation(((sql: unknown) => {
+      if (typeof sql === "string" && sql.includes("from cliente_prefeitura")) {
+        return Promise.resolve([{ nome: "Prefeitura de Teste", uf: "PR", status_contrato: "ativo", cancelamento_termino_em: null, autorizacao_divulgacao: true, latitude: "-25.400000", longitude: "-49.200000" }]);
+      }
+      throw new Error("consulta inesperada na rota pública");
+    }) as unknown as typeof lancarSempre);
+    const res = await rotaMapaPublico.GET(req("/api/publico/mapa-clientes", "GET"));
+    expect(res.status).toBe(200);
+    const corpo = await res.json();
+    expect(Object.keys(corpo).sort()).toEqual(["atualizadoEm", "municipios", "total"]);
+    expect(corpo.municipios).toEqual([{ nome: "Prefeitura de Teste", uf: "PR", lat: -25.4, lon: -49.2 }]);
+    expect(Object.keys(rotaMapaPublico).filter((k) => /^[A-Z]+$/.test(k))).toEqual(["GET"]);
+  });
+
+  it("as rotas da equipe continuam 401 sem sessão (a rota pública não abriu nada)", async () => {
+    for (const r of ROTAS) {
+      const res = await r.handler(req(r.url, r.rota.split(" ")[0]), ctx);
+      expect(res.status).toBe(401);
+    }
   });
 });

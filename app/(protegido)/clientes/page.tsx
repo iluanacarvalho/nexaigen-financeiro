@@ -15,6 +15,10 @@
 // cancelamento" (confirmação) e o aviso "Contrato em aviso prévio —
 // término em …" com o botão "Criar nota final" (./CancelamentoContrato.tsx
 // e components/AvisoPrevio.tsx).
+//
+// Rodada 15-B — mapa público: coluna "Mapa público" (No mapa / Sem
+// autorização / Sem código IBGE / Posição pendente / fora do mapa) e, na
+// edição do cliente, a seção "Divulgação pública" (./DivulgacaoPublica.tsx).
 
 import { Fragment, useEffect, useState } from "react";
 import PdfVersionado from "@/components/PdfVersionado";
@@ -22,6 +26,8 @@ import SeloStatusContrato from "@/components/SeloStatusContrato";
 import { AvisoContrato } from "@/components/AvisoPrevio";
 import { PainelRegistrarCancelamento, PainelRetratarCancelamento, acoesDeCancelamento } from "./CancelamentoContrato";
 import { hojeEmSaoPaulo } from "@/lib/painelFinanceiro";
+import { ROTULO_SITUACAO_DIVULGACAO, situacaoDivulgacao, type SituacaoDivulgacao } from "@/lib/mapaPublico";
+import DivulgacaoPublica from "./DivulgacaoPublica";
 import { centavosParaTextoCampo, formatarMoeda, paraCentavos } from "@/lib/dinheiro";
 import { PLANOS, obterPlano, rotuloDoPlano, temImplantacaoACobrar, valoresPadrao, type IdPlano } from "@/lib/planos";
 import type { ClientePrefeitura } from "@/lib/tipos";
@@ -156,6 +162,10 @@ export default function ClientesPage() {
         // key: remonta o formulário (estado inicial) ao trocar entre criar/editar clientes diferentes.
         <FormCliente key={editando?.id ?? "novo"} cliente={editando} erro={erroForm} onSalvar={salvar} />
       )}
+      {mostrarForm && editando && (
+        // Rodada 15-B: mapa público — `clientes.find` pra refletir o estado salvo depois de cada ação.
+        <DivulgacaoPublica key={`divulgacao-${editando.id}`} cliente={clientes.find((c) => c.id === editando.id) ?? editando} onAlterado={carregar} />
+      )}
 
       <div className="overflow-x-auto rounded-lg border bg-white shadow-sm">
         <table className="w-full text-sm">
@@ -166,6 +176,7 @@ export default function ClientesPage() {
               <th className="p-3 text-left">Mensalidade</th>
               <th className="p-3 text-left">Sistema do portal</th>
               <th className="p-3 text-left">Contrato</th>
+              <th className="p-3 text-left">Mapa público</th>
               <th className="p-3 text-left"></th>
             </tr>
           </thead>
@@ -211,6 +222,9 @@ export default function ClientesPage() {
                       />
                     </td>
                     <td className="p-3">
+                      <EtiquetaMapa situacao={situacaoDivulgacao(c, hoje)} />
+                    </td>
+                    <td className="p-3">
                       <div className="flex flex-col items-start gap-1">
                         <button onClick={() => abrirForm(c)} className="text-xs text-navy underline">
                           Editar
@@ -230,7 +244,7 @@ export default function ClientesPage() {
                   </tr>
                   {dialogo && (
                     <tr>
-                      <td colSpan={6} className="bg-amber-50 p-3">
+                      <td colSpan={7} className="bg-amber-50 p-3">
                         {dialogo === "registrar" ? (
                           <PainelRegistrarCancelamento cliente={c} onConcluido={concluir} onDesistir={fechar} />
                         ) : (
@@ -401,5 +415,22 @@ function CampoTexto({
         className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-teal focus:outline-none"
       />
     </label>
+  );
+}
+
+const COR_ETIQUETA_MAPA: Record<SituacaoDivulgacao, string> = {
+  no_mapa: "bg-emerald-50 text-emerald-700",
+  fora_do_mapa: "bg-slate-100 text-slate-600",
+  sem_autorizacao: "bg-slate-100 text-slate-600",
+  posicao_pendente: "bg-amber-50 text-amber-800",
+  sem_codigo: "bg-slate-50 text-slate-400"
+};
+
+/** Etiqueta do mapa público na listagem (rodada 15-B). */
+function EtiquetaMapa({ situacao }: { situacao: SituacaoDivulgacao }) {
+  return (
+    <span data-testid="etiqueta-mapa" className={`rounded px-2 py-0.5 text-xs font-medium ${COR_ETIQUETA_MAPA[situacao]}`}>
+      {ROTULO_SITUACAO_DIVULGACAO[situacao]}
+    </span>
   );
 }

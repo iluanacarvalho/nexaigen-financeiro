@@ -23,10 +23,12 @@ export async function GET(req: NextRequest) {
 
   // contrato_versao_atual: número da versão pra qual contrato_arquivo_chave aponta (0009) — lookup pela chave única.
   // tem_implantacao_ativa (0010): já existe nota de implantação não cancelada — é o que tira o selo "Implantação a cobrar".
+  // autorizacao_divulgacao_por_nome (0013): quem autorizou o mapa público — só o NOME, nunca o e-mail.
   const clientes = await query<{ id: string; data_inicio_contrato: string; cancelamento_termino_em: string | null }>(
     `select c.*,
        (select v.versao from cliente_contrato_versao v where v.chave = c.contrato_arquivo_chave) as contrato_versao_atual,
-       exists (select 1 from nota_fiscal n where n.cliente_id = c.id and n.tipo = 'implantacao' and n.status <> 'cancelada') as tem_implantacao_ativa
+       exists (select 1 from nota_fiscal n where n.cliente_id = c.id and n.tipo = 'implantacao' and n.status <> 'cancelada') as tem_implantacao_ativa,
+       (select q.nome from equipe_nexaigen q where q.id = c.autorizacao_divulgacao_por) as autorizacao_divulgacao_por_nome
      from cliente_prefeitura c order by c.nome`
   );
   // nota_final_emitida (rodada 12-A): com aviso prévio registrado, a nota do último período já existe? (some o botão "Criar nota final")

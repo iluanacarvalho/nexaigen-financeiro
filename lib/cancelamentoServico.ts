@@ -28,7 +28,16 @@ import {
 } from "./cancelamentoContrato";
 
 export type OrigemEventoContrato = "painel" | "educa" | "sistema";
-export type TipoEventoContrato = "cancelamento_registrado" | "cancelamento_retratado" | "contrato_encerrado";
+/**
+ * Os tipos de evento que dizem respeito ao CONTRATO. Desde a rodada 15-B a
+ * mesma trilha (cliente_evento_contrato) também guarda a divulgação no mapa
+ * público ('divulgacao_autorizada'/'divulgacao_revogada') — toda lógica de
+ * contrato (idempotência da retratação, relatório de aviso prévio) filtra
+ * por esta lista, senão um evento de divulgação posterior "esconderia" o
+ * último evento de contrato.
+ */
+export const TIPOS_EVENTO_CONTRATO = ["cancelamento_registrado", "cancelamento_retratado", "contrato_encerrado"] as const;
+export type TipoEventoContrato = (typeof TIPOS_EVENTO_CONTRATO)[number];
 
 export interface AutorContrato {
   origem: OrigemEventoContrato;
@@ -154,8 +163,8 @@ export async function retratarCancelamento(clienteId: string, autor: AutorContra
     if (cliente.status_contrato === "ativo") {
       // Repetição da retratação (retry): o último evento do contrato já é a própria retratação.
       const [ultimo] = await query<{ tipo: TipoEventoContrato }>(
-        `select tipo from cliente_evento_contrato where cliente_id = $1 order by criado_em desc, id desc limit 1`,
-        [cliente.id],
+        `select tipo from cliente_evento_contrato where cliente_id = $1 and tipo = any($2::text[]) order by criado_em desc, id desc limit 1`,
+        [cliente.id, TIPOS_EVENTO_CONTRATO],
         c
       );
       if (ultimo?.tipo === "cancelamento_retratado") return resultado(cliente, false);

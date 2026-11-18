@@ -19,6 +19,22 @@ const nextConfig = {
   // alguma tela precisar de next/image, revisitar isto conscientemente.
   images: {
     unoptimized: true
+  },
+  // Anti-iframe (rodada 15-B): o app inteiro recusa ser incorporado por
+  // iframe (clickjacking) — EXCETO a página pública /mapa, que o site
+  // institucional incorpora. Os cabeçalhos dela (frame-ancestors com as
+  // origens de MAPA_PUBLICO_ORIGENS, lidas em tempo de execução) vêm do
+  // proxy.ts. Testado em next.config.test.ts.
+  async headers() {
+    return [
+      {
+        source: "/:caminho((?!mapa$).*)",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'none'" }
+        ]
+      }
+    ];
   }
 };
 

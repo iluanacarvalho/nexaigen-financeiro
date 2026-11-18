@@ -1,5 +1,6 @@
 // Limite de tentativas em Postgres (db/migrations/0006_rate_limit.sql) —
-// login, troca de senha e a rota de integração com o nexaigen-educa.
+// login, troca de senha, a rota de integração com o nexaigen-educa e o
+// mapa público (rodada 15-B).
 //
 // JANELA FIXA por chave: a tentativa cai no bloco de `janelaSegundos` em
 // que o RELÓGIO DO BANCO está (todas as instâncias usam o mesmo relógio).
@@ -54,6 +55,8 @@ export const LIMITE_TROCAR_SENHA: RegraLimite = { prefixo: "trocar-senha:equipe"
 export const LIMITE_INTEGRACAO_POR_IP: RegraLimite = { prefixo: "integracao:ip", limite: 60, janelaSegundos: 60 };
 /** Integração Educa: 10 falhas de autenticação por IP em 15 min. */
 export const LIMITE_INTEGRACAO_FALHA_AUTH: RegraLimite = { prefixo: "integracao:falha-auth", limite: 10, janelaSegundos: QUINZE_MINUTOS };
+/** Mapa público (rodada 15-B, sem login): 120 requisições por IP por minuto — sobra pra quem navega, corta raspagem em massa. */
+export const LIMITE_MAPA_PUBLICO_POR_IP: RegraLimite = { prefixo: "mapa-publico:ip", limite: 120, janelaSegundos: 60 };
 
 // --- Funções puras --------------------------------------------------------
 
