@@ -30,6 +30,7 @@ import { GET as PAINEL } from "@/app/api/painel-financeiro/route";
 import LayoutClientes from "@/app/(protegido)/clientes/layout";
 import LayoutEquipe from "@/app/(protegido)/equipe/layout";
 import LayoutContratos from "@/app/(protegido)/contratos/layout";
+import LayoutCrm from "@/app/(protegido)/crm/layout";
 import Inicio from "@/app/(protegido)/page";
 import BoasVindas from "@/app/(protegido)/BoasVindas";
 import Dashboard from "@/app/(protegido)/Dashboard";
@@ -197,6 +198,13 @@ describe("RBAC nas páginas — layout redireciona, página inicial por papel", 
 
     cookieDaPagina.valor = pessoas.admin.token;
     expect(await destinoDoRedirect(() => LayoutEquipe(filho))).toBeNull();
+  });
+
+  it("CRM (rodada 16-A): vendas e admin entram; financeiro e rh → /", async () => {
+    for (const [papel, destino] of [["vendas", null], ["admin", null], ["financeiro", "/"], ["rh", "/"]] as const) {
+      cookieDaPagina.valor = pessoas[papel].token;
+      expect({ papel, destino: await destinoDoRedirect(() => LayoutCrm(filho)) }).toEqual({ papel, destino });
+    }
   });
 
   it("página inicial: vendas/rh → boas-vindas; financeiro/admin → Dashboard", async () => {

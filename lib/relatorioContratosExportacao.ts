@@ -7,7 +7,7 @@
 // de contato. Funções puras.
 
 import { centavosParaNumeric } from "./dinheiro";
-import { celulaTextoCsv, centavosCsv, montarCsv, neutralizarFormula } from "./exportacao";
+import { celulaTextoCsv, centavosCsv, formatarGeradoEm, montarCsv, neutralizarFormula } from "./exportacao";
 import { rotuloStatusContrato } from "./cancelamentoContrato";
 import { ROTULO_ORIGEM, rotuloMes, type RelatorioContratos, type Variacao } from "./relatorioContratos";
 import { gerarXlsx, type CelulaXlsx } from "./xlsx";
@@ -16,15 +16,8 @@ export const TITULO_RELATORIO = "NEXAIGEN — Relatório de novos contratos";
 
 const COLUNAS = ["Prefeitura", "UF", "Plano", "Valor mensal (R$)", "Taxa de implantação (R$)", "Início do contrato (assinatura)", "Status do contrato", "Origem"];
 
-/** Data/hora de geração em America/Sao_Paulo: "17/11/2026 14:05". */
-export function formatarGeradoEm(agora: Date): string {
-  const p = Object.fromEntries(
-    new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
-      .formatToParts(agora)
-      .map((x) => [x.type, x.value])
-  );
-  return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute}`;
-}
+// formatarGeradoEm mora em lib/exportacao.ts desde a rodada 16-A (a exportação do CRM usa a mesma); reexportada.
+export { formatarGeradoEm } from "./exportacao";
 
 const dataBr = (iso: string) => iso.split("-").reverse().join("/");
 

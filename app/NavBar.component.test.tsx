@@ -1,5 +1,5 @@
 // NavBar — itens por papel (rodada 15-A): cada papel vê só o que pode
-// acessar (lib/papeis.ts); vendas e rh só "Início". Esconder o link é UX —
+// acessar (lib/papeis.ts); vendas: "Início" + CRM (16-A); rh só "Início". Esconder o link é UX —
 // o bloqueio de verdade é o layout de cada página e o exigirPapel da API.
 
 import { describe, expect, it, vi } from "vitest";
@@ -23,7 +23,7 @@ describe("NavBar por papel", () => {
     const { itens, rotulo } = links("admin");
     expect(itens).toEqual([
       ["Dashboard", "/"], ["Painel", "/painel"], ["Novos contratos", "/contratos"], ["Notas fiscais", "/notas"],
-      ["Fila de Checagem", "/checagem"], ["Clientes", "/clientes"], ["Alertas de Cobrança", "/alertas"], ["Equipe", "/equipe"]
+      ["Fila de Checagem", "/checagem"], ["Clientes", "/clientes"], ["Alertas de Cobrança", "/alertas"], ["CRM", "/crm"], ["Equipe", "/equipe"]
     ]);
     expect(rotulo).toBe("(Administrador)");
   });
@@ -33,7 +33,11 @@ describe("NavBar por papel", () => {
     expect(itens.map(([, href]) => href)).toEqual(["/", "/painel", "/contratos", "/notas", "/checagem", "/clientes", "/alertas"]);
   });
 
-  it.each(["vendas", "rh"] as const)("%s: só Início — nenhuma tela financeira", (papel) => {
-    expect(links(papel).itens).toEqual([["Início", "/"]]);
+  it("vendas: Início + CRM — nenhuma tela financeira", () => {
+    expect(links("vendas").itens).toEqual([["Início", "/"], ["CRM", "/crm"]]);
+  });
+
+  it("rh: só Início", () => {
+    expect(links("rh").itens).toEqual([["Início", "/"]]);
   });
 });

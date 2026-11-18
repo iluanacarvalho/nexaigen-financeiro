@@ -77,6 +77,17 @@ import { POST as integracaoCancelamentoPost } from "./integracao/clientes/[munic
 import { GET as relatorioContratosGet } from "./relatorios/novos-contratos/route";
 import { PUT as divulgacaoPut } from "./clientes/[id]/divulgacao/route";
 import * as rotaMapaPublico from "./publico/mapa-clientes/route";
+import { GET as leadsGet, POST as leadsPost } from "./leads/route";
+import { GET as leadGet, PATCH as leadPatch } from "./leads/[id]/route";
+import { POST as leadInteracaoPost } from "./leads/[id]/interacoes/route";
+import { POST as leadEtapaPost } from "./leads/[id]/etapa/route";
+import { POST as leadVendedorPost } from "./leads/[id]/vendedor/route";
+import { POST as leadPedidoPost } from "./leads/[id]/pedidos/route";
+import { GET as leadsConsultaGet } from "./leads/consulta/route";
+import { GET as leadsResumoGet } from "./leads/resumo/route";
+import { GET as leadsExportarGet } from "./leads/exportar/route";
+import { GET as leadsPedidosGet } from "./leads/pedidos/route";
+import { POST as leadsPedidoDecisaoPost } from "./leads/pedidos/[id]/route";
 
 type Handler = (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => Promise<Response>;
 
@@ -121,7 +132,21 @@ const ROTAS: { rota: string; url: string; area: Area; handler: Handler }[] = [
   { rota: "GET /api/notas/[id]/eventos", url: `/api/notas/${ID}/eventos`, area: "notas", handler: eventosNotaGet as Handler },
   { rota: "POST /api/notas/[id]/verificar", url: `/api/notas/${ID}/verificar`, area: "checagem", handler: verificarPost as Handler },
   { rota: "GET /api/painel-financeiro", url: "/api/painel-financeiro", area: "painel", handler: painelGet as Handler },
-  { rota: "GET /api/relatorios/novos-contratos", url: "/api/relatorios/novos-contratos", area: "contratos", handler: relatorioContratosGet as Handler }
+  { rota: "GET /api/relatorios/novos-contratos", url: "/api/relatorios/novos-contratos", area: "contratos", handler: relatorioContratosGet as Handler },
+  // CRM (rodada 16-A): "crm" = admin e vendas; "crm_gestao" = só admin (exportar, reatribuir, pedidos).
+  { rota: "GET /api/leads", url: "/api/leads", area: "crm", handler: leadsGet as Handler },
+  { rota: "POST /api/leads", url: "/api/leads", area: "crm", handler: leadsPost as Handler },
+  { rota: "GET /api/leads/[id]", url: `/api/leads/${ID}`, area: "crm", handler: leadGet as Handler },
+  { rota: "PATCH /api/leads/[id]", url: `/api/leads/${ID}`, area: "crm", handler: leadPatch as Handler },
+  { rota: "POST /api/leads/[id]/interacoes", url: `/api/leads/${ID}/interacoes`, area: "crm", handler: leadInteracaoPost as Handler },
+  { rota: "POST /api/leads/[id]/etapa", url: `/api/leads/${ID}/etapa`, area: "crm", handler: leadEtapaPost as Handler },
+  { rota: "POST /api/leads/[id]/pedidos", url: `/api/leads/${ID}/pedidos`, area: "crm", handler: leadPedidoPost as Handler },
+  { rota: "GET /api/leads/consulta", url: "/api/leads/consulta?busca=jaguapita", area: "crm", handler: leadsConsultaGet as Handler },
+  { rota: "GET /api/leads/resumo", url: "/api/leads/resumo", area: "crm", handler: leadsResumoGet as Handler },
+  { rota: "POST /api/leads/[id]/vendedor", url: `/api/leads/${ID}/vendedor`, area: "crm_gestao", handler: leadVendedorPost as Handler },
+  { rota: "GET /api/leads/exportar", url: "/api/leads/exportar?formato=csv", area: "crm_gestao", handler: leadsExportarGet as Handler },
+  { rota: "GET /api/leads/pedidos", url: "/api/leads/pedidos", area: "crm_gestao", handler: leadsPedidosGet as Handler },
+  { rota: "POST /api/leads/pedidos/[id]", url: `/api/leads/pedidos/${ID}`, area: "crm_gestao", handler: leadsPedidoDecisaoPost as Handler }
 ];
 
 /**

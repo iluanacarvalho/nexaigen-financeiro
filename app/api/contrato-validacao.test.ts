@@ -12,7 +12,7 @@ process.env.JWT_SECRET = process.env.JWT_SECRET ?? "chave-de-teste-jwt-apenas-un
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { queryMock, withTransactionMock, trocarSenhaMock, servicoNotas, servicoCancelamento } = vi.hoisted(() => ({
+const { queryMock, withTransactionMock, trocarSenhaMock, servicoNotas, servicoCancelamento, servicoCrm } = vi.hoisted(() => ({
   queryMock: vi.fn(),
   withTransactionMock: vi.fn(),
   trocarSenhaMock: vi.fn(),
@@ -27,6 +27,17 @@ const { queryMock, withTransactionMock, trocarSenhaMock, servicoNotas, servicoCa
     retratarCancelamento: vi.fn(),
     encerrarContrato: vi.fn(),
     clientePorMunicipio: vi.fn()
+  },
+  servicoCrm: {
+    criarLead: vi.fn(),
+    editarLead: vi.fn(),
+    registrarInteracao: vi.fn(),
+    mudarEtapa: vi.fn(),
+    trocarVendedor: vi.fn(),
+    pedirLead: vi.fn(),
+    decidirPedido: vi.fn(),
+    listarLeads: vi.fn(),
+    consultarLeads: vi.fn()
   }
 }));
 vi.mock("@/lib/db", () => ({ query: queryMock, withTransaction: withTransactionMock }));
@@ -40,6 +51,20 @@ vi.mock("@/lib/auth", async (original) => ({ ...(await original<typeof import("@
 vi.mock("@/lib/notasServico", async (original) => ({ ...(await original<typeof import("@/lib/notasServico")>()), ...servicoNotas }));
 vi.mock("@/lib/alertaErroSistema", () => ({ alertarErroSistema: vi.fn() }));
 vi.mock("@/lib/cancelamentoServico", async (original) => ({ ...(await original<typeof import("@/lib/cancelamentoServico")>()), ...servicoCancelamento }));
+vi.mock("@/lib/crmServico", async (original) => ({
+  ...(await original<typeof import("@/lib/crmServico")>()),
+  criarLead: servicoCrm.criarLead,
+  editarLead: servicoCrm.editarLead,
+  registrarInteracao: servicoCrm.registrarInteracao,
+  mudarEtapa: servicoCrm.mudarEtapa,
+  trocarVendedor: servicoCrm.trocarVendedor,
+  decidirPedido: servicoCrm.decidirPedido
+}));
+vi.mock("@/lib/crmRepositorio", async (original) => ({
+  ...(await original<typeof import("@/lib/crmRepositorio")>()),
+  listarLeads: servicoCrm.listarLeads,
+  consultarLeads: servicoCrm.consultarLeads
+}));
 vi.mock("@/lib/versionamentoPdf", async (original) => ({ ...(await original<typeof import("@/lib/versionamentoPdf")>()), registrarVersaoPdf: vi.fn() }));
 
 import { NextRequest } from "next/server";
@@ -58,6 +83,13 @@ import { POST as INTEGRACAO_CANCELAMENTO } from "./integracao/clientes/[municipi
 import { PATCH as ALTERAR_PAPEL } from "./equipe/[id]/route";
 import { GET as RELATORIO_CONTRATOS } from "./relatorios/novos-contratos/route";
 import { PUT as DIVULGACAO } from "./clientes/[id]/divulgacao/route";
+import { GET as LISTAR_LEADS, POST as CRIAR_LEAD } from "./leads/route";
+import { PATCH as EDITAR_LEAD } from "./leads/[id]/route";
+import { POST as INTERACAO_LEAD } from "./leads/[id]/interacoes/route";
+import { POST as ETAPA_LEAD } from "./leads/[id]/etapa/route";
+import { POST as VENDEDOR_LEAD } from "./leads/[id]/vendedor/route";
+import { GET as CONSULTA_LEADS } from "./leads/consulta/route";
+import { POST as DECISAO_PEDIDO } from "./leads/pedidos/[id]/route";
 
 const ID = "7a1b2c3d-0000-4000-8000-0000000000aa";
 const SEGREDO_INTEGRACAO = "segredo-contrato-validacao";
@@ -121,6 +153,14 @@ beforeEach(async () => {
   servicoCancelamento.retratarCancelamento.mockResolvedValue({ ...contratoOk, statusContrato: "ativo" });
   servicoCancelamento.encerrarContrato.mockResolvedValue({ ...contratoOk, statusContrato: "encerrado" });
   servicoCancelamento.clientePorMunicipio.mockResolvedValue(ID);
+  servicoCrm.criarLead.mockResolvedValue({ ok: true, id: ID });
+  servicoCrm.editarLead.mockResolvedValue({ ok: true, versao: 2, alterados: ["contato_nome"] });
+  servicoCrm.registrarInteracao.mockResolvedValue({ ok: true, interacaoId: ID });
+  servicoCrm.mudarEtapa.mockResolvedValue({ ok: true, etapa: "contato", versao: 2 });
+  servicoCrm.trocarVendedor.mockResolvedValue({ ok: true, versao: 2 });
+  servicoCrm.decidirPedido.mockResolvedValue({ ok: true, decisao: "negado" });
+  servicoCrm.listarLeads.mockResolvedValue({ leads: [], total: 0 });
+  servicoCrm.consultarLeads.mockResolvedValue({ leads: [], total: 0 });
   process.env.INTEGRACAO_SECRET = SEGREDO_INTEGRACAO;
   cookie = `${NOME_COOKIE_ACCESS}=${await gerarAccessToken({ equipeId: ID, nome: "Teste", precisaTrocarSenha: false, tokenVersion: 1 })}`;
 });
@@ -416,5 +456,56 @@ describe("PUT /api/clientes/[id]/divulgacao (estrito, união por acao)", () => {
   it("(c) chave desconhecida → 400 (quem autoriza nunca vem do corpo)", async () => {
     const d = await esperar400ComDetalhes(await chamar(DIVULGACAO, "PUT", { acao: "autorizar", autorizacao_divulgacao_por: ID }));
     expect(d.formErrors.join(" ")).toContain("autorizacao_divulgacao_por");
+  });
+});
+
+describe("CRM — rotas com corpo/query validados (rodada 16-A, objetos estritos)", () => {
+  const lead = { municipio_nome: "Jaguapitã", uf: "PR", origem: "indicacao" };
+
+  it("(a) válidos passam: criar (valor como texto → centavos), editar, interação, etapa (3 ações), vendedor, decisão, listagem, consulta", async () => {
+    expect((await chamar(CRIAR_LEAD, "POST", { ...lead, plano_interesse: "pequeno_porte", valor_mensal_estimado: "8500,00" })).status).toBe(201);
+    expect(servicoCrm.criarLead.mock.calls.at(-1)![0]).toMatchObject({ valor_mensal_estimado_centavos: 850000, plano_interesse: "pequeno_porte" });
+    expect((await chamar(EDITAR_LEAD, "PATCH", { versao: 1, contato_nome: "Fulana" })).status).toBe(200);
+    expect((await chamar(INTERACAO_LEAD, "POST", { tipo: "ligacao", texto: "Ligou para a secretaria" })).status).toBe(201);
+    for (const corpo of [{ acao: "mover", etapa: "contato" }, { acao: "perder", motivo: "preco", detalhe: "caro" }, { acao: "reabrir" }]) {
+      expect((await chamar(ETAPA_LEAD, "POST", corpo)).status).toBe(200);
+    }
+    expect((await chamar(VENDEDOR_LEAD, "POST", { vendedor_id: ID })).status).toBe(200);
+    expect((await chamar(DECISAO_PEDIDO, "POST", { decisao: "negado" })).status).toBe(200);
+    expect((await chamar(LISTAR_LEADS, "GET", undefined, { url: "/api/leads?etapa=contato&uf=PR&parados=true&ordenar=valor&por_pagina=100" })).status).toBe(200);
+    expect((await chamar(CONSULTA_LEADS, "GET", undefined, { url: "/api/leads/consulta?busca=jaguapita&codigo_ibge=4112207" })).status).toBe(200);
+  });
+
+  it("(b) inválidos → 400 com as mensagens do projeto em fieldErrors", async () => {
+    const criar = await esperar400ComDetalhes(await chamar(CRIAR_LEAD, "POST", { municipio_nome: "J", uf: "XX", origem: "panfleto", contato_email: "sem-arroba", valor_mensal_estimado: 8500 }));
+    expect(criar.fieldErrors.municipio_nome).toEqual(["Informe o município."]);
+    expect(criar.fieldErrors.uf).toEqual(["UF inválida."]);
+    expect(criar.fieldErrors.origem).toEqual(["Origem inválida — use: indicacao, evento, site, contato_direto, outro."]);
+    expect(criar.fieldErrors.contato_email).toEqual(["E-mail inválido."]);
+    expect(criar.fieldErrors.valor_mensal_estimado).toHaveLength(1); // número do JSON: recusado (dinheiro é texto)
+    const semData = await esperar400ComDetalhes(await chamar(CRIAR_LEAD, "POST", { ...lead, proxima_acao_descricao: "ligar" }));
+    expect(semData.fieldErrors.proxima_acao_descricao).toEqual(["Informe a data da próxima ação junto com a descrição."]);
+    const semVersao = await esperar400ComDetalhes(await chamar(EDITAR_LEAD, "PATCH", { contato_nome: "x" }));
+    expect(semVersao.fieldErrors.versao).toEqual(["Envie a versão do lead que você leu."]);
+    const perder = await esperar400ComDetalhes(await chamar(ETAPA_LEAD, "POST", { acao: "perder" }));
+    expect(perder.fieldErrors.motivo).toEqual(["Informe o motivo da perda: preco, sem_orcamento, concorrente, sem_interesse, sem_resposta, outro."]);
+    const interacao = await esperar400ComDetalhes(await chamar(INTERACAO_LEAD, "POST", { tipo: "mudanca_etapa", texto: "" }));
+    expect(interacao.fieldErrors.tipo).toEqual(["Tipo inválido — use: nota, ligacao, email, reuniao, whatsapp, visita."]);
+    expect(interacao.fieldErrors.texto).toEqual(["Escreva o que aconteceu."]);
+    const pagina = await chamar(LISTAR_LEADS, "GET", undefined, { url: "/api/leads?por_pagina=101" });
+    expect(pagina.status).toBe(400);
+    expect((await pagina.json()).detalhes.fieldErrors.por_pagina).toEqual(["No máximo 100 por página."]);
+    const consulta = await chamar(CONSULTA_LEADS, "GET", undefined, { url: "/api/leads/consulta" });
+    expect((await consulta.json()).detalhes.formErrors).toEqual(["Informe o município, a UF ou o código IBGE."]);
+  });
+
+  it("(c) chave desconhecida → 400: etapa/vendedor/motivo NÃO entram pelo PATCH; vendedor não entra pela interação", async () => {
+    for (const extra of [{ etapa: "ganho" }, { vendedor_id: ID }, { motivo_perda: "preco" }]) {
+      const d = await esperar400ComDetalhes(await chamar(EDITAR_LEAD, "PATCH", { versao: 1, ...extra }));
+      expect(d.formErrors.join(" ")).toContain(Object.keys(extra)[0]);
+    }
+    const d = await esperar400ComDetalhes(await chamar(INTERACAO_LEAD, "POST", { tipo: "nota", texto: "x", autor_id: ID }));
+    expect(d.formErrors.join(" ")).toContain("autor_id");
+    expect((await chamar(LISTAR_LEADS, "GET", undefined, { url: "/api/leads?senha=1" })).status).toBe(400);
   });
 });

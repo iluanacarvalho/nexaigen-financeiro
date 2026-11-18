@@ -36,3 +36,13 @@ export function centavosCsv(centavos: number): string {
 export function montarCsv(linhas: string[][]): string {
   return "\uFEFF" + linhas.map((l) => l.join(";")).join("\r\n") + "\r\n";
 }
+
+/** Data/hora de geração em America/Sao_Paulo: "17/11/2026 14:05". */
+export function formatarGeradoEm(agora: Date): string {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+      .formatToParts(agora)
+      .map((x) => [x.type, x.value])
+  );
+  return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute}`;
+}

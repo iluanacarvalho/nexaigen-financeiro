@@ -566,3 +566,67 @@ Ou leia o JSON direto (`fetch("https://<endereço-do-financeiro>/api/publico/map
 | Data | Risco | Por que é aceito | Quando rever |
 |---|---|---|---|
 | 2026-11-17 | `picomatch` (dependência **só de desenvolvimento**, via tailwindcss, vitest/vite, eslint) — advisory **GHSA-fc5q-39xc-vjpf** (ReDoS em extglobs), alto, faixa `<= 4.0.7`, **sem versão corrigida publicada** (4.0.7 é a última; as linhas 2.x/3.x também estão na faixa). O `npm audit` completo mostra 21 "high", todos dessa cadeia. | Não vai para produção: `npm audit --omit=dev` = 0. Os padrões glob vêm só da configuração do próprio projeto (tailwind/vitest/eslint), nunca de entrada de usuário. As "correções" que o npm sugere são rebaixamentos de versão principal (vitest 3, eslint-config-next 14, tailwind 4), que **não** foram aplicados (nada de `--force`). No CI, o passo **bloqueante** é `npm audit --omit=dev --audit-level=high` (só produção); a auditoria completa é informativa (`npm audit \|\| true`). | Quando sair versão corrigida do `picomatch` (acima de 4.0.7, ou 2.x/3.x corrigida): atualizar sem `--force` e sem rebaixar vitest/eslint-config-next/tailwind. |
+
+## 27. CRM de leads (rodada 16-A)
+
+Funil das prefeituras que **ainda não são clientes**, da primeira conversa até a negociação. **O fechamento (lead vira cliente) e as comissões ficam para as rodadas 16-B e 16-C.**
+
+**Modelo de dados** (migration `0014_crm_leads.sql`):
+- **`lead`:**
+  - município, UF (27 siglas) e código IBGE opcional;
+  - `nome_busca`, o nome normalizado sem acento, sem maiúscula e sem "Prefeitura de", que é a chave de duplicidade e de busca;
+  - população, plano de interesse (ids de `lib/planos.ts`) e valor mensal estimado **em centavos**;
+  - contato (nome, cargo, e-mail, telefone), origem, etapa e vendedor;
+  - motivo e detalhe da perda (obrigatórios em `perdido`, nulos nas outras etapas);
+  - próxima ação (a descrição só existe com data) e `versao` (controle otimista).
+- **`lead_interacao`:** é o **histórico, somente acréscimo**. Um trigger bloqueia UPDATE, DELETE e TRUNCATE.
+- **`lead_pedido_reatribuicao`:** os pedidos "Pedir este lead".
+- **O banco também barra:** dois leads **abertos** do mesmo município (por código IBGE ou por UF + nome).
+
+**Etapas:** Novo → Contato → Demonstração → Proposta → Negociação, mais Perdido.
+- Entre etapas abertas, o lead pode avançar ou voltar.
+- **Perder** exige motivo (preço, sem orçamento, concorrente, sem interesse, sem resposta, outro) e aceita um detalhe.
+- **De Perdido só se reabre**, voltando para Contato, e o histórico registra "reabertura".
+- Toda mudança grava a etapa e a linha de histórico **na mesma transação**.
+- **"Ganho" existe no banco, mas NINGUÉM marca nesta rodada:** a API responde 409, "o fechamento é feito pelo fluxo de fechamento (rodada 16-B)". Não há atalho.
+
+**Quem vê o quê** (`lib/papeis.ts`: área `crm` = admin e vendas; `crm_gestao` = só admin):
+- **Admin:** vê e edita todos os leads, reatribui vendedor, exporta a carteira (CSV/XLSX) e decide os pedidos de reatribuição.
+- **Vendas, nos próprios leads** (aqueles em que é o `vendedor_id`): vê e edita tudo e cria leads, sempre atribuídos a si.
+- **Vendas, nos leads de colegas:**
+  - **só uma consulta mínima** em `GET /api/leads/consulta`: município, UF, etapa, nome do vendedor e dia da última atividade, mais `id`, `meu_lead` e `pode_pedir`;
+  - nunca contato, valor, plano, origem, motivo, notas, histórico ou próxima ação;
+  - qualquer outra leitura ou escrita (detalhe, editar, etapa, interação) responde **404**, nunca 403, para não permitir enumeração;
+  - o filtro está **no SQL** (`lib/crmRepositorio.ts#condicaoEscopo`), e a consulta mínima é uma função própria com as colunas escritas uma a uma.
+- **Financeiro e rh:** não têm acesso ao CRM (403, e o item não aparece na NavBar).
+
+**Pedido de reatribuição:** num lead de colega **aberto e sem atividade há mais de 60 dias**, o vendedor vê "Pedir este lead".
+- O pedido fica gravado e **não muda o dono**.
+- O admin aprova (vira troca de vendedor, registrada no histórico) ou nega.
+- Cada vendedor tem no máximo um pedido pendente por lead.
+
+**Duplicidade:**
+- Criar um lead para um município que já tem lead **aberto** (por código IBGE ou nome + UF, ignorando acento e maiúscula) → 409 "Já existe esse lead: está com <vendedor>, etapa <etapa>.". A mensagem revela só isso.
+- Prefeitura que já está em `cliente_prefeitura` → 409 "já está no cadastro de clientes".
+- O cadastro faz a mesma checagem enquanto a pessoa digita, e bloqueia o envio.
+
+**Atividade, "parado" e "ação vencida":**
+- "Última atividade" = o contato registrado (nota, ligação, e-mail, reunião, WhatsApp, visita), a mudança de etapa ou a reabertura mais recente; sem nenhuma, vale a data de criação. Editar o cadastro ou trocar o vendedor não conta.
+- **Parado** = lead aberto sem atividade há **mais de 14 dias**.
+- **Ação vencida** = lead aberto com próxima ação **antes de hoje**.
+- Todos os dias são contados em America/Sao_Paulo.
+
+**Taxa de avanço** (`lib/crm.ts#calcularTaxasDeAvanco`):
+- A "maior etapa alcançada" de cada lead é a mais avançada entre Novo, todas as etapas novas registradas no histórico e a etapa atual. Um lead perdido conta pela etapa em que chegou.
+- De X para a etapa seguinte Y: **taxa = (leads que alcançaram Y ou além) ÷ (leads que alcançaram X ou além)**.
+- Pular uma etapa conta como ter passado pelas do meio.
+- Sem nenhum lead em X → "—", nunca divisão por zero.
+- Negociação → Ganho fica em 0 até a 16-B.
+
+**Outros números:** "Ganhos no mês" aparece "—" até a 16-B. "Perdidos no mês" = leads hoje perdidos cuja perda foi registrada no mês.
+
+**Preço:** escolher o plano de interesse sem informar o valor preenche a mensalidade padrão do plano (`lib/planos.ts`, a tabela é uma só), e o valor continua editável.
+
+**LGPD:** o campo de notas tem o aviso fixo "Não registre dados pessoais de cidadãos, crianças ou famílias — só informações comerciais da prefeitura.".
+
+**Testes:** o CRM é testado contra Postgres real **num banco temporário** (`testes/bancoTemporario.ts`), porque o histórico não pode ser apagado depois. Há provas de mutação: sem o filtro por vendedor, ou com campos a mais na consulta mínima, os testes falham.

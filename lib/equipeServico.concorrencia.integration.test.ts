@@ -7,9 +7,9 @@
 // ativos e que as mudanças sejam de fato COMMITADAS por conexões
 // diferentes — impossível numa transação desfeita, e inaceitável nas contas
 // reais do banco local. Então o teste cria um banco novo com nome único
-// (CREATE DATABASE), aplica nele as MESMAS migrations do projeto
-// (scripts/aplicarMigracoes.ts — a função do `npm run migrate`), roda e DERRUBA o banco no fim (DROP DATABASE
-// ... WITH (FORCE)), mesmo se algo falhar. Só roda com DATABASE_URL local
+// (testes/bancoTemporario.ts: CREATE DATABASE + as MESMAS migrations do
+// projeto), roda e DERRUBA o banco no fim (DROP DATABASE ... WITH
+// (FORCE)), mesmo se algo falhar. Só roda com DATABASE_URL local
 // (localhost/127.0.0.1/::1) — nunca cria banco num servidor remoto.
 //
 // O que garante o resultado é o `for update` na leitura dos admins em
@@ -19,9 +19,8 @@
 // propósito: o teste falha).
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { randomUUID } from "node:crypto";
 import { Client } from "pg";
-import { aplicarMigracoes } from "../scripts/aplicarMigracoes";
+import { bancoLocal, criarBancoTemporario, type BancoTemporario } from "@/testes/bancoTemporario";
 import { alterarPapel, type ResultadoAlterarPapel } from "./equipeServico";
 import type { Executor } from "./db";
 
@@ -29,29 +28,21 @@ if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL não configurada. Rode: docker compose up -d && npm run migrate && npm run test:integration");
 }
 
-const urlPrincipal = new URL(process.env.DATABASE_URL);
-const BANCO_LOCAL = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(urlPrincipal.hostname);
+const BANCO_LOCAL = bancoLocal();
 const RODADAS = 20;
 
 describe.skipIf(!BANCO_LOCAL)("dois admins se rebaixando ao mesmo tempo — banco temporário isolado", () => {
-  const nomeBanco = `financeiro_teste_concorrencia_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
   const admin = new Client({ connectionString: process.env.DATABASE_URL });
-  let bancoCriado = false;
+  let banco: BancoTemporario | null = null;
   let conexoes: Client[] = [];
   let adminA: string;
   let adminB: string;
 
   beforeAll(async () => {
     await admin.connect();
-    await admin.query(`create database "${nomeBanco}"`);
-    bancoCriado = true;
-    const urlTemporaria = new URL(process.env.DATABASE_URL!);
-    urlTemporaria.pathname = `/${nomeBanco}`;
-    conexoes = [0, 1, 2].map(() => new Client({ connectionString: urlTemporaria.toString() }));
+    banco = await criarBancoTemporario("concorrencia"); // TODAS as migrations do projeto, num banco novo
+    conexoes = [0, 1, 2].map(() => new Client({ connectionString: banco!.url }));
     await Promise.all(conexoes.map((c) => c.connect()));
-
-    const { aplicadas } = await aplicarMigracoes(conexoes[0]);
-    expect(aplicadas.length).toBeGreaterThanOrEqual(13); // banco novo: TODAS as migrations do projeto
     const { rows } = await conexoes[0].query<{ id: string }>(
       `insert into equipe_nexaigen (nome, email, senha_hash, senha_temporaria, papel)
        values ('Admin A', 'a@teste.invalid', 'x', false, 'admin'), ('Admin B', 'b@teste.invalid', 'x', false, 'admin')
@@ -62,7 +53,7 @@ describe.skipIf(!BANCO_LOCAL)("dois admins se rebaixando ao mesmo tempo — banc
 
   afterAll(async () => {
     await Promise.all(conexoes.map((c) => c.end().catch(() => undefined)));
-    if (bancoCriado) await admin.query(`drop database if exists "${nomeBanco}" with (force)`);
+    await banco?.derrubar();
     await admin.end();
   }, 60_000);
 

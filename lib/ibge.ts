@@ -142,20 +142,28 @@ export function normalizarNome(texto: string): string {
 const PREFIXOS = ["prefeitura municipal de", "prefeitura municipal da", "prefeitura municipal do", "prefeitura de", "prefeitura da", "prefeitura do", "municipio de", "municipio da", "municipio do", "prefeitura"];
 
 /**
+ * Nome de município comparável: sem acento, sem caixa, sem pontuação e sem
+ * o prefixo "Prefeitura Municipal de"/"Município de"/"Prefeitura de".
+ * "Prefeitura Municipal de Jaguapitã" e "jaguapita" viram o mesmo texto.
+ * Usado pra conferir o código IBGE (abaixo) e, desde a rodada 16-A, como
+ * chave de duplicidade e de busca do CRM (lead.nome_busca).
+ */
+export function nomeDeMunicipioNormalizado(nome: string): string {
+  const normalizado = normalizarNome(nome);
+  for (const prefixo of PREFIXOS) {
+    if (normalizado.startsWith(`${prefixo} `)) return normalizado.slice(prefixo.length + 1);
+  }
+  return normalizado;
+}
+
+/**
  * O código IBGE confere com o cliente? UF igual E o nome do cliente, sem o
  * prefixo "Prefeitura Municipal de"/"Município de", igual ao nome oficial
  * (acentos e caixa ignorados). Divergência não bloqueia nada — a tela só avisa.
  */
 export function municipioConfere(cliente: { nome: string; uf: string }, ibge: { nome: string; uf: string }): boolean {
   if (cliente.uf.trim().toUpperCase() !== ibge.uf.toUpperCase()) return false;
-  let nome = normalizarNome(cliente.nome);
-  for (const prefixo of PREFIXOS) {
-    if (nome.startsWith(`${prefixo} `)) {
-      nome = nome.slice(prefixo.length + 1);
-      break;
-    }
-  }
-  return nome === normalizarNome(ibge.nome);
+  return nomeDeMunicipioNormalizado(cliente.nome) === normalizarNome(ibge.nome);
 }
 
 // --- Consulta ---------------------------------------------------------------------

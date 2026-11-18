@@ -23,8 +23,13 @@ export const ROTULO_PAPEL: Record<Papel, string> = {
   rh: "RH"
 };
 
-/** Áreas do sistema. `inicio` = página inicial (todo papel tem; vendas/rh veem só a de boas-vindas). */
-export const AREAS = ["inicio", "dashboard", "painel", "contratos", "notas", "checagem", "clientes", "alertas", "equipe", "configuracao"] as const;
+/**
+ * Áreas do sistema. `inicio` = página inicial (todo papel tem; vendas/rh veem
+ * a de boas-vindas). `crm` = funil de leads (rodada 16-A); `crm_gestao` = o
+ * que no CRM é só de admin (exportar a carteira, reatribuir vendedor) — área
+ * própria pra também cair na negação por padrão, sem `if` solto nas rotas.
+ */
+export const AREAS = ["inicio", "dashboard", "painel", "contratos", "notas", "checagem", "clientes", "alertas", "equipe", "configuracao", "crm", "crm_gestao"] as const;
 export type Area = (typeof AREAS)[number];
 
 /**
@@ -32,13 +37,15 @@ export type Area = (typeof AREAS)[number];
  *   - financeiro: clientes, notas, painel financeiro, relatório de
  *     contratos, checagem — e também o Dashboard (é a página inicial
  *     financeira) e os Alertas de cobrança (é o trabalho de cobrança);
- *   - vendas / rh: reservados pro CRM e pro RH — hoje NENHUMA tela
- *     financeira, só a página inicial de boas-vindas.
- * Equipe (cadastro e papéis) e o status de configuração do servidor: só admin.
+ *   - vendas: o CRM (rodada 16-A) — e, dentro dele, SÓ os leads em que é o
+ *     vendedor (filtro no SQL, lib/crmRepositorio.ts); nenhuma tela financeira;
+ *   - rh: reservado pro módulo de RH — hoje só a página inicial.
+ * Financeiro e rh NÃO veem o CRM. Equipe (cadastro e papéis), status de
+ * configuração do servidor e a gestão do CRM (crm_gestao): só admin.
  */
 const ACESSO: Record<Exclude<Papel, "admin">, readonly Area[]> = {
   financeiro: ["inicio", "dashboard", "painel", "contratos", "notas", "checagem", "clientes", "alertas"],
-  vendas: ["inicio"],
+  vendas: ["inicio", "crm"],
   rh: ["inicio"]
 };
 
@@ -74,11 +81,17 @@ export const ITENS_NAV: readonly ItemNav[] = [
   { href: "/checagem", rotulo: "Fila de Checagem", area: "checagem" },
   { href: "/clientes", rotulo: "Clientes", area: "clientes" },
   { href: "/alertas", rotulo: "Alertas de Cobrança", area: "alertas" },
+  { href: "/crm", rotulo: "CRM", area: "crm" },
   { href: "/equipe", rotulo: "Equipe", area: "equipe" }
 ];
 
-/** Itens visíveis pro papel. Sem nenhum (vendas/rh), a NavBar mostra só "Início". */
+const INICIO: ItemNav = { href: "/", rotulo: "Início", area: "inicio" };
+
+/**
+ * Itens visíveis pro papel. Quem não tem o Dashboard (vendas, rh) ganha
+ * "Início" na frente — a página inicial deles é a de boas-vindas.
+ */
 export function itensNavDoPapel(papel: string): ItemNav[] {
   const itens = ITENS_NAV.filter((i) => podeAcessar(papel, i.area));
-  return itens.length > 0 ? itens : [{ href: "/", rotulo: "Início", area: "inicio" }];
+  return podeAcessar(papel, "dashboard") ? itens : [INICIO, ...itens];
 }
