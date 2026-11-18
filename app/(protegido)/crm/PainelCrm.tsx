@@ -11,7 +11,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { formatarMoeda } from "@/lib/dinheiro";
-import { ETAPAS_ABERTAS, ROTULO_ETAPA, ROTULO_MOTIVO_PERDA, type MotivoPerda } from "@/lib/crm";
+import { ETAPAS_ABERTAS, ROTULO_ETAPA, ROTULO_MOTIVO_PERDA, type Etapa, type MotivoPerda } from "@/lib/crm";
 import type { LeadListado, ResumoCrm } from "@/lib/crmRepositorio";
 import ConsultaLead from "./ConsultaLead";
 import ListaLeads from "./ListaLeads";
@@ -47,23 +47,42 @@ function Numero({ titulo, valor, legenda }: { titulo: string; valor: string; leg
   );
 }
 
+/** Link pra lista paginada já filtrada pela etapa (sempre que a coluna mostra menos do que o total). */
+export function hrefVerTodos(etapa: Etapa): string {
+  return `/crm?visao=lista&etapa=${etapa}`;
+}
+
+function VerTodos({ etapa, total, mostrados }: { etapa: Etapa; total: number; mostrados: number }) {
+  if (total <= mostrados) return null;
+  return (
+    <a href={hrefVerTodos(etapa)} className="mt-2 block text-xs font-medium text-navy underline" data-testid={`ver-todos-${etapa}`}>
+      Ver todos os {total} desta etapa (mostrando {mostrados})
+    </a>
+  );
+}
+
 export default function PainelCrm({
   resumo,
-  abertos,
-  perdidos,
+  funil,
   admin,
-  vendedores
+  vendedores,
+  visaoInicial = "funil",
+  etapaInicial
 }: {
   resumo: ResumoCrm;
-  abertos: LeadListado[];
-  perdidos: LeadListado[];
+  /** Até CARTOES_POR_ETAPA cartões por etapa (lib/crmRepositorio.ts#listarFunil); os totais vêm de `resumo.porEtapa`. */
+  funil: Record<Etapa, LeadListado[]>;
   admin: boolean;
   vendedores: { id: string; nome: string }[];
+  visaoInicial?: "funil" | "lista";
+  etapaInicial?: Etapa;
 }) {
   const router = useRouter();
-  const [visao, setVisao] = useState<"funil" | "lista">("funil");
+  const [visao, setVisao] = useState<"funil" | "lista">(visaoInicial);
   const [erroPedido, setErroPedido] = useState<string | null>(null);
-  const semLeads = abertos.length === 0 && perdidos.length === 0;
+  const total = (etapa: Etapa) => resumo.porEtapa.find((e) => e.etapa === etapa)?.quantidade ?? 0;
+  const semLeads = resumo.porEtapa.every((e) => e.quantidade === 0);
+  const perdidos = funil.perdido;
 
   async function decidir(pedidoId: string, decisao: "aprovado" | "negado") {
     setErroPedido(null);
@@ -183,7 +202,7 @@ export default function PainelCrm({
       </div>
 
       {visao === "lista" ? (
-        <ListaLeads admin={admin} vendedores={vendedores} />
+        <ListaLeads admin={admin} vendedores={vendedores} etapaInicial={etapaInicial} />
       ) : semLeads ? (
         <div className="rounded-lg border border-dashed bg-white p-8 text-center text-sm text-slate-600">
           <p className="font-medium">Nenhum lead ainda.</p>
@@ -196,7 +215,7 @@ export default function PainelCrm({
         <>
           <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5" aria-label="Funil">
             {ETAPAS_ABERTAS.map((etapa) => {
-              const daEtapa = abertos.filter((l) => l.etapa === etapa);
+              const daEtapa = funil[etapa];
               const coluna = resumo.porEtapa.find((e) => e.etapa === etapa)!;
               return (
                 <section key={etapa} aria-label={`Etapa ${ROTULO_ETAPA[etapa]}`} className="rounded-lg bg-slate-100 p-2">
@@ -215,12 +234,13 @@ export default function PainelCrm({
                       ))}
                     </ul>
                   )}
+                  <VerTodos etapa={etapa} total={coluna.quantidade} mostrados={daEtapa.length} />
                 </section>
               );
             })}
           </div>
           <details className="mt-4 rounded-lg border bg-white p-3 text-sm">
-            <summary className="cursor-pointer font-semibold text-navy">Perdidos ({perdidos.length})</summary>
+            <summary className="cursor-pointer font-semibold text-navy">Perdidos ({total("perdido")})</summary>
             {perdidos.length === 0 ? (
               <p className="mt-2 text-slate-500">Nenhum lead perdido.</p>
             ) : (
@@ -237,6 +257,7 @@ export default function PainelCrm({
                 ))}
               </ul>
             )}
+            <VerTodos etapa="perdido" total={total("perdido")} mostrados={perdidos.length} />
           </details>
         </>
       )}

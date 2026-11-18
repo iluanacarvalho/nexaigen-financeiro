@@ -158,7 +158,7 @@ beforeEach(async () => {
   servicoCrm.registrarInteracao.mockResolvedValue({ ok: true, interacaoId: ID });
   servicoCrm.mudarEtapa.mockResolvedValue({ ok: true, etapa: "contato", versao: 2 });
   servicoCrm.trocarVendedor.mockResolvedValue({ ok: true, versao: 2 });
-  servicoCrm.decidirPedido.mockResolvedValue({ ok: true, decisao: "negado" });
+  servicoCrm.decidirPedido.mockResolvedValue({ ok: true, decisao: "negado", negadosAutomaticamente: 0 });
   servicoCrm.listarLeads.mockResolvedValue({ leads: [], total: 0 });
   servicoCrm.consultarLeads.mockResolvedValue({ leads: [], total: 0 });
   process.env.INTEGRACAO_SECRET = SEGREDO_INTEGRACAO;

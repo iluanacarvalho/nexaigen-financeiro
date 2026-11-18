@@ -9,6 +9,9 @@ import {
   acaoParaHoje,
   acaoVencida,
   calcularTaxasDeAvanco,
+  clienteEncerrado,
+  clientesDoMunicipio,
+  dataDoEncerramento,
   diaEmSaoPaulo,
   diasSemAtividade,
   leadParado,
@@ -111,5 +114,30 @@ describe("preço sugerido e normalização de nome", () => {
     }
     expect(nomeDeMunicipioNormalizado("São João d'Aliança")).toBe("sao joao d alianca");
     expect(nomeDeMunicipioNormalizado("Jaguaré")).not.toBe(chave);
+  });
+});
+
+describe("ex-cliente (rodada 16-A1)", () => {
+  const HOJE = "2026-11-18";
+  const cliente = (extra: object) => ({ nome: "Prefeitura Municipal de Maringá", uf: "PR", codigo_ibge: null as string | null, status_contrato: "encerrado", cancelamento_termino_em: null as string | null, encerrado_em: null as string | null, ...extra });
+
+  it("cliente do mesmo município: código IBGE igual, ou UF + nome normalizado", () => {
+    const clientes = [cliente({}), cliente({ nome: "Maringá", uf: "SP" }), cliente({ nome: "Outra", codigo_ibge: "4115200" })];
+    expect(clientesDoMunicipio(clientes, { uf: "PR", nomeBusca: "maringa", codigoIbge: null })).toEqual([clientes[0]]);
+    expect(clientesDoMunicipio(clientes, { uf: "PR", nomeBusca: "nada", codigoIbge: "4115200" })).toEqual([clientes[2]]);
+  });
+
+  it("encerrado HOJE: 'encerrado', ou aviso prévio com término já passado; ativo, suspenso e aviso vigente não", () => {
+    expect(clienteEncerrado(cliente({}), HOJE)).toBe(true);
+    expect(clienteEncerrado(cliente({ status_contrato: "em_aviso_previo", cancelamento_termino_em: "2026-11-17" }), HOJE)).toBe(true);
+    expect(clienteEncerrado(cliente({ status_contrato: "em_aviso_previo", cancelamento_termino_em: "2026-11-18" }), HOJE)).toBe(false); // encerrando
+    expect(clienteEncerrado(cliente({ status_contrato: "ativo" }), HOJE)).toBe(false);
+    expect(clienteEncerrado(cliente({ status_contrato: "suspenso" }), HOJE)).toBe(false);
+  });
+
+  it("data do encerramento: evento, senão término do aviso, senão null", () => {
+    expect(dataDoEncerramento(cliente({ encerrado_em: "2026-03-31", cancelamento_termino_em: "2026-03-30" }))).toBe("2026-03-31");
+    expect(dataDoEncerramento(cliente({ cancelamento_termino_em: "2026-03-30" }))).toBe("2026-03-30");
+    expect(dataDoEncerramento(cliente({}))).toBeNull();
   });
 });

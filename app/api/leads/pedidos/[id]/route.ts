@@ -1,7 +1,9 @@
 // CRM — admin decide um pedido de reatribuição (rodada 16-A, ajuste). SÓ
 // ADMIN (área "crm_gestao"). POST { decisao: "aprovado" | "negado" }.
 // Aprovar = troca de vendedor pro solicitante, com 'troca_vendedor' no
-// histórico, na mesma transação (lib/crmServico.ts#decidirPedido).
+// histórico, na mesma transação (lib/crmServico.ts#decidirPedido) — e os
+// OUTROS pedidos pendentes do lead viram 'negado' ("lead já reatribuído",
+// rodada 16-A1): → { decisao, negados_automaticamente }.
 // 404 pedido inexistente · 409 já decidido.
 
 import { NextRequest, NextResponse } from "next/server";
@@ -23,5 +25,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!parsed.success) return NextResponse.json({ erro: "Dados inválidos", detalhes: detalhesDoErro(parsed.error) }, { status: 400 });
   if (!ehUuid(id)) return NextResponse.json({ erro: NAO_ENCONTRADO }, { status: 404 });
   const r = await decidirPedido(id, parsed.data.decisao, escopoDe(contexto!));
-  return r.ok ? NextResponse.json({ decisao: r.decisao }) : respostaDeFalha(r, NAO_ENCONTRADO);
+  return r.ok ? NextResponse.json({ decisao: r.decisao, negados_automaticamente: r.negadosAutomaticamente }) : respostaDeFalha(r, NAO_ENCONTRADO);
 }

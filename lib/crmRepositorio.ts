@@ -25,11 +25,15 @@ import {
   TIPOS_ATIVIDADE,
   acaoVencida,
   calcularTaxasDeAvanco,
+  clienteEncerrado,
+  clientesDoMunicipio,
+  dataDoEncerramento,
   corteDeDias,
   diaEmSaoPaulo,
   diasSemAtividade,
   leadParado,
   podePedirLead,
+  type ClienteDoMunicipio,
   type Etapa,
   type TaxaAvanco
 } from "./crm";
@@ -86,13 +90,20 @@ export interface LeadListado extends LeadCompleto {
   dias_sem_atividade: number;
   parado: boolean;
   acao_vencida: boolean;
+  /**
+   * EX-CLIENTE (rodada 16-A1, campo DERIVADO — nenhuma coluna): o município
+   * já foi cliente e o contrato está encerrado hoje (lib/crm.ts#clienteEncerrado).
+   */
+  ex_cliente: boolean;
+  /** Data do encerramento do ex-cliente (null: encerrado antes da trilha de eventos, sem data registrada). */
+  ex_cliente_encerrado_em: string | null;
 }
 
 const COLUNAS_LEAD = `l.id, l.municipio_nome, l.uf, l.codigo_ibge, l.populacao, l.plano_interesse, l.valor_mensal_estimado_centavos,
   l.contato_nome, l.contato_cargo, l.contato_email, l.contato_telefone, l.origem, l.etapa, l.vendedor_id, q.nome as vendedor_nome,
   l.motivo_perda, l.detalhe_perda, l.proxima_acao_em, l.proxima_acao_descricao, l.versao, l.criado_em, l.atualizado_em`;
 
-function comSelos(l: LeadCompleto, hoje: string): LeadListado {
+function comSelos(l: LeadCompleto, hoje: string): Omit<LeadListado, "ex_cliente" | "ex_cliente_encerrado_em"> {
   return {
     ...l,
     dias_sem_atividade: diasSemAtividade(l.ultima_atividade_em, hoje),
@@ -162,14 +173,61 @@ export async function listarLeads(f: FiltrosLeads, escopo: EscopoCrm, hoje: stri
     params,
     executor
   );
-  return {
-    total: linhas[0]?.total ?? 0,
-    leads: linhas.map((linha) => {
-      const lead: Partial<LeadCompleto & { total: number }> = { ...linha };
-      delete lead.total; // `total` (count(*) over()) é da página, não do lead
+  const leads = linhas.map((linha) => {
+    const lead: Partial<LeadCompleto & { total: number }> = { ...linha };
+    delete lead.total; // `total` (count(*) over()) é da página, não do lead
+    return comSelos(lead as LeadCompleto, hoje);
+  });
+  return { total: linhas[0]?.total ?? 0, leads: await anotarExClientes(leads, hoje, executor) };
+}
+
+// --- Funil ------------------------------------------------------------------------------
+
+/** Cartões por coluna do funil. Os TOTAIS por etapa vêm de agregação SQL (obterResumoCrm), nunca destes cartões. */
+export const CARTOES_POR_ETAPA = 50;
+
+/**
+ * Cartões do funil: até `limite` por etapa (abertas e perdido), numa query só
+ * (row_number() por etapa), no ESCOPO de quem lê. Ordem dentro da coluna:
+ * abertas — ação vencida primeiro, depois os mais antigos sem atividade;
+ * perdido — os perdidos mais recentes primeiro. Quem mostra compara com o
+ * total da etapa (resumo) e oferece "Ver todos os N desta etapa": nunca
+ * menos do que existe sem aviso.
+ */
+export async function listarFunil(escopo: EscopoCrm, hoje: string, limite = CARTOES_POR_ETAPA, executor?: Executor): Promise<Record<Etapa, LeadListado[]>> {
+  const params: unknown[] = [TIPOS_ATIVIDADE, hoje, limite];
+  const linhas = await query<LeadCompleto & { posicao: number }>(
+    `select * from (
+       select ${COLUNAS_LEAD}, base.ultima_atividade_em,
+              row_number() over (
+                partition by l.etapa
+                order by
+                  case when l.etapa = 'perdido' then 0 when l.proxima_acao_em < $2::date then 0 else 1 end,
+                  case when l.etapa = 'perdido' then -extract(epoch from l.atualizado_em) else extract(epoch from base.ultima_atividade_em) end,
+                  l.id
+              )::int as posicao
+       from lead l
+       join equipe_nexaigen q on q.id = l.vendedor_id
+       cross join lateral (select ${ULTIMA_ATIVIDADE("$1")} as ultima_atividade_em) base
+       where l.etapa <> 'ganho' and ${condicaoEscopo(escopo, params, "l")}
+     ) x
+     where posicao <= $3
+     order by etapa, posicao`,
+    params,
+    executor
+  );
+  const leads = await anotarExClientes(
+    linhas.map((linha) => {
+      const lead: Partial<LeadCompleto & { posicao: number }> = { ...linha };
+      delete lead.posicao;
       return comSelos(lead as LeadCompleto, hoje);
-    })
-  };
+    }),
+    hoje,
+    executor
+  );
+  const funil = Object.fromEntries(ETAPAS.map((e) => [e, [] as LeadListado[]])) as Record<Etapa, LeadListado[]>;
+  for (const l of leads) funil[l.etapa].push(l);
+  return funil;
 }
 
 export interface InteracaoLead {
@@ -200,7 +258,40 @@ export async function obterLead(id: string, escopo: EscopoCrm, hoje: string, exe
     [id],
     executor
   );
-  return { ...comSelos(lead, hoje), historico };
+  const [anotado] = await anotarExClientes([comSelos(lead, hoje)], hoje, executor);
+  return { ...anotado, historico };
+}
+
+// --- Clientes do município (duplicidade e "ex-cliente") --------------------------------
+
+/**
+ * Clientes (cliente_prefeitura) que PODEM ser do mesmo município de algum
+ * dos leads: mesma UF ou mesmo código IBGE. Uma query só, sem N+1; o
+ * casamento por nome normalizado é feito em TS (lib/crm.ts#clientesDoMunicipio),
+ * porque o banco não tem a normalização sem acento. `encerrado_em` = último
+ * evento 'contrato_encerrado' da trilha (0011).
+ */
+export async function lerClientesDosMunicipios(ufs: string[], codigos: string[], executor?: Executor): Promise<ClienteDoMunicipio[]> {
+  if (ufs.length === 0 && codigos.length === 0) return [];
+  return query<ClienteDoMunicipio>(
+    `select c.nome, c.uf, c.codigo_ibge, c.status_contrato, c.cancelamento_termino_em,
+            (select max(e.data_evento) from cliente_evento_contrato e where e.cliente_id = c.id and e.tipo = 'contrato_encerrado') as encerrado_em
+     from cliente_prefeitura c
+     where c.uf = any($1::text[]) or c.codigo_ibge = any($2::text[])`,
+    [ufs, codigos],
+    executor
+  );
+}
+
+/** Anota "ex-cliente" nos leads: todos os clientes do município estão encerrados hoje (e há pelo menos um). */
+async function anotarExClientes<T extends Omit<LeadListado, "ex_cliente" | "ex_cliente_encerrado_em">>(leads: T[], hoje: string, executor?: Executor): Promise<(T & Pick<LeadListado, "ex_cliente" | "ex_cliente_encerrado_em">)[]> {
+  const clientes = await lerClientesDosMunicipios([...new Set(leads.map((l) => l.uf))], [...new Set(leads.map((l) => l.codigo_ibge).filter((c): c is string => c !== null))], executor);
+  return leads.map((l) => {
+    const doMunicipio = clientesDoMunicipio(clientes, { uf: l.uf, nomeBusca: nomeDeMunicipioNormalizado(l.municipio_nome), codigoIbge: l.codigo_ibge });
+    const exCliente = doMunicipio.length > 0 && doMunicipio.every((c) => clienteEncerrado(c, hoje));
+    const datas = doMunicipio.map(dataDoEncerramento).filter((d): d is string => d !== null).sort();
+    return { ...l, ex_cliente: exCliente, ex_cliente_encerrado_em: exCliente ? (datas.at(-1) ?? null) : null };
+  });
 }
 
 // --- Consulta mínima ("Já existe esse lead?") -----------------------------------------

@@ -44,8 +44,9 @@ export function montarQueryLeads(f: Filtros, pagina?: number): string {
   return p.toString();
 }
 
-export default function ListaLeads({ admin, vendedores }: { admin: boolean; vendedores: { id: string; nome: string }[] }) {
-  const [filtros, setFiltros] = useState<Filtros>(INICIAIS);
+export default function ListaLeads({ admin, vendedores, etapaInicial }: { admin: boolean; vendedores: { id: string; nome: string }[]; etapaInicial?: string }) {
+  // "Ver todos os N desta etapa" (funil) abre a lista já filtrada pela etapa.
+  const [filtros, setFiltros] = useState<Filtros>(etapaInicial ? { ...INICIAIS, etapa: etapaInicial } : INICIAIS);
   const [pagina, setPagina] = useState(1);
   const [dados, setDados] = useState<{ leads: LeadListado[]; total: number } | null>(null);
   const [erro, setErro] = useState<string | null>(null);

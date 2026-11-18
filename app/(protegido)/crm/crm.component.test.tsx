@@ -11,7 +11,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { instalarFetchFalso } from "@/testes/fetchFalso";
 import type { LeadListado, ResumoCrm } from "@/lib/crmRepositorio";
-import { AVISO_LGPD, calcularTaxasDeAvanco } from "@/lib/crm";
+import { AVISO_LGPD, ETAPAS, calcularTaxasDeAvanco, type Etapa } from "@/lib/crm";
 
 const { refreshMock, pushMock } = vi.hoisted(() => ({ refreshMock: vi.fn(), pushMock: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: refreshMock, push: pushMock }) }));
@@ -26,13 +26,20 @@ const lead = (extra: Partial<LeadListado>): LeadListado => ({
   contato_nome: "Secretária Ana", contato_cargo: null, contato_email: null, contato_telefone: null, origem: "indicacao", etapa: "novo",
   vendedor_id: "v1", vendedor_nome: "Vera Vendas", motivo_perda: null, detalhe_perda: null, proxima_acao_em: null, proxima_acao_descricao: null,
   versao: 3, criado_em: "2026-11-01T12:00:00.000Z", atualizado_em: "2026-11-01T12:00:00.000Z", ultima_atividade_em: "2026-11-01T12:00:00.000Z",
-  dias_sem_atividade: 17, parado: true, acao_vencida: true, ...extra
+  dias_sem_atividade: 17, parado: true, acao_vencida: true, ex_cliente: false, ex_cliente_encerrado_em: null, ...extra
 });
 
 const ABERTOS = [
   lead({ id: "l1" }),
   lead({ id: "l2", municipio_nome: "Cambé", etapa: "proposta", valor_mensal_estimado_centavos: 1500000, parado: false, acao_vencida: false, dias_sem_atividade: 2 })
 ];
+
+/** Cartões do funil por etapa (o que listarFunil devolve). */
+function funilDe(abertos: LeadListado[], perdidos: LeadListado[]): Record<Etapa, LeadListado[]> {
+  const funil = Object.fromEntries(ETAPAS.map((e) => [e, [] as LeadListado[]])) as Record<Etapa, LeadListado[]>;
+  for (const l of [...abertos, ...perdidos]) funil[l.etapa].push(l);
+  return funil;
+}
 
 function resumo(extra: Partial<ResumoCrm> = {}): ResumoCrm {
   return {
@@ -59,7 +66,7 @@ function resumo(extra: Partial<ResumoCrm> = {}): ResumoCrm {
 
 describe("CRM — funil", () => {
   it("colunas por etapa com contagem e soma; cartão com contato, valor e selos; vendedor só pro admin", () => {
-    const { unmount } = render(<PainelCrm resumo={resumo()} abertos={ABERTOS} perdidos={[lead({ id: "p1", municipio_nome: "Rolândia", etapa: "perdido", motivo_perda: "preco" })]} admin={false} vendedores={[]} />);
+    const { unmount } = render(<PainelCrm resumo={resumo()} funil={funilDe(ABERTOS, [lead({ id: "p1", municipio_nome: "Rolândia", etapa: "perdido", motivo_perda: "preco" })])} admin={false} vendedores={[]} />);
     const novo = screen.getByRole("region", { name: "Etapa Novo" });
     expect(within(novo).getByRole("heading").textContent).toBe("Novo (1)");
     expect(within(novo).getByTestId("soma-novo").textContent).toMatch(/R\$\s*8\.500,00\/mês/);
@@ -71,12 +78,47 @@ describe("CRM — funil", () => {
     expect(within(screen.getByRole("region", { name: "Etapa Proposta" })).queryByTestId("selo-parado")).toBeNull();
     expect(screen.getByText("Perdidos (1)").closest("details")!.hasAttribute("open")).toBe(false); // recolhido
     unmount();
-    render(<PainelCrm resumo={resumo()} abertos={ABERTOS} perdidos={[]} admin vendedores={[]} />);
+    render(<PainelCrm resumo={resumo()} funil={funilDe(ABERTOS, [])} admin vendedores={[]} />);
     expect(screen.getByTestId("cartao-l1").textContent).toContain("Vendedor: Vera Vendas");
   });
 
+  it("sem corte silencioso: 120 leads em Contato → coluna mostra 50 cartões, total 120 e 'Ver todos' abre a lista filtrada", () => {
+    const cinquenta = Array.from({ length: 50 }, (_, i) => lead({ id: `c${i}`, municipio_nome: `Município ${i}`, etapa: "contato" }));
+    const base = resumo();
+    const r = resumo({ porEtapa: base.porEtapa.map((e) => (e.etapa === "contato" ? { etapa: "contato", quantidade: 120, valorCentavos: 102000000 } : e)) });
+    render(<PainelCrm resumo={r} funil={funilDe([...ABERTOS, ...cinquenta], [])} admin={false} vendedores={[]} />);
+    const coluna = screen.getByRole("region", { name: "Etapa Contato" });
+    expect(within(coluna).getByRole("heading").textContent).toBe("Contato (120)");
+    expect(within(coluna).getAllByRole("listitem")).toHaveLength(50);
+    const link = within(coluna).getByTestId("ver-todos-contato");
+    expect(link.textContent).toBe("Ver todos os 120 desta etapa (mostrando 50)");
+    expect(link.getAttribute("href")).toBe("/crm?visao=lista&etapa=contato");
+    // Coluna que mostra tudo não tem o link.
+    expect(within(screen.getByRole("region", { name: "Etapa Novo" })).queryByTestId("ver-todos-novo")).toBeNull();
+  });
+
+  it("'Ver todos' chega na LISTA já filtrada pela etapa (visao=lista&etapa=…)", async () => {
+    const chamadas = instalarFetchFalso({ "GET /api/leads": { corpo: { leads: [], total: 0 } } });
+    render(<PainelCrm resumo={resumo()} funil={funilDe(ABERTOS, [])} admin={false} vendedores={[]} visaoInicial="lista" etapaInicial="contato" />);
+    await waitFor(() => expect(chamadas.some((c) => c.url.startsWith("/api/leads?") && c.url.includes("etapa=contato"))).toBe(true));
+    expect((within(screen.getByRole("form", { name: "Filtros de leads" })).getByLabelText("Etapa") as HTMLSelectElement).value).toBe("contato");
+  });
+
+  it("ex-cliente: selo com a data do encerramento no cartão (e sem data quando não há registro)", () => {
+    render(
+      <PainelCrm
+        resumo={resumo()}
+        funil={funilDe([lead({ id: "e1", ex_cliente: true, ex_cliente_encerrado_em: "2026-03-31" }), lead({ id: "e2", municipio_nome: "Cambé", etapa: "proposta", ex_cliente: true })], [])}
+        admin={false}
+        vendedores={[]}
+      />
+    );
+    expect(within(screen.getByTestId("cartao-e1")).getByTestId("selo-ex-cliente").textContent).toBe("ex-cliente · encerrado em 31/03/2026");
+    expect(within(screen.getByTestId("cartao-e2")).getByTestId("selo-ex-cliente").textContent).toBe("ex-cliente · data do encerramento não registrada");
+  });
+
   it("números: ganhos '—' com legenda da 16-B; taxa '—' quando ninguém entrou; minhas ações de hoje", () => {
-    render(<PainelCrm resumo={resumo()} abertos={ABERTOS} perdidos={[]} admin={false} vendedores={[]} />);
+    render(<PainelCrm resumo={resumo()} funil={funilDe(ABERTOS, [])} admin={false} vendedores={[]} />);
     const numeros = screen.getByRole("region", { name: "Números do funil" });
     expect(numeros.textContent).toMatch(/Ganhos no mês—O fechamento \(lead → cliente\) entra na rodada 16-B\./);
     expect(screen.getByTestId("taxa-novo").textContent).toMatch(/Novo → Contato: 50%/);
@@ -88,7 +130,7 @@ describe("CRM — funil", () => {
   it("Mover para…: 'ganho' não é opção; mover chama a API; perdido exige motivo antes de enviar", async () => {
     const chamadas = instalarFetchFalso({ "POST /api/leads/l1/etapa": { corpo: { etapa: "contato", versao: 4 } } });
     const usuario = userEvent.setup();
-    render(<PainelCrm resumo={resumo()} abertos={ABERTOS} perdidos={[]} admin={false} vendedores={[]} />);
+    render(<PainelCrm resumo={resumo()} funil={funilDe(ABERTOS, [])} admin={false} vendedores={[]} />);
     const form = screen.getByRole("form", { name: "Mover Arapongas" });
     const select = within(form).getByLabelText("Mover Arapongas para") as HTMLSelectElement;
     expect([...select.options].map((o) => o.value)).toEqual(["", "contato", "demonstracao", "proposta", "negociacao", "perdido"]);
@@ -106,7 +148,7 @@ describe("CRM — funil", () => {
   });
 
   it("estado vazio amigável", () => {
-    render(<PainelCrm resumo={resumo({ abertos: { quantidade: 0, valorCentavos: 0 }, minhasAcoes: [] })} abertos={[]} perdidos={[]} admin={false} vendedores={[]} />);
+    render(<PainelCrm resumo={resumo({ abertos: { quantidade: 0, valorCentavos: 0 }, minhasAcoes: [], porEtapa: ETAPAS.map((etapa) => ({ etapa, quantidade: 0, valorCentavos: 0 })) })} funil={funilDe([], [])} admin={false} vendedores={[]} />);
     expect(screen.getByText("Nenhum lead ainda.")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Cadastrar lead" }).getAttribute("href")).toBe("/crm/novo");
   });
@@ -120,8 +162,7 @@ describe("CRM — funil", () => {
           pedidosPendentes: [{ id: "pd1", lead_id: "l9", municipio_nome: "Rolândia", uf: "PR", dono_nome: "Beto", solicitante_nome: "Vera", em: "2026-11-18T10:00:00.000Z" }],
           cargaPorVendedor: [{ vendedor_id: "v1", vendedor_nome: "Vera Vendas", abertos: 2, valorCentavos: 2350000 }]
         })}
-        abertos={ABERTOS}
-        perdidos={[]}
+        funil={funilDe(ABERTOS, [])}
         admin
         vendedores={[]}
       />
@@ -136,7 +177,7 @@ describe("CRM — funil", () => {
   it("lista: filtros vão pro servidor; sem resultado com filtro mostra a mensagem certa", async () => {
     const chamadas = instalarFetchFalso({ "GET /api/leads": { corpo: { leads: [], total: 0 } } });
     const usuario = userEvent.setup();
-    render(<PainelCrm resumo={resumo()} abertos={ABERTOS} perdidos={[]} admin={false} vendedores={[]} />);
+    render(<PainelCrm resumo={resumo()} funil={funilDe(ABERTOS, [])} admin={false} vendedores={[]} />);
     await usuario.click(screen.getByRole("button", { name: "Lista" }));
     const filtros = screen.getByRole("form", { name: "Filtros de leads" });
     expect(within(filtros).queryByLabelText("Vendedor")).toBeNull(); // só admin
@@ -249,5 +290,16 @@ describe("CRM — detalhe", () => {
     await usuario.type(within(form).getByLabelText("População"), "52000");
     await usuario.click(within(form).getByRole("button", { name: "Salvar dados" }));
     await waitFor(() => expect(chamadas.find((c) => c.metodo === "PATCH")?.corpo).toMatchObject({ versao: 3, uf: "SC", plano_interesse: "medio_porte", populacao: 52000, origem: "indicacao", municipio_nome: "Arapongas" }));
+  });
+
+  it("ex-cliente também aparece na LISTA e no DETALHE, com a data do encerramento", async () => {
+    instalarFetchFalso({ "GET /api/leads": { corpo: { leads: [lead({ id: "x1", ex_cliente: true, ex_cliente_encerrado_em: "2026-03-31" })], total: 1 } } });
+    const { unmount } = render(<PainelCrm resumo={resumo()} funil={funilDe(ABERTOS, [])} admin={false} vendedores={[]} visaoInicial="lista" />);
+    const lista = screen.getByRole("region", { name: "Lista de leads" });
+    const linha = (await within(lista).findByRole("link", { name: "Arapongas — PR" })).closest("tr")!;
+    expect(within(linha).getByTestId("selo-ex-cliente").textContent).toBe("ex-cliente · encerrado em 31/03/2026");
+    unmount();
+    render(<DetalheLead lead={lead({ ex_cliente: true, ex_cliente_encerrado_em: "2026-03-31" })} historico={[]} admin={false} vendedores={[]} />);
+    expect(screen.getByTestId("selo-ex-cliente").textContent).toBe("ex-cliente · encerrado em 31/03/2026");
   });
 });

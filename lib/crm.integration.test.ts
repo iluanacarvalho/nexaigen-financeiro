@@ -34,6 +34,7 @@ if (LOCAL) {
 // Imports dinâmicos DEPOIS de trocar o DATABASE_URL (o pool de lib/db nasce na importação).
 const { query } = await import("./db");
 const { gerarAccessToken, NOME_COOKIE_ACCESS } = await import("./auth");
+const { lerZip } = await import("@/testes/lerZip");
 const servico = await import("./crmServico");
 const repo = await import("./crmRepositorio");
 const rotaLeads = await import("@/app/api/leads/route");
@@ -186,12 +187,44 @@ describe.skipIf(!LOCAL)("CRM — Postgres real (banco temporário)", () => {
       expect((await criar(pessoas.vendasA, { municipio_nome: "Jaguapitã", uf: "SC" })).status).toBe(201);
     });
 
-    it("prefeitura que já é CLIENTE → 409 'já está no cadastro de clientes' (código IBGE ou nome+UF)", async () => {
+    it("cliente ATIVO → 409 'já é cliente (contrato ativo)' (código IBGE ou nome+UF)", async () => {
       await query(`insert into cliente_prefeitura (nome, uf, valor_mensal, data_inicio_contrato, codigo_ibge) values ('Prefeitura Municipal de Londrina', 'PR', 1000, '2026-01-01', '4113700')`);
       const porNome = await criar(pessoas.vendasA, { municipio_nome: "LONDRINA", uf: "PR" });
       expect(porNome.status).toBe(409);
-      expect((await porNome.json()).erro).toMatch(/já está no cadastro de clientes da NEXAIGEN/);
+      expect((await porNome.json()).erro).toBe("Esta prefeitura já é cliente da NEXAIGEN (contrato ativo) — não é lead. Só ex-cliente com contrato encerrado pode virar lead.");
       expect((await criar(pessoas.vendasA, { municipio_nome: "Outra", uf: "PR", codigo_ibge: "4113700" })).status).toBe(409);
+    });
+
+    it("EX-CLIENTE (rodada 16-A1): encerrado → lead permitido com a marca 'ex-cliente' e a data; em aviso prévio (encerrando) e suspenso → bloqueiam", async () => {
+      const [{ id: maringa }] = await query<{ id: string }>(
+        `insert into cliente_prefeitura (nome, uf, valor_mensal, data_inicio_contrato, status_contrato, cancelamento_pedido_em, cancelamento_termino_em)
+         values ('Prefeitura de Maringá', 'PR', 1000, '2025-01-01', 'encerrado', '2026-03-01', '2026-03-31') returning id`
+      );
+      await query(`insert into cliente_evento_contrato (cliente_id, tipo, data_evento, origem) values ($1, 'contrato_encerrado', '2026-03-31', 'sistema')`, [maringa]);
+      await query(`insert into cliente_prefeitura (nome, uf, valor_mensal, data_inicio_contrato, status_contrato) values ('Prefeitura de Toledo', 'PR', 1000, '2020-01-01', 'encerrado')`); // legado: sem data
+      await query(
+        `insert into cliente_prefeitura (nome, uf, valor_mensal, data_inicio_contrato, status_contrato, cancelamento_pedido_em, cancelamento_termino_em)
+         values ('Prefeitura de Umuarama', 'PR', 1000, '2025-01-01', 'em_aviso_previo', current_date - 5, current_date + 25),
+                ('Prefeitura de Cianorte', 'PR', 1000, '2025-01-01', 'em_aviso_previo', current_date - 40, current_date - 10),
+                ('Prefeitura de Paranavaí', 'PR', 1000, '2025-01-01', 'suspenso', null, null)`
+      );
+      const exMaringa = await criarId(pessoas.vendasA, { municipio_nome: "MARINGA", uf: "PR" });
+      const exToledo = await criarId(pessoas.vendasA, { municipio_nome: "Toledo", uf: "PR" });
+      const exCianorte = await criarId(pessoas.vendasA, { municipio_nome: "Cianorte", uf: "PR" }); // aviso já vencido = encerrado de fato
+      const encerrando = await criar(pessoas.vendasA, { municipio_nome: "Umuarama", uf: "PR" });
+      expect(encerrando.status).toBe(409);
+      expect((await encerrando.json()).erro).toMatch(/já é cliente da NEXAIGEN \(contrato em aviso prévio\)/);
+      expect((await criar(pessoas.vendasA, { municipio_nome: "Paranavaí", uf: "PR" })).status).toBe(409);
+
+      const detalhe = await (await rotaLead.GET(req(`/api/leads/${exMaringa}`, pessoas.vendasA), ctx(exMaringa))).json();
+      expect(detalhe.lead).toMatchObject({ ex_cliente: true, ex_cliente_encerrado_em: "2026-03-31" });
+      const lista = await (await rotaLeads.GET(req("/api/leads?por_pagina=100", pessoas.vendasA))).json();
+      const marca = (id: string) => lista.leads.find((l: { id: string }) => l.id === id);
+      expect(marca(exToledo)).toMatchObject({ ex_cliente: true, ex_cliente_encerrado_em: null });
+      expect(marca(exCianorte).ex_cliente).toBe(true);
+      expect(marca(exCianorte).ex_cliente_encerrado_em).toMatch(/^\d{4}-\d{2}-\d{2}$/); // término do aviso
+      expect(lista.leads.filter((l: { ex_cliente: boolean }) => !l.ex_cliente).every((l: { municipio_nome: string }) => !["Maringá", "Toledo", "Cianorte"].includes(l.municipio_nome))).toBe(true);
+      // A consulta mínima de colega NÃO ganha campo novo (as chaves continuam exatas — teste acima).
     });
   });
 
@@ -319,6 +352,100 @@ describe.skipIf(!LOCAL)("CRM — Postgres real (banco temporário)", () => {
     it("admin troca vendedor direto; pra quem não pode ser vendedor (financeiro) → 400", async () => {
       expect((await rotaVendedor.POST(req(`/api/leads/${recente}/vendedor`, pessoas.admin, "POST", { vendedor_id: pessoas.financeiro.id }), ctx(recente))).status).toBe(400);
       expect((await rotaVendedor.POST(req(`/api/leads/${recente}/vendedor`, pessoas.admin, "POST", { vendedor_id: pessoas.vendasA.id }), ctx(recente))).status).toBe(200);
+    });
+  });
+
+  describe("funil sem corte silencioso (rodada 16-A1)", () => {
+    it("120 leads em Contato: o funil traz 50 cartões, o total da etapa é 120 e a lista filtrada pela etapa pagina os 120", async () => {
+      const c = await conta("vendasC", "vendas", "Carla Vendas");
+      await query(
+        `insert into lead (municipio_nome, nome_busca, uf, origem, vendedor_id, etapa, valor_mensal_estimado_centavos, proxima_acao_em)
+         select 'Funil ' || n, 'funil ' || n, 'SP', 'site', $1, 'contato', 100000, case when n <= 3 then date '2026-01-10' end
+         from generate_series(1, 120) n`,
+        [c.id]
+      );
+      const escopo = { equipeId: c.id, admin: false };
+      const hoje = "2026-11-18";
+      const funil = await repo.listarFunil(escopo, hoje);
+      expect(funil.contato).toHaveLength(50);
+      expect(funil.contato.slice(0, 3).every((l) => l.acao_vencida)).toBe(true); // ação vencida primeiro
+      const resumo = await repo.obterResumoCrm(escopo, hoje);
+      expect(resumo.porEtapa.find((e) => e.etapa === "contato")).toEqual({ etapa: "contato", quantidade: 120, valorCentavos: 12000000 });
+      const filtro = { etapa: "contato" as const, ordenar: "municipio" as const, direcao: "asc" as const, porPagina: 100 };
+      const p1 = await repo.listarLeads({ ...filtro, pagina: 1 }, escopo, hoje);
+      const p2 = await repo.listarLeads({ ...filtro, pagina: 2 }, escopo, hoje);
+      expect([p1.total, p1.leads.length, p2.leads.length]).toEqual([120, 100, 20]);
+      // Isolamento continua no funil: outro vendedor não vê nenhum desses.
+      const outro = await repo.listarFunil({ equipeId: pessoas.vendasA.id, admin: false }, hoje);
+      expect(outro.contato.some((l) => l.vendedor_id === c.id)).toBe(false);
+      // Admin vê os da Carla no total e no máximo 50 cartões na coluna.
+      const admin = await repo.listarFunil({ equipeId: pessoas.admin.id, admin: true }, hoje);
+      expect(admin.contato.length).toBe(50);
+    });
+  });
+
+  describe("pedidos concorrentes (rodada 16-A1)", () => {
+    it("dois pedidos pendentes; aprovar um nega o outro ('lead já reatribuído'), com histórico; o negado não pode ser aprovado depois (409)", async () => {
+      const d = await conta("vendasD", "vendas", "Dora Vendas");
+      const lead = await criarId(pessoas.vendasB, { municipio_nome: "Apucarana", uf: "PR" });
+      await query(`update lead set criado_em = '2026-08-01T15:00:00Z' where id = $1`, [lead]);
+      const hoje = "2026-11-18";
+      const pedidoA = await servico.pedirLead(lead, { equipeId: pessoas.vendasA.id, admin: false }, hoje);
+      const pedidoD = await servico.pedirLead(lead, { equipeId: d.id, admin: false }, hoje);
+      if (!pedidoA.ok || !pedidoD.ok) throw new Error("pedidos deveriam ter sido criados");
+
+      const res = await rotaDecisao.POST(req(`/api/leads/pedidos/${pedidoA.pedidoId}`, pessoas.admin, "POST", { decisao: "aprovado" }), ctx(pedidoA.pedidoId));
+      expect(await res.json()).toEqual({ decisao: "aprovado", negados_automaticamente: 1 });
+      const pedidos = await query<{ id: string; decisao: string; motivo_decisao: string | null; resolvido_por: string }>(
+        `select id, decisao, motivo_decisao, resolvido_por from lead_pedido_reatribuicao where lead_id = $1 order by em`,
+        [lead]
+      );
+      expect(pedidos).toEqual([
+        { id: pedidoA.pedidoId, decisao: "aprovado", motivo_decisao: null, resolvido_por: pessoas.admin.id },
+        { id: pedidoD.pedidoId, decisao: "negado", motivo_decisao: "lead já reatribuído", resolvido_por: pessoas.admin.id }
+      ]);
+      const [troca] = await query<{ texto: string }>(`select texto from lead_interacao where lead_id = $1 and tipo = 'troca_vendedor'`, [lead]);
+      expect(troca.texto).toBe("De Beto Vendas para Vera Vendas. Pedido de reatribuição aprovado. Outro pedido pendente negado (Dora Vendas): lead já reatribuído.");
+      const tarde = await rotaDecisao.POST(req(`/api/leads/pedidos/${pedidoD.pedidoId}`, pessoas.admin, "POST", { decisao: "aprovado" }), ctx(pedidoD.pedidoId));
+      expect(tarde.status).toBe(409);
+      const [dono] = await query<{ vendedor_id: string }>(`select vendedor_id from lead where id = $1`, [lead]);
+      expect(dono.vendedor_id).toBe(pessoas.vendasA.id);
+      expect((await (await rotaPedidos.GET(req("/api/leads/pedidos", pessoas.admin))).json()).pedidos.filter((p: { lead_id: string }) => p.lead_id === lead)).toEqual([]);
+    });
+  });
+
+  describe("exportação XLSX da carteira (rodada 16-A1)", () => {
+    it("só crm_gestao; ZIP válido com título e data, fórmulas neutralizadas, valor numérico em moeda, mesmas linhas do CSV", async () => {
+      const perigoso = await criarId(pessoas.vendasA, {
+        municipio_nome: "=HYPERLINK(1)",
+        uf: "MG",
+        contato_nome: "+5543999990000",
+        contato_cargo: "-Secretário",
+        contato_email: "x@cmd.gov.br",
+        contato_telefone: "@SOMA(A1)",
+        valor_mensal_estimado: "1234,56",
+        proxima_acao_em: "2026-12-01",
+        proxima_acao_descricao: "=1+1"
+      });
+      const filtros = "uf=MG&ordenar=municipio&direcao=asc";
+      for (const quem of [pessoas.vendasA, pessoas.financeiro]) {
+        expect((await rotaExportar.GET(req(`/api/leads/exportar?${filtros}&formato=xlsx`, quem))).status).toBe(403);
+      }
+      const xlsx = await rotaExportar.GET(req(`/api/leads/exportar?${filtros}&formato=xlsx`, pessoas.admin));
+      expect(xlsx.status).toBe(200);
+      const arquivos = lerZip(Buffer.from(await xlsx.arrayBuffer()));
+      const planilha = arquivos["xl/worksheets/sheet1.xml"];
+      expect(planilha).toContain(">NEXAIGEN — Carteira de leads (CRM)<");
+      expect(planilha).toMatch(/>Gerado em: \d{2}\/\d{2}\/\d{4} \d{2}:\d{2} \(horário de Brasília\)</);
+      for (const neutralizado of ["'=HYPERLINK(1)", "'+5543999990000", "'-Secretário", "'@SOMA(A1)", "'=1+1"]) expect(planilha).toContain(`>${neutralizado}<`);
+      expect(planilha).not.toContain("<f>");
+      expect(planilha).toMatch(/<c r="G7" s="1"><v>1234\.56<\/v><\/c>/); // valor: número, estilo moeda
+      expect(planilha).toContain(">01/12/2026<"); // data da próxima ação
+      const csv = await rotaExportar.GET(req(`/api/leads/exportar?${filtros}&formato=csv`, pessoas.admin));
+      const linhasCsv = Buffer.from(await csv.arrayBuffer()).subarray(3).toString("utf8").replace(/\r\n$/, "").split("\r\n");
+      expect((planilha.match(/<row /g) ?? []).length).toBe(linhasCsv.length);
+      expect(linhasCsv.at(-1)).toContain("'=HYPERLINK(1);MG;");
+      expect(perigoso).toBeTruthy();
     });
   });
 

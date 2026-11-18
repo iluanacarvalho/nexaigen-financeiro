@@ -590,6 +590,10 @@ Funil das prefeituras que **ainda não são clientes**, da primeira conversa at�
 - Toda mudança grava a etapa e a linha de histórico **na mesma transação**.
 - **"Ganho" existe no banco, mas NINGUÉM marca nesta rodada:** a API responde 409, "o fechamento é feito pelo fluxo de fechamento (rodada 16-B)". Não há atalho.
 
+**Exportação:** CSV e XLSX da carteira, só admin (`crm_gestao`).
+- Fórmulas neutralizadas e valor numérico com estilo moeda.
+- As mesmas linhas no CSV e no XLSX com os mesmos filtros (teste abre o XLSX como ZIP).
+
 **Quem vê o quê** (`lib/papeis.ts`: área `crm` = admin e vendas; `crm_gestao` = só admin):
 - **Admin:** vê e edita todos os leads, reatribui vendedor, exporta a carteira (CSV/XLSX) e decide os pedidos de reatribuição.
 - **Vendas, nos próprios leads** (aqueles em que é o `vendedor_id`): vê e edita tudo e cria leads, sempre atribuídos a si.
@@ -604,11 +608,17 @@ Funil das prefeituras que **ainda não são clientes**, da primeira conversa at�
 - O pedido fica gravado e **não muda o dono**.
 - O admin aprova (vira troca de vendedor, registrada no histórico) ou nega.
 - Cada vendedor tem no máximo um pedido pendente por lead.
+- **Pedidos concorrentes (rodada 16-A1):** ao APROVAR um pedido, todos os OUTROS pedidos pendentes do mesmo lead são fechados como "negado" com o motivo "lead já reatribuído" (coluna `motivo_decisao`, migration `0015`), na mesma transação. Isso entra no histórico do lead, no texto da troca de vendedor. Um pedido negado assim não pode ser aprovado depois (409).
 
 **Duplicidade:**
 - Criar um lead para um município que já tem lead **aberto** (por código IBGE ou nome + UF, ignorando acento e maiúscula) → 409 "Já existe esse lead: está com <vendedor>, etapa <etapa>.". A mensagem revela só isso.
-- Prefeitura que já está em `cliente_prefeitura` → 409 "já está no cadastro de clientes".
-- O cadastro faz a mesma checagem enquanto a pessoa digita, e bloqueia o envio.
+- **Cliente vigente** do mesmo município → 409 "já é cliente da NEXAIGEN (contrato …)". Vigente quer dizer ativo, em aviso prévio (encerrando) ou suspenso.
+- **Ex-cliente (rodada 16-A1):** município cujo cliente está com contrato ENCERRADO na data de hoje (inclusive aviso prévio com término já passado) **pode** virar lead. O lead recebe a marca "ex-cliente · encerrado em DD/MM/AAAA" no cartão, na lista e no detalhe.
+  - A data vem do evento de encerramento, senão do término do aviso. Encerramento anterior à trilha aparece sem data.
+  - A marca é **derivada** na leitura (`lib/crm.ts#clienteEncerrado`), sem coluna nova.
+  - Cliente eliminado do cadastro não bloqueia nem marca.
+- O cadastro faz a checagem de lead aberto enquanto a pessoa digita, e bloqueia o envio.
+- **Concorrência:** dois cadastros (ou duas reaberturas) simultâneos do mesmo município são barrados pelos índices únicos parciais. O erro 23505 vira o mesmo 409, nunca 500. Isso é testado com duas conexões em 20 rodadas (`lib/crm.concorrencia.integration.test.ts`).
 
 **Atividade, "parado" e "ação vencida":**
 - "Última atividade" = o contato registrado (nota, ligação, e-mail, reunião, WhatsApp, visita), a mudança de etapa ou a reabertura mais recente; sem nenhuma, vale a data de criação. Editar o cadastro ou trocar o vendedor não conta.
@@ -622,6 +632,11 @@ Funil das prefeituras que **ainda não são clientes**, da primeira conversa at�
 - Pular uma etapa conta como ter passado pelas do meio.
 - Sem nenhum lead em X → "—", nunca divisão por zero.
 - Negociação → Ganho fica em 0 até a 16-B.
+
+**Funil sem corte silencioso (rodada 16-A1):** os totais de cada coluna (quantidade e soma do valor estimado) vêm de agregação SQL, independentes de limite.
+- Cada coluna mostra **no máximo 50 cartões** (`CARTOES_POR_ETAPA`): primeiro os de ação vencida, depois os mais antigos sem atividade; nos perdidos, os mais recentes.
+- Quando a coluna tem mais leads que isso, aparece "Ver todos os N desta etapa", que abre a lista paginada já filtrada pela etapa (`/crm?visao=lista&etapa=…`).
+- Nunca se vê menos do que existe sem aviso.
 
 **Outros números:** "Ganhos no mês" aparece "—" até a 16-B. "Perdidos no mês" = leads hoje perdidos cuja perda foi registrada no mês.
 

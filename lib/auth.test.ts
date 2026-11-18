@@ -37,7 +37,8 @@ beforeEach(() => {
   queryMock.mockReset();
 });
 
-describe("hashSenha / verificarSenha", () => {
+// bcrypt real (custo de produção) é CPU-bound: sob máquina carregada passa dos 5 s padrão do vitest. Timeout explícito SÓ nestes grupos (o global continua 5 s).
+describe("hashSenha / verificarSenha", { timeout: 30_000 }, () => {
   it("hash da senha nunca é igual à senha em texto puro, e verifica corretamente", async () => {
     const hash = await hashSenha("MinhaSenha123");
     expect(hash).not.toBe("MinhaSenha123");
@@ -206,7 +207,8 @@ describe("exigirPapel", () => {
   });
 });
 
-describe("trocarSenha", () => {
+// bcrypt real (custo de produção) é CPU-bound: sob máquina carregada passa dos 5 s padrão do vitest. Timeout explícito SÓ nestes grupos (o global continua 5 s).
+describe("trocarSenha", { timeout: 30_000 }, () => {
   const CONTA_ID = "equipe-1";
 
   it("conta não encontrada — sucesso false, nunca atualiza nada", async () => {
@@ -257,7 +259,8 @@ describe("trocarSenha", () => {
   });
 });
 
-describe("HASH_FANTASMA / verificarSenhaDaConta (login sem vazar existência de e-mail por tempo)", () => {
+// bcrypt real (custo de produção) é CPU-bound: sob máquina carregada passa dos 5 s padrão do vitest. Timeout explícito SÓ nestes grupos (o global continua 5 s).
+describe("HASH_FANTASMA / verificarSenhaDaConta (login sem vazar existência de e-mail por tempo)", { timeout: 30_000 }, () => {
   it("o hash fantasma tem o MESMO custo bcrypt das senhas reais (senão o tempo voltaria a diferir)", async () => {
     const bcrypt = await import("bcryptjs");
     const { CUSTO_BCRYPT, HASH_FANTASMA } = await import("./auth");

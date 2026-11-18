@@ -9,6 +9,8 @@
 // fechamento (lead vira cliente) é o fluxo da rodada 16-B — não há atalho.
 
 import { somarDias } from "./estadoNota";
+import { nomeDeMunicipioNormalizado } from "./ibge";
+import { statusContratoNaData } from "./cancelamentoContrato";
 import { valoresPadrao, type IdPlano } from "./planos";
 
 export const ETAPAS_ABERTAS = ["novo", "contato", "demonstracao", "proposta", "negociacao"] as const;
@@ -186,4 +188,41 @@ export function calcularTaxasDeAvanco(etapasAlcancadasPorLead: readonly (readonl
     const passaram = maiores.filter((m) => m >= i + 1).length;
     return { de: de as EtapaAberta, para: ORDEM_FUNIL[i + 1], entraram, passaram, percentual: entraram === 0 ? null : Math.round((passaram / entraram) * 1000) / 10 };
   });
+}
+
+// --- Cliente do mesmo município (duplicidade e "ex-cliente") ---------------------------
+
+export interface ClienteDoMunicipio {
+  nome: string;
+  uf: string;
+  codigo_ibge: string | null;
+  status_contrato: string;
+  cancelamento_termino_em: string | null;
+  /** Data do evento 'contrato_encerrado' mais recente (trilha da 0011), se houver. */
+  encerrado_em: string | null;
+}
+
+/** Clientes do MESMO município do lead: mesmo código IBGE, ou mesma UF + nome normalizado (sem acento/caixa/"Prefeitura de"). */
+export function clientesDoMunicipio<T extends Pick<ClienteDoMunicipio, "nome" | "uf" | "codigo_ibge">>(
+  clientes: readonly T[],
+  lead: { uf: string; nomeBusca: string; codigoIbge: string | null }
+): T[] {
+  return clientes.filter((c) => (lead.codigoIbge !== null && c.codigo_ibge === lead.codigoIbge) || (c.uf === lead.uf && nomeDeMunicipioNormalizado(c.nome) === lead.nomeBusca));
+}
+
+/**
+ * EX-CLIENTE (rodada 16-A1): cliente cujo contrato, NA DATA DE HOJE, está
+ * encerrado (inclusive aviso prévio com término já passado —
+ * lib/cancelamentoContrato.ts#statusContratoNaData). Lead desse município é
+ * PERMITIDO e leva a marca "ex-cliente". Cliente ativo, em aviso prévio
+ * (encerrando) ou suspenso continua BLOQUEANDO o lead. (Cliente eliminado
+ * do cadastro simplesmente não existe mais — não bloqueia nem marca.)
+ */
+export function clienteEncerrado(c: Pick<ClienteDoMunicipio, "status_contrato" | "cancelamento_termino_em">, hoje: string): boolean {
+  return statusContratoNaData(c, hoje) === "encerrado";
+}
+
+/** Data do encerramento do ex-cliente: o evento de encerramento, senão o término do aviso prévio; null quando não há registro (encerrado antes da trilha). */
+export function dataDoEncerramento(c: Pick<ClienteDoMunicipio, "encerrado_em" | "cancelamento_termino_em">): string | null {
+  return c.encerrado_em ?? c.cancelamento_termino_em;
 }

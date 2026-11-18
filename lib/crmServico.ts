@@ -20,6 +20,8 @@ import { query, withTransaction, type Executor } from "./db";
 import {
   ROTULO_ETAPA,
   ROTULO_MOTIVO_PERDA,
+  clienteEncerrado,
+  clientesDoMunicipio,
   TIPOS_ATIVIDADE,
   etapaAberta,
   podePedirLead,
@@ -30,9 +32,10 @@ import {
   type TipoContato,
   type TipoInteracao
 } from "./crm";
-import { condicaoEscopo, type EscopoCrm } from "./crmRepositorio";
+import { condicaoEscopo, lerClientesDosMunicipios, type EscopoCrm } from "./crmRepositorio";
 import { nomeDeMunicipioNormalizado } from "./ibge";
-import { rotuloStatusContrato } from "./cancelamentoContrato";
+import { rotuloStatusContrato, statusContratoNaData } from "./cancelamentoContrato";
+import { hojeEmSaoPaulo } from "./painelFinanceiro";
 import type { IdPlano } from "./planos";
 
 export type FalhaCrm =
@@ -118,7 +121,8 @@ export function mensagemDuplicado(vendedorNome: string, etapa: Etapa): string {
 /**
  * Duplicidade ao criar/editar/reabrir: outro lead ABERTO com o mesmo
  * código IBGE ou com o mesmo nome+UF (sem acento/caixa/"Prefeitura de"), ou
- * um CLIENTE com o mesmo código IBGE ou nome+UF. O banco também garante o
+ * um CLIENTE VIGENTE do mesmo município (ex-cliente encerrado não bloqueia —
+ * rodada 16-A1). O banco também garante o
  * lado dos leads (índices únicos parciais da 0014); isto dá a mensagem.
  */
 async function verificarDuplicidade(
@@ -139,14 +143,13 @@ async function verificarDuplicidade(
     const visivel = autor.admin || lead.vendedor_id === autor.equipeId;
     return { ok: false, motivo: "duplicado", erro: mensagemDuplicado(lead.vendedor_nome, lead.etapa), duplicado: { vendedor_nome: lead.vendedor_nome, etapa: lead.etapa, ...(visivel ? { id: lead.id } : {}) } };
   }
-  const clientes = await query<{ nome: string; status_contrato: string; codigo_ibge: string | null }>(
-    `select nome, status_contrato, codigo_ibge from cliente_prefeitura where uf = $1 or ($2::text is not null and codigo_ibge = $2::text)`,
-    [chave.uf, chave.codigoIbge],
-    c
-  );
-  const cliente = clientes.find((cl) => (chave.codigoIbge !== null && cl.codigo_ibge === chave.codigoIbge) || nomeDeMunicipioNormalizado(cl.nome) === chave.nomeBusca);
-  if (cliente) {
-    return { ok: false, motivo: "ja_cliente", erro: `Esta prefeitura já está no cadastro de clientes da NEXAIGEN (contrato ${rotuloStatusContrato(cliente.status_contrato).toLowerCase()}) — não é lead.` };
+  // Cliente do mesmo município: bloqueia se ALGUM estiver vigente hoje (ativo, em aviso prévio — "encerrando" — ou
+  // suspenso). Ex-cliente (contrato encerrado hoje) NÃO bloqueia: o lead é permitido e leva a marca "ex-cliente".
+  const clientes = clientesDoMunicipio(await lerClientesDosMunicipios([chave.uf], chave.codigoIbge ? [chave.codigoIbge] : [], c), chave);
+  const vigente = clientes.find((cl) => !clienteEncerrado(cl, hojeEmSaoPaulo(new Date())));
+  if (vigente) {
+    const situacao = rotuloStatusContrato(statusContratoNaData(vigente, hojeEmSaoPaulo(new Date()))).toLowerCase();
+    return { ok: false, motivo: "ja_cliente", erro: `Esta prefeitura já é cliente da NEXAIGEN (contrato ${situacao}) — não é lead. Só ex-cliente com contrato encerrado pode virar lead.` };
   }
   return null;
 }
@@ -377,8 +380,17 @@ export async function pedirLead(leadId: string, solicitante: EscopoCrm, hoje: st
   }
 }
 
-/** Admin decide um pedido pendente. Aprovar = troca de vendedor pro solicitante (com histórico), na mesma transação. */
-export async function decidirPedido(pedidoId: string, decisao: "aprovado" | "negado", admin: EscopoCrm, executor?: Executor): Promise<ResultadoCrm<{ decisao: "aprovado" | "negado" }>> {
+export const MOTIVO_LEAD_JA_REATRIBUIDO = "lead já reatribuído";
+
+/**
+ * Admin decide um pedido pendente. APROVAR = troca de vendedor pro
+ * solicitante (com histórico) E, na MESMA transação, todos os OUTROS pedidos
+ * pendentes do mesmo lead viram 'negado' com motivo "lead já reatribuído"
+ * (rodada 16-A1) — e isso também entra no histórico do lead (no texto da
+ * troca de vendedor). Pedido já decidido (inclusive negado automaticamente)
+ * → conflito (409).
+ */
+export async function decidirPedido(pedidoId: string, decisao: "aprovado" | "negado", admin: EscopoCrm, executor?: Executor): Promise<ResultadoCrm<{ decisao: "aprovado" | "negado"; negadosAutomaticamente: number }>> {
   return executar(async (c) => {
     const [pedido] = await query<{ lead_id: string; solicitante_id: string; resolvido_em: string | null }>(
       `select lead_id, solicitante_id, resolvido_em from lead_pedido_reatribuicao where id = $1::uuid for update`,
@@ -387,9 +399,31 @@ export async function decidirPedido(pedidoId: string, decisao: "aprovado" | "neg
     );
     if (!pedido) throw new Recusa(NAO_ENCONTRADO);
     if (pedido.resolvido_em) throw new Recusa({ ok: false, motivo: "conflito", erro: "Este pedido já foi decidido." });
-    if (decisao === "aprovado") await trocarVendedorEm(c, pedido.lead_id, pedido.solicitante_id, admin, "Pedido de reatribuição aprovado.");
+    let negadosAutomaticamente = 0;
+    if (decisao === "aprovado") {
+      // Trava os outros pedidos pendentes do lead ANTES de trocar o dono: um pedido novo não entra no meio.
+      const outros = await query<{ id: string; solicitante_nome: string }>(
+        `select p.id, s.nome as solicitante_nome from lead_pedido_reatribuicao p join equipe_nexaigen s on s.id = p.solicitante_id
+         where p.lead_id = $1 and p.id <> $2 and p.resolvido_em is null order by p.em for update of p`,
+        [pedido.lead_id, pedidoId],
+        c
+      );
+      const observacao =
+        outros.length === 0
+          ? "Pedido de reatribuição aprovado."
+          : `Pedido de reatribuição aprovado. ${outros.length === 1 ? "Outro pedido pendente negado" : `${outros.length} outros pedidos pendentes negados`} (${outros.map((o) => o.solicitante_nome).join(", ")}): ${MOTIVO_LEAD_JA_REATRIBUIDO}.`;
+      await trocarVendedorEm(c, pedido.lead_id, pedido.solicitante_id, admin, observacao);
+      if (outros.length > 0) {
+        await query(
+          `update lead_pedido_reatribuicao set resolvido_em = now(), resolvido_por = $1, decisao = 'negado', motivo_decisao = $2 where id = any($3::uuid[])`,
+          [admin.equipeId, MOTIVO_LEAD_JA_REATRIBUIDO, outros.map((o) => o.id)],
+          c
+        );
+      }
+      negadosAutomaticamente = outros.length;
+    }
     await query(`update lead_pedido_reatribuicao set resolvido_em = now(), resolvido_por = $1, decisao = $2 where id = $3`, [admin.equipeId, decisao, pedidoId], c);
-    return { ok: true as const, decisao };
+    return { ok: true as const, decisao, negadosAutomaticamente };
   }, executor);
 }
 

@@ -25,6 +25,9 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    // Testes de tela (jsdom + digitação simulada) ficam lentos em máquina/CI carregados; 5 s (padrão) dava timeout sem haver travamento. Um teste que trava de verdade continua falhando, só mais tarde.
+    testTimeout: 20_000,
+    hookTimeout: 20_000,
     include: ["**/*.component.test.tsx"],
     exclude: ["**/node_modules/**"],
     setupFiles: ["./vitest.component.setup.ts", "./vitest.setup.sem-apis-externas.ts"],

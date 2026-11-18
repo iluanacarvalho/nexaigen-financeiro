@@ -5,36 +5,11 @@
 // XLSX em si (lib/xlsx.ts): CRC32 conhecido, nomes de coluna, escape XML.
 
 import { describe, expect, it } from "vitest";
-import { inflateRawSync } from "node:zlib";
 import { montarRelatorioContratos, type LinhaClienteRelatorio } from "./relatorioContratos";
 import { formatarGeradoEm, gerarCsvContratos, gerarXlsxContratos, nomeArquivoContratos, textoVariacao } from "./relatorioContratosExportacao";
 import { crc32, escaparXml, gerarXlsx, nomeColuna } from "./xlsx";
+import { lerZip } from "@/testes/lerZip";
 
-/** Lê um ZIP (store ou deflate) pelo diretório central → { nome: conteúdo }. Confere o CRC de cada arquivo. */
-function lerZip(zip: Buffer): Record<string, string> {
-  const fim = zip.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
-  const total = zip.readUInt16LE(fim + 10);
-  let p = zip.readUInt32LE(fim + 16);
-  const arquivos: Record<string, string> = {};
-  for (let i = 0; i < total; i++) {
-    expect(zip.readUInt32LE(p)).toBe(0x02014b50);
-    const metodo = zip.readUInt16LE(p + 10);
-    const crc = zip.readUInt32LE(p + 16);
-    const tamanho = zip.readUInt32LE(p + 20);
-    const nomeLen = zip.readUInt16LE(p + 28);
-    const extraLen = zip.readUInt16LE(p + 30);
-    const comentarioLen = zip.readUInt16LE(p + 32);
-    const local = zip.readUInt32LE(p + 42);
-    const nome = zip.subarray(p + 46, p + 46 + nomeLen).toString("utf8");
-    const inicioDados = local + 30 + zip.readUInt16LE(local + 26) + zip.readUInt16LE(local + 28);
-    const bruto = zip.subarray(inicioDados, inicioDados + tamanho);
-    const conteudo = metodo === 0 ? bruto : inflateRawSync(bruto);
-    expect(crc32(conteudo)).toBe(crc);
-    arquivos[nome] = conteudo.toString("utf8");
-    p += 46 + nomeLen + extraLen + comentarioLen;
-  }
-  return arquivos;
-}
 
 const AGORA = new Date("2026-11-17T17:05:00Z"); // 14:05 em Brasília
 const cliente = (extra: Partial<LinhaClienteRelatorio>): LinhaClienteRelatorio => ({
