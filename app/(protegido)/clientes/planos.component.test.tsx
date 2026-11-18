@@ -23,7 +23,7 @@ const valorMensal = () => screen.getByLabelText(/^Valor mensal \(R\$\)/) as HTML
 const taxa = () => screen.queryByLabelText(/^Taxa de implantação e treinamento \(R\$\)/) as HTMLInputElement | null;
 
 describe("Clientes — escolher o plano (cliente novo)", () => {
-  it("cada plano preenche a mensalidade padrão; os 3 portes mostram faixa de habitantes e taxa; Dispensa não", async () => {
+  it("cada plano preenche a mensalidade padrão e mostra a faixa de habitantes (16-A2: inclusive a Dispensa); taxa só nos 3 portes", async () => {
     instalarFetchFalso({ "GET /api/clientes": { corpo: { clientes: [] } } });
     const usuario = userEvent.setup();
     render(<ClientesPage />);
@@ -31,16 +31,16 @@ describe("Clientes — escolher o plano (cliente novo)", () => {
     const plano = screen.getByLabelText(/^Plano/) as HTMLSelectElement;
 
     expect(Array.from(plano.options).map((o) => o.textContent)).toEqual(["Dispensa", "Pequeno Porte", "Médio Porte", "Grande Porte"]);
-    // Novo cliente começa em Dispensa: mensalidade padrão, SEM quadro de porte nem taxa.
+    // Novo cliente começa em Dispensa: mensalidade padrão, faixa "Menos de 10 mil hab." e SEM taxa.
     expect(valorMensal().value).toBe("5457,00");
     expect(screen.getByText("Valor padrão do plano: R$ 5.457,00 — você pode alterar.", { exact: false })).toBeTruthy();
-    expect(screen.queryByRole("region", { name: "Porte do município" })).toBeNull();
+    expect(within(screen.getByRole("region", { name: "Porte do município" })).getByText("Dispensa — Menos de 10 mil hab.")).toBeTruthy();
     expect(taxa()).toBeNull();
 
     for (const [rotulo, mensal, faixa, taxaPadrao] of [
-      ["Pequeno Porte", "8500,00", "Pequeno Porte — Até 50 mil hab.", "15000,00"],
-      ["Médio Porte", "15000,00", "Médio Porte — 50 mil a 200 mil hab.", "20000,00"],
-      ["Grande Porte", "35000,00", "Grande Porte — Acima de 200 mil hab.", "30000,00"]
+      ["Pequeno Porte", "8500,00", "Pequeno Porte — 10 mil a menos de 50 mil hab.", "15000,00"],
+      ["Médio Porte", "15000,00", "Médio Porte — 50 mil a menos de 200 mil hab.", "20000,00"],
+      ["Grande Porte", "35000,00", "Grande Porte — 200 mil hab. ou mais", "30000,00"]
     ]) {
       await usuario.selectOptions(plano, rotulo);
       expect(valorMensal().value).toBe(mensal);
@@ -50,6 +50,7 @@ describe("Clientes — escolher o plano (cliente novo)", () => {
 
     await usuario.selectOptions(plano, "Dispensa");
     expect(taxa()).toBeNull();
+    expect(within(screen.getByRole("region", { name: "Porte do município" })).getByText("Dispensa — Menos de 10 mil hab.")).toBeTruthy();
   });
 
   it("o valor continua editável e vai pro servidor como TEXTO; Dispensa nunca manda taxa", async () => {

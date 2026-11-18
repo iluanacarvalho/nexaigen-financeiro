@@ -1,0 +1,3 @@
+entidade_nome;sigla;tipo;uf;site;contato_nome;contato_email;contato_telefone;observacao;fonte_url;verificado_em;codigo_ibge_membro
+EXEMPLO FICTÍCIO — Associação dos Municípios Imaginários;EXEMPLO-AMI;associacao_municipios;PR;https://exemplo.invalid;Contato Fictício;contato@exemplo.invalid;(00) 0000-0000;LINHA FICTÍCIA — apague antes de importar dados reais;https://exemplo.invalid/fonte;2026-01-01;4106902
+EXEMPLO FICTÍCIO — Associação dos Municípios Imaginários;EXEMPLO-AMI;associacao_municipios;PR;https://exemplo.invalid;Contato Fictício;contato@exemplo.invalid;(00) 0000-0000;LINHA FICTÍCIA — apague antes de importar dados reais;https://exemplo.invalid/fonte;2026-01-01;4113700

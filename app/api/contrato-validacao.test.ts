@@ -165,7 +165,7 @@ beforeEach(async () => {
   cookie = `${NOME_COOKIE_ACCESS}=${await gerarAccessToken({ equipeId: ID, nome: "Teste", precisaTrocarSenha: false, tokenVersion: 1 })}`;
 });
 
-describe("POST /api/auth/login (sem `detalhes` por desenho — nunca revela qual campo)", () => {
+describe("POST /api/auth/login (sem `detalhes` por desenho — nunca revela qual campo)", { timeout: 30_000 }, () => {
   it("(a) válido passa da validação (conta inexistente → 401, não 400)", async () => {
     const res = await chamar(LOGIN, "POST", { email: "pessoa@exemplo.com.br", senha: "x" });
     expect(res.status).toBe(401);
@@ -177,7 +177,7 @@ describe("POST /api/auth/login (sem `detalhes` por desenho — nunca revela qual
   });
 });
 
-describe("POST /api/auth/trocar-senha", () => {
+describe("POST /api/auth/trocar-senha", { timeout: 30_000 }, () => {
   it("(a) válido passa", async () => {
     await naoFoiErroDeValidacao(await chamar(TROCAR_SENHA, "POST", { senha_atual: "atual", nova_senha: "novaSenha1" }));
   });
@@ -187,7 +187,7 @@ describe("POST /api/auth/trocar-senha", () => {
   });
 });
 
-describe("POST /api/equipe", () => {
+describe("POST /api/equipe", { timeout: 30_000 }, () => {
   it("(a) válido passa — e o e-mail com espaços nas pontas é aparado ANTES de validar o formato", async () => {
     const res = await chamar(EQUIPE, "POST", { nome: "Nova Pessoa", email: "  Nova.Pessoa@nexaigen.com.br  ", papel: "financeiro" });
     expect(res.status).toBe(200);

@@ -11,6 +11,7 @@ import { codigoIbgeValido, UF_POR_CODIGO } from "./ibge";
 import { IDS_PLANOS } from "./planos";
 import { ETAPAS, MOTIVOS_PERDA, ORIGENS, TIPOS_CONTATO } from "./crm";
 import { ORDENACOES_LEAD } from "./crmRepositorio";
+import { PLANOS_FILTRO, type PlanoFiltro } from "./territorio";
 
 export const UFS = Object.values(UF_POR_CODIGO).sort() as [string, ...string[]];
 export const POR_PAGINA_MAXIMO_CRM = 100;
@@ -131,6 +132,22 @@ export const FiltrosLeadsSchema = z.strictObject({
   busca: z.string().trim().min(1).max(60).optional(),
   parados: booleanoQuery.optional(),
   vencidas: booleanoQuery.optional(),
+  /** Plano efetivo (rodada 16-A2): lista separada por vírgula — ids de plano e/ou sem_plano. */
+  plano: z
+    .string()
+    .max(200)
+    .transform((v, ctx) => {
+      const itens = [...new Set(v.split(",").map((x) => x.trim()).filter(Boolean))];
+      const invalidos = itens.filter((x) => !(PLANOS_FILTRO as readonly string[]).includes(x));
+      if (invalidos.length) {
+        ctx.issues.push({ code: "custom", message: `Plano inválido: ${invalidos.join(", ")} — use: ${PLANOS_FILTRO.join(", ")}.`, input: v });
+        return z.NEVER;
+      }
+      return itens as PlanoFiltro[];
+    })
+    .optional(),
+  ignorar_sugerido: booleanoQuery.optional(),
+  entidade: z.uuid({ error: "entidade inválida." }).optional(),
   ordenar: z.enum(ORDENACOES_LEAD).default("atualizado"),
   direcao: z.enum(["asc", "desc"]).default("desc"),
   ...paginacao

@@ -46,7 +46,8 @@ export const ROTULO_MOTIVO_PERDA: Record<MotivoPerda, string> = {
 /** Interações que a equipe registra à mão (as demais o sistema grava sozinho). */
 export const TIPOS_CONTATO = ["nota", "ligacao", "email", "reuniao", "whatsapp", "visita"] as const;
 export type TipoContato = (typeof TIPOS_CONTATO)[number];
-export const TIPOS_INTERACAO = [...TIPOS_CONTATO, "mudanca_etapa", "troca_vendedor", "edicao", "reabertura"] as const;
+/** 'criacao' (rodada 16-A2): lead aberto pelo Território — um a um ou em lote; o texto diz de onde veio. */
+export const TIPOS_INTERACAO = [...TIPOS_CONTATO, "mudanca_etapa", "troca_vendedor", "edicao", "reabertura", "criacao"] as const;
 export type TipoInteracao = (typeof TIPOS_INTERACAO)[number];
 export const ROTULO_INTERACAO: Record<TipoInteracao, string> = {
   nota: "Nota",
@@ -58,13 +59,15 @@ export const ROTULO_INTERACAO: Record<TipoInteracao, string> = {
   mudanca_etapa: "Mudança de etapa",
   troca_vendedor: "Troca de vendedor",
   edicao: "Edição do cadastro",
-  reabertura: "Reabertura"
+  reabertura: "Reabertura",
+  criacao: "Criação"
 };
 
 /**
  * O que conta como ATIVIDADE (pro "parado há N dias", a "última atividade"
  * da consulta e o pedido de reatribuição): contato registrado ou mudança
- * de etapa/reabertura. Editar o cadastro ou trocar o vendedor NÃO conta —
+ * de etapa/reabertura. Editar o cadastro, trocar o vendedor ou a linha de
+ * criação (16-A2) NÃO contam —
  * corrigir um telefone não é trabalhar o lead. Sem nenhuma, vale a data de
  * criação do lead. A MESMA lista entra no SQL (lib/crmRepositorio.ts).
  */

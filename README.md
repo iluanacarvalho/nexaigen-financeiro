@@ -447,10 +447,10 @@ Migrado de zod 3.25 para **zod 4.6.7** (corrige GHSA-mrhx-c7xc-m3w5 — `npm aud
 
 | Plano | Mensalidade padrão | Faixa | Implantação e treinamento (padrão) |
 |---|---|---|---|
-| Dispensa | R$ 5.457,00 | — | não tem |
-| Pequeno Porte | R$ 8.500,00 | Até 50 mil hab. | R$ 15.000,00 |
-| Médio Porte | R$ 15.000,00 | 50 mil a 200 mil hab. | R$ 20.000,00 |
-| Grande Porte | R$ 35.000,00 | Acima de 200 mil hab. | R$ 30.000,00 |
+| Dispensa | R$ 5.457,00 | Menos de 10 mil hab. | não tem |
+| Pequeno Porte | R$ 8.500,00 | 10 mil a menos de 50 mil hab. | R$ 15.000,00 |
+| Médio Porte | R$ 15.000,00 | 50 mil a menos de 200 mil hab. | R$ 20.000,00 |
+| Grande Porte | R$ 35.000,00 | 200 mil hab. ou mais | R$ 30.000,00 |
 
 Os valores são o **padrão sugerido**: o combinado com cada prefeitura fica em `cliente_prefeitura.valor_mensal` / `taxa_implantacao` (editáveis na tela de Clientes; na criação, campo ausente = padrão do plano; trocar o plano de um cliente só repõe os padrões depois de confirmar na tela). Dispensa nunca tem taxa (o banco garante). Migration `0010_planos_por_porte.sql`: clientes `essencial`/`completo` (só existiam de teste) viraram `dispensa` mantendo o valor; ids antigos agora dão 400 com mensagem clara — **inclusive vindos do nexaigen-educa, que precisa ser atualizado pros 4 ids novos**.
 
@@ -645,3 +645,82 @@ Funil das prefeituras que **ainda não são clientes**, da primeira conversa at�
 **LGPD:** o campo de notas tem o aviso fixo "Não registre dados pessoais de cidadãos, crianças ou famílias — só informações comerciais da prefeitura.".
 
 **Testes:** o CRM é testado contra Postgres real **num banco temporário** (`testes/bancoTemporario.ts`), porque o histórico não pode ser apagado depois. Há provas de mutação: sem o filtro por vendedor, ou com campos a mais na consulta mínima, os testes falham.
+
+## 28. Base territorial do comercial (rodada 16-A2)
+
+O comercial enxerga o **território**: todas as prefeituras de um estado, as entidades a que pertencem (associações de municípios, consórcios intermunicipais etc.) e o status comercial de cada uma. Começa pelo **Paraná (399 municípios)**; os outros estados são liberados aos poucos.
+
+**Telas (área `crm`, mesmas permissões da 16-A):**
+- `/crm/territorio` — seletor de UF, cartões de resumo (total, clientes, em negociação, perdidos, ex-clientes, não abordados, % de cobertura = clientes ÷ total, "—" com total zero), tabela ordenável (nome, população, status, plano) com legenda sempre visível. Por linha: "Abrir lead" ou "Com <vendedor> — etapa <etapa>". Seleção múltipla com "Criar leads para os selecionados" e "Criar leads para todos os resultados ainda não abordados" (com prévia).
+- `/crm/entidades` — lista com nº de municípios, clientes, em negociação, não abordados e % de clientes; busca por nome ou sigla; entidade com cliente fica destacada.
+- `/crm/entidades/[id]` — a tela principal: dados da entidade com fonte e data da verificação (aviso se tiver mais de 12 meses), o cabeçalho "X de Y prefeituras já são clientes da NEXAIGEN", a faixa "JÁ FECHARAM CONOSCO" (nome, plano, desde), a ação "Abrir leads de todas as prefeituras ainda não abordadas desta entidade" com prévia e confirmação, e a mesma tabela do Território. Admin edita a entidade e os membros aqui.
+- `/crm/entidades/nova` e `/crm/estados` — só admin (`crm_gestao`).
+- Detalhe do lead e cada linha de município mostram as **etiquetas das entidades**, clicáveis, com "N prefeituras desta entidade já são clientes".
+- **Busca global** no topo do CRM: nome/sigla de entidade abre a entidade; nome de município abre a linha dele no Território.
+
+**Faixas de população dos planos** (`lib/planos.ts`, fonte única: `populacaoMinima`/`populacaoMaxima`; cada faixa começa no número indicado):
+
+| Plano | População |
+|---|---|
+| Dispensa | 0 a 9.999 (menos de 10 mil) |
+| Pequeno Porte | 10.000 a 49.999 |
+| Médio Porte | 50.000 a 199.999 |
+| Grande Porte | 200.000 ou mais |
+
+`planoSugeridoPorPopulacao` devolve o plano da faixa (população nula/negativa → nenhum). Nenhum preço mudou.
+
+**Status comercial** (`lib/territorio.ts#situacaoComercial`, uma função só para todas as telas, a exportação e o lote), nesta precedência:
+1. **Cliente** — há `cliente_prefeitura` do município (mesmo código IBGE; se o cliente não tem código, mesmo nome normalizado + UF, e a linha avisa "cliente sem código IBGE, corrigir") com contrato vigente hoje (ativo, em aviso prévio, suspenso). Se **todos** os clientes do município estão encerrados hoje → **ex-cliente** (regra da 16-A1), com a data do encerramento.
+2. **Em negociação** — lead aberto (etapa e vendedor).
+3. **Perdido** — o lead mais recente foi perdido (motivo e data).
+4. **Não abordado**.
+
+Um ex-cliente com lead aberto aparece como **ex-cliente** (precedência 1); a etapa e o vendedor do lead continuam na linha.
+
+**Plano efetivo** (`planoEfetivo`), nesta precedência: (a) cliente vigente → plano **contratado**; (b) lead aberto com plano de interesse → **de interesse**; (c) senão → **sugerido pela população** (as 4 faixas, inclusive Dispensa); (d) sem população → **sem plano definido**. Contratado diferente do sugerido → aviso discreto "plano diferente do sugerido pela população" (nunca bloqueia). Na **lista de leads**, o plano efetivo de cada lead é o de interesse; sem ele, o sugerido pela população do lead (ou da base).
+
+**Filtros (Território, tela da entidade e lista de leads):** plano (marcação múltipla: Dispensa, Pequeno, Médio, Grande, Sem plano definido) e "ignorar plano sugerido pela população" (só contratado ou de interesse), entidade, status, etapa, vendedor (só admin), microrregião, faixa de população, parado, ação vencida e busca. Tudo combina (E) e **vai na URL** (link compartilhável); a contagem fica sempre visível. Valor inválido na URL nunca quebra a tela: é ignorado com aviso. "Parado" e "ação vencida" só valem para lead que a pessoa pode ver por inteiro.
+
+**Visões salvas** (`crm_visao_salva`): cada pessoa salva a combinação de filtros com um nome e reabre com um clique; vê só as suas (até 30, nome único). Visão que aponta para entidade desativada ou estado não liberado abre normalmente, ignorando aquele filtro com aviso.
+
+**Lote** (`lib/territorioServico.ts`, `POST /api/territorio/leads`): sempre com **prévia** (quantas serão criadas, quais puladas e por quê) e confirmação.
+- **Seleção:** cria para quem não tem lead aberto nem cliente vigente (não abordado, perdido, ex-cliente).
+- **"Ainda não abordadas"** (da entidade ou dos resultados filtrados): só status "não abordado".
+- Duplicados e clientes vigentes são **pulados e listados**. Cada lead passa pelo mesmo caminho do cadastro manual (`criarLead`) e ganha a linha `criacao` no histórico dizendo de onde veio.
+- **Uma transação:** duplicado descoberto na hora (outra pessoa criou no meio) é pulado com um savepoint; qualquer outro erro desfaz o lote inteiro.
+- Vendas cria sempre para si; admin escolhe o vendedor.
+
+**Exportação** (CSV e XLSX, só admin, `GET /api/territorio/exportar`): a lista **filtrada**, pelos exportadores de sempre (fórmulas neutralizadas, cabeçalho com título, filtros aplicados e data). Colunas fixas: Município, UF, Código IBGE, População, Plano efetivo, Origem do plano, Status, Etapa, Vendedor, Entidades. Nenhum contato, valor ou nota. A exportação da carteira de leads (`/api/leads/exportar`) ganhou no fim as colunas População, Plano efetivo, Origem do plano e Entidades.
+
+**Permissões e privacidade:**
+- Municípios e entidades são dado institucional: admin e vendas leem; financeiro e rh recebem 403.
+- Só admin cria/edita entidades e membros e libera estados (`crm_gestao`).
+- Vendas só vê os estados **liberados** (em toda consulta: Território, entidade, busca, etiquetas, lote).
+- Em município com lead de colega, vendas vê **só vendedor e etapa** — nem o plano de interesse do colega (o plano aparece como sugerido), nem motivo, datas ou selos. A linha é montada chave a chave (`montarLinha`); o teste confere as chaves exatas.
+
+**Modelo de dados** (`0016_base_territorial.sql`):
+- `municipio_base` — `codigo_ibge` (pk, 7 dígitos), nome, `nome_busca` (normalizado), UF, população com ano, micro e mesorregião. Ligado a `cliente_prefeitura.codigo_ibge` e `lead.codigo_ibge` **sem FK** (clientes e leads antigos podem não ter código).
+- `estado_comercial` — UF, liberado, quando e por quem.
+- `entidade_intermunicipal` — nome, sigla, tipo (`associacao_municipios`, `consorcio_intermunicipal`, `associacao_regional`, `outro`), UF, site, contato, observação, **fonte_url e verificado_em obrigatórios**, ativo. Único por nome sem caixa + UF. "Remover" = desativar (nunca apagar).
+- `entidade_membro` — (entidade, município) com `desde`; um município pode estar em várias entidades.
+- `crm_visao_salva` — pessoa, nome, tela, filtros.
+- `lead_interacao` ganhou o tipo `criacao`.
+
+**Liberação de estado:** em **desenvolvimento**, a migration libera o PR sozinha (o migrador só faz isso com banco em localhost). Em **produção**, liberar é sempre ato do admin na tela `/crm/estados`. Estado sem base carregada não pode ser liberado pela tela.
+
+**Como carregar um estado novo, passo a passo:**
+1. Gerar o arquivo (com rede, na máquina de quem cuida do sistema): `npm run gerar-base-municipios -- SC`. Baixa da API pública do IBGE (localidades e estimativa de população mais recente) e grava `scripts/dados/municipios-SC.json`. O script mostra o total, quantos códigos têm 7 dígitos, o ano da estimativa e quais municípios ficaram sem população (ficam `null` — nunca inventada).
+2. Conferir o total contra o número oficial de municípios do estado, revisar o diff e **commitar** o JSON (dado público).
+3. Importar (sem rede): `npm run importar-municipios -- SC`. Upsert idempotente, nunca apaga; rodar de novo dá "0 inseridos · 0 atualizados".
+4. Carregar as entidades do estado por CSV (abaixo) ou pela tela.
+5. Liberar o estado em `/crm/estados`.
+
+**CSV de entidades** (`npm run importar-entidades-csv -- arquivo.csv`; modelo com 2 linhas **fictícias** em `docs/modelos/entidades-modelo.csv` — apague-as antes de usar):
+- Colunas: `entidade_nome; sigla; tipo; uf; site; contato_nome; contato_email; contato_telefone; observacao; fonte_url; verificado_em; codigo_ibge_membro`.
+- **Uma linha por membro**: os dados da entidade se repetem e precisam ser iguais em todas as linhas da mesma entidade. Linha sem `codigo_ibge_membro` cadastra só a entidade.
+- Separador `;` (Excel pt-BR) ou `,`; `verificado_em` em aaaa-mm-dd ou dd/mm/aaaa (nunca no futuro).
+- **Tudo é validado antes de gravar**: código IBGE existente na base, fonte e data obrigatórias, tipo válido, e-mail válido. Qualquer erro → nada é gravado e o relatório sai linha a linha.
+- Reimportar **atualiza** (mesmo nome + UF), nunca duplica e nunca remove membro (remoção é pela tela).
+- Entidades reais do Paraná não estão no repositório: chegam por CSV da dona do produto.
+
+**Testes:** `lib/territorio.test.ts` (precedência de status e de plano em todas as combinações, cobertura, filtros na URL, privacidade da linha, lote), `lib/planos.test.ts` (bordas 9.999/10.000/49.999/50.000/199.999/200.000), `lib/baseMunicipios.test.ts` (fixture do IBGE e o arquivo real do PR), `lib/entidadesCsv.test.ts`, e `lib/territorio.integration.test.ts` em banco temporário. A prova de mutação: devolver o lead de colega com todos os campos faz o teste de chaves exatas falhar.

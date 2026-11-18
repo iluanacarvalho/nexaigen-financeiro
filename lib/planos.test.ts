@@ -9,6 +9,7 @@ import {
   ehIdPlano,
   mensagemPlanoDescontinuado,
   obterPlano,
+  planoSugeridoPorPopulacao,
   precosDeCriacao,
   rotuloDoPlano,
   temImplantacao,
@@ -18,12 +19,12 @@ import {
 
 describe("os 4 planos — valores exatos em centavos", () => {
   it.each([
-    ["dispensa", "Dispensa", 545700, null, null],
-    ["pequeno_porte", "Pequeno Porte", 850000, 1500000, "Até 50 mil hab."],
-    ["medio_porte", "Médio Porte", 1500000, 2000000, "50 mil a 200 mil hab."],
-    ["grande_porte", "Grande Porte", 3500000, 3000000, "Acima de 200 mil hab."]
-  ] as const)("%s", (id, rotulo, mensal, taxa, faixa) => {
-    expect(obterPlano(id)).toEqual({ id, rotulo, valorMensalCentavos: mensal, taxaImplantacaoCentavos: taxa, faixaHabitantes: faixa });
+    ["dispensa", "Dispensa", 545700, null, 0, 9_999, "Menos de 10 mil hab."],
+    ["pequeno_porte", "Pequeno Porte", 850000, 1500000, 10_000, 49_999, "10 mil a menos de 50 mil hab."],
+    ["medio_porte", "Médio Porte", 1500000, 2000000, 50_000, 199_999, "50 mil a menos de 200 mil hab."],
+    ["grande_porte", "Grande Porte", 3500000, 3000000, 200_000, null, "200 mil hab. ou mais"]
+  ] as const)("%s", (id, rotulo, mensal, taxa, minima, maxima, faixa) => {
+    expect(obterPlano(id)).toEqual({ id, rotulo, valorMensalCentavos: mensal, taxaImplantacaoCentavos: taxa, populacaoMinima: minima, populacaoMaxima: maxima, faixaHabitantes: faixa });
     expect(valoresPadrao(id)).toEqual({ valorMensalCentavos: mensal, taxaImplantacaoCentavos: taxa });
     expect(rotuloDoPlano(id)).toBe(rotulo);
     expect(temImplantacao(id)).toBe(taxa !== null);
@@ -86,3 +87,28 @@ describe("temImplantacaoACobrar", () => {
   });
 });
 
+
+describe("faixas de população (rodada 16-A2) — cada faixa COMEÇA no número indicado", () => {
+  it.each([
+    [0, "dispensa"],
+    [9_999, "dispensa"],
+    [10_000, "pequeno_porte"],
+    [49_999, "pequeno_porte"],
+    [50_000, "medio_porte"],
+    [199_999, "medio_porte"],
+    [200_000, "grande_porte"],
+    [12_000_000, "grande_porte"]
+  ] as const)("%i habitantes → %s", (populacao, plano) => {
+    expect(planoSugeridoPorPopulacao(populacao)).toBe(plano);
+  });
+
+  it("população nula, ausente, negativa ou fracionária → null (nunca um plano inventado)", () => {
+    for (const p of [null, undefined, -1, 10_000.5, Number.NaN]) expect(planoSugeridoPorPopulacao(p)).toBeNull();
+  });
+
+  it("as faixas cobrem 0..∞ sem buraco nem sobreposição (a próxima começa no teto + 1)", () => {
+    expect(PLANOS[0].populacaoMinima).toBe(0);
+    for (let i = 1; i < PLANOS.length; i++) expect(PLANOS[i].populacaoMinima).toBe(PLANOS[i - 1].populacaoMaxima! + 1);
+    expect(PLANOS.at(-1)!.populacaoMaxima).toBeNull();
+  });
+});

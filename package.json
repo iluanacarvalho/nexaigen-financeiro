@@ -15,7 +15,10 @@
     "migrate": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/migrate.ts",
     "bootstrap-equipe-nexaigen": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/bootstrap-equipe-nexaigen.ts",
     "recalcular-hash-versoes": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/recalcular-hash-versoes-pdf.ts",
-    "gerar-mapa-brasil": "tsx scripts/gerar-mapa-brasil.ts"
+    "gerar-mapa-brasil": "tsx scripts/gerar-mapa-brasil.ts",
+    "gerar-base-municipios": "tsx scripts/gerar-base-municipios.ts",
+    "importar-municipios": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/importar-municipios.ts",
+    "importar-entidades-csv": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/importar-entidades-csv.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",

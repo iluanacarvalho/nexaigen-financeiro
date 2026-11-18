@@ -21,7 +21,25 @@ export interface ResultadoMigracoes {
   jaAplicadas: string[];
 }
 
-export async function aplicarMigracoes(client: Client, log: (linha: string) => void = () => undefined): Promise<ResultadoMigracoes> {
+/**
+ * Banco de DESENVOLVIMENTO = o host da conexão é local (localhost/127.0.0.1/::1).
+ * Só nele as migrations podem semear dados de conveniência (ex.: 0016 libera
+ * o PR no Território). Produção (Railway) nunca é localhost.
+ */
+export function ehBancoDeDesenvolvimento(databaseUrl: string): boolean {
+  try {
+    return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(new URL(databaseUrl).hostname);
+  } catch {
+    return false;
+  }
+}
+
+export interface OpcoesMigracoes {
+  /** Liga `nexaigen.ambiente_desenvolvimento = 'sim'` dentro de cada transação (seeds só de desenvolvimento). Padrão: false. */
+  desenvolvimento?: boolean;
+}
+
+export async function aplicarMigracoes(client: Client, log: (linha: string) => void = () => undefined, opcoes: OpcoesMigracoes = {}): Promise<ResultadoMigracoes> {
   await client.query(`
     create table if not exists _migrations (
       nome text primary key,
@@ -42,6 +60,8 @@ export async function aplicarMigracoes(client: Client, log: (linha: string) => v
     log(`→ aplicando ${arquivo}...`);
     try {
       await client.query("begin");
+      // Vale só dentro desta transação (is_local = true).
+      await client.query("select set_config('nexaigen.ambiente_desenvolvimento', $1, true)", [opcoes.desenvolvimento ? "sim" : "nao"]);
       await client.query(readFileSync(join(PASTA_MIGRACOES, arquivo), "utf-8"));
       await client.query("insert into _migrations (nome) values ($1)", [arquivo]);
       await client.query("commit");

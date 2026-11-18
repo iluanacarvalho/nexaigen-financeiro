@@ -1,0 +1,5 @@
+[{"id":"9324","variavel":"População residente estimada","unidade":"Pessoas","resultados":[{"classificacoes":[],"series":[
+  {"localidade":{"id":"4100103","nivel":{"id":"N6","nome":"Município"},"nome":"Abatiá - PR"},"serie":{"2026":"7201"}},
+  {"localidade":{"id":"4113700","nivel":{"id":"N6","nome":"Município"},"nome":"Londrina - PR"},"serie":{"2025":"580000","2026":"584465"}},
+  {"localidade":{"id":"4199999","nivel":{"id":"N6","nome":"Município"},"nome":"Município Novo de Teste - PR"},"serie":{"2026":"..."}}
+]}]}]

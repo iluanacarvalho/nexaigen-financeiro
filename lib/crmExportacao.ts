@@ -10,23 +10,26 @@ import { celulaTextoCsv, centavosCsv, formatarGeradoEm, montarCsv, neutralizarFo
 import { ROTULO_ETAPA, ROTULO_MOTIVO_PERDA, ROTULO_ORIGEM, diaEmSaoPaulo, type MotivoPerda, type Origem } from "./crm";
 import type { LeadListado } from "./crmRepositorio";
 import { rotuloDoPlano } from "./planos";
+import { ROTULO_ORIGEM_PLANO, rotuloPlanoEfetivo } from "./territorio";
 import { gerarXlsx, type CelulaXlsx } from "./xlsx";
 
 export const TITULO_EXPORTACAO_CRM = "NEXAIGEN — Carteira de leads (CRM)";
 
 const COLUNAS = [
   "Município", "UF", "Código IBGE", "Etapa", "Vendedor", "Plano de interesse", "Valor mensal estimado (R$)", "Origem",
-  "Contato", "Cargo", "E-mail", "Telefone", "Próxima ação", "Descrição da próxima ação", "Última atividade", "Motivo da perda", "Criado em"
+  "Contato", "Cargo", "E-mail", "Telefone", "Próxima ação", "Descrição da próxima ação", "Última atividade", "Motivo da perda", "Criado em",
+  // Rodada 16-A2 (no fim, pra não mudar a posição das colunas antigas):
+  "População", "Plano efetivo", "Origem do plano", "Entidades"
 ];
 
-type Valor = { texto: string } | { centavos: number } | null;
+type Valor = { texto: string } | { centavos: number } | { inteiro: number } | null;
 
 /** Dia "aaaa-mm-dd" → "dd/mm/aaaa". */
 const dataBr = (dia: string | null) => (dia ? dia.split("-").reverse().join("/") : "");
 /** Instante (timestamptz ISO) → dia em America/Sao_Paulo, "dd/mm/aaaa". */
 const instanteBr = (instante: string) => dataBr(diaEmSaoPaulo(instante));
 
-function linhas(leads: LeadListado[], filtros: string, geradoEm: string): Valor[][] {
+function linhas(leads: LeadListado[], filtros: string, geradoEm: string, entidades: Map<string, string[]>): Valor[][] {
   const t = (texto: string | null): Valor => ({ texto: texto ?? "" });
   return [
     [t(TITULO_EXPORTACAO_CRM)],
@@ -52,19 +55,33 @@ function linhas(leads: LeadListado[], filtros: string, geradoEm: string): Valor[
       t(l.proxima_acao_descricao),
       t(instanteBr(l.ultima_atividade_em)),
       t(l.motivo_perda ? ROTULO_MOTIVO_PERDA[l.motivo_perda as MotivoPerda] : ""),
-      t(instanteBr(l.criado_em))
+      t(instanteBr(l.criado_em)),
+      l.populacao_considerada === null ? t("") : { inteiro: l.populacao_considerada },
+      t(rotuloPlanoEfetivo(l.plano_efetivo)),
+      t(ROTULO_ORIGEM_PLANO[l.plano_efetivo.origem]),
+      t((entidades.get(l.id) ?? []).join(" | "))
     ])
   ];
 }
 
-export function gerarCsvCarteira(leads: LeadListado[], filtros: string, agora: Date): string {
-  return montarCsv(linhas(leads, filtros, formatarGeradoEm(agora)).map((l) => l.map((v) => (v === null ? "" : "texto" in v ? celulaTextoCsv(v.texto) : centavosCsv(v.centavos)))));
+export function gerarCsvCarteira(leads: LeadListado[], filtros: string, agora: Date, entidades: Map<string, string[]> = new Map()): string {
+  return montarCsv(
+    linhas(leads, filtros, formatarGeradoEm(agora), entidades).map((l) => l.map((v) => (v === null ? "" : "texto" in v ? celulaTextoCsv(v.texto) : "centavos" in v ? centavosCsv(v.centavos) : String(v.inteiro))))
+  );
 }
 
-export function gerarXlsxCarteira(leads: LeadListado[], filtros: string, agora: Date): Buffer {
+export function gerarXlsxCarteira(leads: LeadListado[], filtros: string, agora: Date, entidades: Map<string, string[]> = new Map()): Buffer {
   return gerarXlsx(
-    linhas(leads, filtros, formatarGeradoEm(agora)).map((l) =>
-      l.map((v): CelulaXlsx => (v === null ? null : "texto" in v ? { tipo: "texto", valor: neutralizarFormula(v.texto) } : { tipo: "numero", valor: centavosParaNumeric(v.centavos), estilo: "moeda" }))
+    linhas(leads, filtros, formatarGeradoEm(agora), entidades).map((l) =>
+      l.map((v): CelulaXlsx =>
+        v === null
+          ? null
+          : "texto" in v
+            ? { tipo: "texto", valor: neutralizarFormula(v.texto) }
+            : "centavos" in v
+              ? { tipo: "numero", valor: centavosParaNumeric(v.centavos), estilo: "moeda" }
+              : { tipo: "numero", valor: String(v.inteiro), estilo: "inteiro" }
+      )
     ),
     "Carteira de leads"
   );

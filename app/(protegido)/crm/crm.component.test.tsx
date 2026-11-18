@@ -26,7 +26,8 @@ const lead = (extra: Partial<LeadListado>): LeadListado => ({
   contato_nome: "Secretária Ana", contato_cargo: null, contato_email: null, contato_telefone: null, origem: "indicacao", etapa: "novo",
   vendedor_id: "v1", vendedor_nome: "Vera Vendas", motivo_perda: null, detalhe_perda: null, proxima_acao_em: null, proxima_acao_descricao: null,
   versao: 3, criado_em: "2026-11-01T12:00:00.000Z", atualizado_em: "2026-11-01T12:00:00.000Z", ultima_atividade_em: "2026-11-01T12:00:00.000Z",
-  dias_sem_atividade: 17, parado: true, acao_vencida: true, ex_cliente: false, ex_cliente_encerrado_em: null, ...extra
+  dias_sem_atividade: 17, parado: true, acao_vencida: true, ex_cliente: false, ex_cliente_encerrado_em: null,
+  plano_efetivo: { id: null, origem: "sem_plano", sugerido: null, divergente: false }, populacao_considerada: null, ...extra
 });
 
 const ABERTOS = [

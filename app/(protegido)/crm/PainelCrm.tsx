@@ -67,7 +67,10 @@ export default function PainelCrm({
   admin,
   vendedores,
   visaoInicial = "funil",
-  etapaInicial
+  etapaInicial,
+  queryInicial,
+  entidades = [],
+  avisos = []
 }: {
   resumo: ResumoCrm;
   /** Até CARTOES_POR_ETAPA cartões por etapa (lib/crmRepositorio.ts#listarFunil); os totais vêm de `resumo.porEtapa`. */
@@ -76,6 +79,10 @@ export default function PainelCrm({
   vendedores: { id: string; nome: string }[];
   visaoInicial?: "funil" | "lista";
   etapaInicial?: Etapa;
+  /** Filtros da lista vindos da URL (rodada 16-A2). */
+  queryInicial?: string;
+  entidades?: { id: string; nome: string; sigla: string | null }[];
+  avisos?: string[];
 }) {
   const router = useRouter();
   const [visao, setVisao] = useState<"funil" | "lista">(visaoInicial);
@@ -202,7 +209,7 @@ export default function PainelCrm({
       </div>
 
       {visao === "lista" ? (
-        <ListaLeads admin={admin} vendedores={vendedores} etapaInicial={etapaInicial} />
+        <ListaLeads admin={admin} vendedores={vendedores} etapaInicial={etapaInicial} queryInicial={queryInicial} entidades={entidades} avisos={avisos} />
       ) : semLeads ? (
         <div className="rounded-lg border border-dashed bg-white p-8 text-center text-sm text-slate-600">
           <p className="font-medium">Nenhum lead ainda.</p>

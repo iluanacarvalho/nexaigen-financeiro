@@ -9,6 +9,7 @@ import { ExportarLeadsSchema } from "@/lib/crmSchemas";
 import { listarLeads } from "@/lib/crmRepositorio";
 import { gerarCsvCarteira, gerarXlsxCarteira } from "@/lib/crmExportacao";
 import { escopoDe } from "@/lib/crmHttp";
+import { nomesDeEntidadesPorLead } from "@/lib/territorioRepositorio";
 import { hojeEmSaoPaulo } from "@/lib/painelFinanceiro";
 import { TIPO_MIME_XLSX } from "@/lib/xlsx";
 import { detalhesDoErro } from "@/lib/validacao";
@@ -26,7 +27,7 @@ export async function GET(req: NextRequest) {
   const agora = new Date();
   const hoje = hojeEmSaoPaulo(agora);
   const { leads } = await listarLeads(
-    { etapa: f.etapa, vendedorId: f.vendedor_id, uf: f.uf, origem: f.origem, busca: f.busca, parados: f.parados, vencidas: f.vencidas, ordenar: f.ordenar, direcao: f.direcao, pagina: 1, porPagina: LIMITE_EXPORTACAO },
+    { etapa: f.etapa, vendedorId: f.vendedor_id, uf: f.uf, origem: f.origem, busca: f.busca, parados: f.parados, vencidas: f.vencidas, planos: f.plano, ignorarSugerido: f.ignorar_sugerido, entidadeId: f.entidade, ordenar: f.ordenar, direcao: f.direcao, pagina: 1, porPagina: LIMITE_EXPORTACAO },
     escopoDe(contexto!),
     hoje
   );
@@ -36,6 +37,7 @@ export async function GET(req: NextRequest) {
     .join(", ");
   const nome = `carteira-de-leads-${hoje}.${formato}`;
   const cabecalhos = { "cache-control": "no-store", "content-disposition": `attachment; filename="${nome}"` };
-  if (formato === "csv") return new Response(gerarCsvCarteira(leads, filtros, agora), { headers: { ...cabecalhos, "content-type": "text/csv; charset=utf-8" } });
-  return new Response(new Uint8Array(gerarXlsxCarteira(leads, filtros, agora)), { headers: { ...cabecalhos, "content-type": TIPO_MIME_XLSX } });
+  const entidades = await nomesDeEntidadesPorLead(leads);
+  if (formato === "csv") return new Response(gerarCsvCarteira(leads, filtros, agora, entidades), { headers: { ...cabecalhos, "content-type": "text/csv; charset=utf-8" } });
+  return new Response(new Uint8Array(gerarXlsxCarteira(leads, filtros, agora, entidades)), { headers: { ...cabecalhos, "content-type": TIPO_MIME_XLSX } });
 }

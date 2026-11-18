@@ -104,13 +104,24 @@ async function registrarHistorico(
   return linha.id;
 }
 
+/** Linha 'criacao' no histórico (lead aberto pelo Território — rodada 16-A2). Só dentro de uma transação que já existe. */
+export async function registrarCriacao(c: Executor, leadId: string, autorId: string, texto: string): Promise<void> {
+  await registrarHistorico(c, { leadId, tipo: "criacao", autorId, texto });
+}
+
 /** O vendedor de um lead precisa estar ATIVO e ter papel vendas ou admin (os únicos que veem o CRM). */
-async function validarVendedor(c: Executor, vendedorId: string): Promise<{ nome: string }> {
+export const MENSAGEM_VENDEDOR_INVALIDO = "O vendedor precisa ser uma pessoa ativa da equipe com papel Vendas ou Administrador.";
+
+/** Vendedor válido (ativo, papel vendas ou admin)? Devolve o nome, ou null. A regra é uma só (também a do lote do Território). */
+export async function vendedorValido(c: Executor | undefined, vendedorId: string): Promise<{ nome: string } | null> {
   const [v] = await query<{ nome: string; papel: string; ativo: boolean }>(`select nome, papel, ativo from equipe_nexaigen where id = $1`, [vendedorId], c);
-  if (!v || !v.ativo || (v.papel !== "vendas" && v.papel !== "admin")) {
-    throw new Recusa({ ok: false, motivo: "dados_invalidos", campo: "vendedor_id", erro: "O vendedor precisa ser uma pessoa ativa da equipe com papel Vendas ou Administrador." });
-  }
-  return { nome: v.nome };
+  return v && v.ativo && (v.papel === "vendas" || v.papel === "admin") ? { nome: v.nome } : null;
+}
+
+async function validarVendedor(c: Executor, vendedorId: string): Promise<{ nome: string }> {
+  const v = await vendedorValido(c, vendedorId);
+  if (!v) throw new Recusa({ ok: false, motivo: "dados_invalidos", campo: "vendedor_id", erro: MENSAGEM_VENDEDOR_INVALIDO });
+  return v;
 }
 
 /** Mensagem de duplicidade — revela SÓ o vendedor e a etapa (o id só pro dono do lead ou admin). */

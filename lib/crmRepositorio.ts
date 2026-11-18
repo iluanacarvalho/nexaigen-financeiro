@@ -38,6 +38,8 @@ import {
   type TaxaAvanco
 } from "./crm";
 import { nomeDeMunicipioNormalizado } from "./ibge";
+import { PLANOS } from "./planos";
+import { planoEfetivo, type PlanoEfetivo, type PlanoFiltro } from "./territorio";
 
 /** Quem está lendo. admin = vê todos os leads; senão, só os seus (vendedor_id). */
 export interface EscopoCrm {
@@ -57,6 +59,28 @@ const ULTIMA_ATIVIDADE = (pAtividade: string) =>
   `greatest(l.criado_em, (select max(i.em) from lead_interacao i where i.lead_id = l.id and i.tipo = any(${pAtividade}::text[])))`;
 
 const DIA_SP = (expr: string) => `((${expr}) at time zone 'America/Sao_Paulo')::date`;
+
+/** Coluna do município da base (0016) do lead `l`: pelo código, ou (lead sem código) por UF + nome normalizado. */
+const MUNICIPIO_DA_BASE = (coluna: string) =>
+  `(select mb.${coluna} from municipio_base mb where mb.codigo_ibge = l.codigo_ibge or (l.codigo_ibge is null and mb.uf = l.uf and mb.nome_busca = l.nome_busca) order by mb.codigo_ibge limit 1)`;
+
+/**
+ * Plano SUGERIDO pela população em SQL — gerado das faixas de lib/planos.ts
+ * (fonte única; nenhum número escrito à mão aqui). Equivalência com
+ * planoSugeridoPorPopulacao conferida no teste de integração nas bordas.
+ */
+const PLANO_SUGERIDO_SQL = (populacao: string) =>
+  `(case ${PLANOS.map((pl) => `when ${populacao} >= ${pl.populacaoMinima}${pl.populacaoMaxima === null ? "" : ` and ${populacao} <= ${pl.populacaoMaxima}`} then '${pl.id}'`).join(" ")} end)`;
+
+/** Filtro de plano efetivo do lead (mesma regra de lib/territorio.ts#casaPlano). */
+function condicaoPlano(planos: PlanoFiltro[], ignorarSugerido: boolean, p: (v: unknown) => string): string {
+  const considerado = ignorarSugerido ? "l.plano_interesse" : `coalesce(l.plano_interesse, ${PLANO_SUGERIDO_SQL("base.populacao_efetiva")})`;
+  if (planos.length === 0) return `${considerado} is not null`;
+  const ids = planos.filter((x) => x !== "sem_plano");
+  const partes = [`${considerado} = any(${p(ids)}::text[])`];
+  if (planos.includes("sem_plano")) partes.push(`${considerado} is null`);
+  return `(${partes.join(" or ")})`;
+}
 
 // --- Lead completo ------------------------------------------------------------------
 
@@ -97,13 +121,23 @@ export interface LeadListado extends LeadCompleto {
   ex_cliente: boolean;
   /** Data do encerramento do ex-cliente (null: encerrado antes da trilha de eventos, sem data registrada). */
   ex_cliente_encerrado_em: string | null;
+  /**
+   * PLANO EFETIVO do lead (rodada 16-A2, lib/territorio.ts#planoEfetivo):
+   * o plano de interesse; sem ele, o sugerido pela população (a do lead, ou
+   * a da base de municípios); sem população, "sem plano definido".
+   */
+  plano_efetivo: PlanoEfetivo;
+  /** População usada pro plano sugerido: a do lead, senão a da base de municípios (null sem nenhuma). */
+  populacao_considerada: number | null;
 }
+
+type Anotacoes = "ex_cliente" | "ex_cliente_encerrado_em" | "plano_efetivo" | "populacao_considerada";
 
 const COLUNAS_LEAD = `l.id, l.municipio_nome, l.uf, l.codigo_ibge, l.populacao, l.plano_interesse, l.valor_mensal_estimado_centavos,
   l.contato_nome, l.contato_cargo, l.contato_email, l.contato_telefone, l.origem, l.etapa, l.vendedor_id, q.nome as vendedor_nome,
   l.motivo_perda, l.detalhe_perda, l.proxima_acao_em, l.proxima_acao_descricao, l.versao, l.criado_em, l.atualizado_em`;
 
-function comSelos(l: LeadCompleto, hoje: string): Omit<LeadListado, "ex_cliente" | "ex_cliente_encerrado_em"> {
+function comSelos(l: LeadCompleto, hoje: string): Omit<LeadListado, Anotacoes> {
   return {
     ...l,
     dias_sem_atividade: diasSemAtividade(l.ultima_atividade_em, hoje),
@@ -135,6 +169,12 @@ export interface FiltrosLeads {
   vencidas?: boolean;
   /** Só abertos (funil). */
   somenteAbertos?: boolean;
+  /** Plano efetivo (rodada 16-A2): ids e/ou "sem_plano". */
+  planos?: PlanoFiltro[];
+  /** Só plano de interesse conta (ignora o sugerido pela população). */
+  ignorarSugerido?: boolean;
+  /** Município membro da entidade (ativa). */
+  entidadeId?: string;
   ordenar: OrdenacaoLead;
   direcao: "asc" | "desc";
   pagina: number;
@@ -156,6 +196,11 @@ export async function listarLeads(f: FiltrosLeads, escopo: EscopoCrm, hoje: stri
   if (f.somenteAbertos || f.parados || f.vencidas) condicoes.push(`l.etapa = any(${p(ETAPAS_ABERTAS)}::text[])`);
   if (f.parados) condicoes.push(`${DIA_SP("base.ultima_atividade_em")} < ${p(corteDeDias(hoje, DIAS_PARADO))}::date`);
   if (f.vencidas) condicoes.push(`l.proxima_acao_em < ${p(hoje)}::date`);
+  if ((f.planos && f.planos.length > 0) || f.ignorarSugerido) condicoes.push(condicaoPlano(f.planos ?? [], !!f.ignorarSugerido, p));
+  if (f.entidadeId) {
+    condicoes.push(`exists (select 1 from entidade_membro em join entidade_intermunicipal e on e.id = em.entidade_id and e.ativo
+      where em.entidade_id = ${p(f.entidadeId)}::uuid and em.codigo_ibge = base.codigo_municipio)`);
+  }
 
   const direcao = f.direcao === "asc" ? "asc" : "desc";
   const pLimite = p(f.porPagina);
@@ -165,7 +210,8 @@ export async function listarLeads(f: FiltrosLeads, escopo: EscopoCrm, hoje: stri
        select ${COLUNAS_LEAD}, base.ultima_atividade_em, count(*) over ()::int as total
        from lead l
        join equipe_nexaigen q on q.id = l.vendedor_id
-       cross join lateral (select ${ULTIMA_ATIVIDADE("$1")} as ultima_atividade_em) base
+       cross join lateral (select ${ULTIMA_ATIVIDADE("$1")} as ultima_atividade_em, ${MUNICIPIO_DA_BASE("codigo_ibge")} as codigo_municipio,
+                           coalesce(l.populacao, ${MUNICIPIO_DA_BASE("populacao")}) as populacao_efetiva) base
        where ${condicoes.join(" and ")}
      ) x
      order by ${ORDEM_SQL[f.ordenar]} ${direcao} nulls last, atualizado_em desc, id
@@ -283,14 +329,41 @@ export async function lerClientesDosMunicipios(ufs: string[], codigos: string[],
   );
 }
 
-/** Anota "ex-cliente" nos leads: todos os clientes do município estão encerrados hoje (e há pelo menos um). */
-async function anotarExClientes<T extends Omit<LeadListado, "ex_cliente" | "ex_cliente_encerrado_em">>(leads: T[], hoje: string, executor?: Executor): Promise<(T & Pick<LeadListado, "ex_cliente" | "ex_cliente_encerrado_em">)[]> {
-  const clientes = await lerClientesDosMunicipios([...new Set(leads.map((l) => l.uf))], [...new Set(leads.map((l) => l.codigo_ibge).filter((c): c is string => c !== null))], executor);
+/** População da base de municípios (0016) pros leads: por código, ou por UF + nome normalizado. */
+async function populacaoDaBase(leads: Pick<LeadCompleto, "uf" | "codigo_ibge" | "municipio_nome">[], executor?: Executor): Promise<(l: Pick<LeadCompleto, "uf" | "codigo_ibge" | "municipio_nome">) => number | null> {
+  if (leads.length === 0) return () => null;
+  const linhas = await query<{ codigo_ibge: string; uf: string; nome_busca: string; populacao: number | null }>(
+    `select codigo_ibge, uf, nome_busca, populacao from municipio_base where codigo_ibge = any($1::text[]) or uf = any($2::text[])`,
+    [[...new Set(leads.map((l) => l.codigo_ibge).filter((c): c is string => c !== null))], [...new Set(leads.filter((l) => l.codigo_ibge === null).map((l) => l.uf))]],
+    executor
+  );
+  const porCodigo = new Map(linhas.map((m) => [m.codigo_ibge, m.populacao]));
+  const porNome = new Map(linhas.map((m) => [`${m.uf}|${m.nome_busca}`, m.populacao]));
+  return (l) => (l.codigo_ibge !== null ? (porCodigo.get(l.codigo_ibge) ?? null) : (porNome.get(`${l.uf}|${nomeDeMunicipioNormalizado(l.municipio_nome)}`) ?? null));
+}
+
+/**
+ * Anota os campos DERIVADOS dos leads (nenhuma coluna): "ex-cliente" (todos
+ * os clientes do município estão encerrados hoje, e há pelo menos um) e o
+ * plano efetivo (rodada 16-A2).
+ */
+async function anotarExClientes<T extends Omit<LeadListado, Anotacoes>>(leads: T[], hoje: string, executor?: Executor): Promise<(T & Pick<LeadListado, Anotacoes>)[]> {
+  const [clientes, populacao] = await Promise.all([
+    lerClientesDosMunicipios([...new Set(leads.map((l) => l.uf))], [...new Set(leads.map((l) => l.codigo_ibge).filter((c): c is string => c !== null))], executor),
+    populacaoDaBase(leads, executor)
+  ]);
   return leads.map((l) => {
     const doMunicipio = clientesDoMunicipio(clientes, { uf: l.uf, nomeBusca: nomeDeMunicipioNormalizado(l.municipio_nome), codigoIbge: l.codigo_ibge });
     const exCliente = doMunicipio.length > 0 && doMunicipio.every((c) => clienteEncerrado(c, hoje));
     const datas = doMunicipio.map(dataDoEncerramento).filter((d): d is string => d !== null).sort();
-    return { ...l, ex_cliente: exCliente, ex_cliente_encerrado_em: exCliente ? (datas.at(-1) ?? null) : null };
+    const populacaoConsiderada = l.populacao ?? populacao(l);
+    return {
+      ...l,
+      ex_cliente: exCliente,
+      ex_cliente_encerrado_em: exCliente ? (datas.at(-1) ?? null) : null,
+      plano_efetivo: planoEfetivo({ planoContratado: null, planoInteresse: l.plano_interesse, populacao: populacaoConsiderada }),
+      populacao_considerada: populacaoConsiderada
+    };
   });
 }
 

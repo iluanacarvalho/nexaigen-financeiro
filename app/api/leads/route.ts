@@ -3,6 +3,7 @@
 // admin vê todos; vendas só os leads em que é o vendedor.
 //
 // GET  ?etapa=&vendedor_id= (só admin)&uf=&origem=&busca=&parados=true&vencidas=true
+//      &plano=pequeno_porte,sem_plano&ignorar_sugerido=true&entidade= (rodada 16-A2)
 //      &ordenar=&direcao=&pagina=&por_pagina= (máx. 100) → { leads, total, pagina, por_pagina }
 // POST { municipio_nome, uf, origem, codigo_ibge?, populacao?, plano_interesse?,
 //        valor_mensal_estimado? (texto), contato_*?, proxima_acao_em?,
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest) {
   if (f.vendedor_id && !escopo.admin) return NextResponse.json({ erro: "Só administrador filtra por vendedor." }, { status: 403 });
 
   const { leads, total } = await listarLeads(
-    { etapa: f.etapa, vendedorId: f.vendedor_id, uf: f.uf, origem: f.origem, busca: f.busca, parados: f.parados, vencidas: f.vencidas, ordenar: f.ordenar, direcao: f.direcao, pagina: f.pagina, porPagina: f.por_pagina },
+    { etapa: f.etapa, vendedorId: f.vendedor_id, uf: f.uf, origem: f.origem, busca: f.busca, parados: f.parados, vencidas: f.vencidas, planos: f.plano, ignorarSugerido: f.ignorar_sugerido, entidadeId: f.entidade, ordenar: f.ordenar, direcao: f.direcao, pagina: f.pagina, porPagina: f.por_pagina },
     escopo,
     hojeEmSaoPaulo(new Date())
   );

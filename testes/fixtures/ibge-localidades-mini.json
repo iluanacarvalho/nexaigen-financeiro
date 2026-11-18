@@ -1,0 +1,5 @@
+[
+  {"id":4113700,"nome":"Londrina","microrregiao":{"id":41010,"nome":"Londrina","mesorregiao":{"id":4103,"nome":"Norte Central Paranaense","UF":{"id":41,"sigla":"PR","nome":"Paraná"}}},"regiao-imediata":{"id":410013,"nome":"Londrina","regiao-intermediaria":{"id":4103,"nome":"Londrina","UF":{"id":41,"sigla":"PR","nome":"Paraná"}}}},
+  {"id":4100103,"nome":"Abatiá","microrregiao":{"id":41015,"nome":"Cornélio Procópio","mesorregiao":{"id":4104,"nome":"Norte Pioneiro Paranaense","UF":{"id":41,"sigla":"PR","nome":"Paraná"}}},"regiao-imediata":{"id":410022,"nome":"Santo Antônio da Platina","regiao-intermediaria":{"id":4105,"nome":"Londrina","UF":{"id":41,"sigla":"PR","nome":"Paraná"}}}},
+  {"id":4199999,"nome":"Município Novo de Teste","microrregiao":null,"regiao-imediata":{"id":410001,"nome":"Curitiba","regiao-intermediaria":{"id":4101,"nome":"Curitiba","UF":{"id":41,"sigla":"PR","nome":"Paraná"}}}}
+]

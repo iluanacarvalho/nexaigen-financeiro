@@ -15,6 +15,9 @@ import { PLANOS, rotuloDoPlano } from "@/lib/planos";
 import { UF_POR_CODIGO } from "@/lib/ibge";
 import MoverPara from "../MoverPara";
 import Selos from "../Selos";
+import EtiquetasEntidades from "../EtiquetasEntidades";
+import { SeloPlano } from "../territorio/SelosTerritorio";
+import type { EntidadeEtiqueta } from "@/lib/territorio";
 
 async function enviar(url: string, metodo: string, corpo: object): Promise<string | null> {
   const res = await fetch(url, { method: metodo, headers: { "content-type": "application/json" }, body: JSON.stringify(corpo) });
@@ -108,12 +111,15 @@ export default function DetalheLead({
   lead,
   historico,
   admin,
-  vendedores
+  vendedores,
+  entidades = []
 }: {
   lead: LeadListado;
   historico: InteracaoLead[];
   admin: boolean;
   vendedores: { id: string; nome: string }[];
+  /** Entidades (associações/consórcios) do município — rodada 16-A2. */
+  entidades?: EntidadeEtiqueta[];
 }) {
   const router = useRouter();
   const recarregar = () => router.refresh();
@@ -141,8 +147,14 @@ export default function DetalheLead({
         Etapa: <strong>{ROTULO_ETAPA[lead.etapa]}</strong> · Vendedor: {lead.vendedor_nome}
         {lead.motivo_perda && ` · Motivo da perda: ${ROTULO_MOTIVO_PERDA[lead.motivo_perda as MotivoPerda]}${lead.detalhe_perda ? ` (${lead.detalhe_perda})` : ""}`}
       </p>
-      <div className="mb-4 flex flex-wrap gap-1">
+      <div className="mb-1 flex flex-wrap items-center gap-2">
         <Selos lead={lead} />
+        <span className="text-xs text-slate-600">
+          Plano: <SeloPlano plano={lead.plano_efetivo} />
+        </span>
+      </div>
+      <div className="mb-4">
+        <EtiquetasEntidades entidades={entidades} />
       </div>
       {erro && (
         <p role="alert" className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">

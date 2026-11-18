@@ -7,7 +7,7 @@
 // runtime do app).
 
 import { Client } from "pg";
-import { aplicarMigracoes } from "./aplicarMigracoes";
+import { aplicarMigracoes, ehBancoDeDesenvolvimento } from "./aplicarMigracoes";
 
 async function main() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -20,7 +20,8 @@ async function main() {
   await client.connect();
   try {
     // A lógica (um arquivo por transação, registro em _migrations) mora em scripts/aplicarMigracoes.ts desde a rodada 15-C.
-    await aplicarMigracoes(client, (linha) => console.log(linha));
+    // Seeds de desenvolvimento (ex.: PR liberado no Território, 0016) só em banco local — em produção a liberação é ato do admin.
+    await aplicarMigracoes(client, (linha) => console.log(linha), { desenvolvimento: ehBancoDeDesenvolvimento(databaseUrl) });
     console.log("Migrações em dia.");
   } catch (erro) {
     console.error("✗ parando sem marcar a migration que falhou como aplicada.");

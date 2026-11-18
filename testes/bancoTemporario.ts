@@ -48,7 +48,7 @@ export async function criarBancoTemporario(prefixo: string): Promise<BancoTempor
     const migrador = new Client({ connectionString: url.toString() });
     await migrador.connect();
     try {
-      await aplicarMigracoes(migrador);
+      await aplicarMigracoes(migrador, undefined, { desenvolvimento: true });
     } finally {
       await migrador.end();
     }

@@ -1,0 +1,3204 @@
+{
+  "uf": "PR",
+  "fonte": {
+    "localidades": "https://servicodados.ibge.gov.br/api/v1/localidades/estados/PR/municipios",
+    "populacao": "https://servicodados.ibge.gov.br/api/v3/agregados/6579/periodos/-1/variaveis/9324?localidades=N6%5BN3%5B41%5D%5D",
+    "consultado_em": "2026-11-18"
+  },
+  "total": 399,
+  "sem_populacao": [],
+  "municipios": [
+    {
+      "codigo_ibge": "4100103",
+      "nome": "Abatiá",
+      "populacao": 7201,
+      "populacao_ano": 2026,
+      "microrregiao": "Cornélio Procópio",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4100202",
+      "nome": "Adrianópolis",
+      "populacao": 6312,
+      "populacao_ano": 2026,
+      "microrregiao": "Cerro Azul",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4100301",
+      "nome": "Agudos do Sul",
+      "populacao": 10891,
+      "populacao_ano": 2026,
+      "microrregiao": "Rio Negro",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4100400",
+      "nome": "Almirante Tamandaré",
+      "populacao": 127031,
+      "populacao_ano": 2026,
+      "microrregiao": "Curitiba",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4100459",
+      "nome": "Altamira do Paraná",
+      "populacao": 3452,
+      "populacao_ano": 2026,
+      "microrregiao": "Goioerê",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4100509",
+      "nome": "Altônia",
+      "populacao": 18525,
+      "populacao_ano": 2026,
+      "microrregiao": "Umuarama",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4100608",
+      "nome": "Alto Paraná",
+      "populacao": 14198,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4100707",
+      "nome": "Alto Piquiri",
+      "populacao": 9744,
+      "populacao_ano": 2026,
+      "microrregiao": "Umuarama",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4100806",
+      "nome": "Alvorada do Sul",
+      "populacao": 10483,
+      "populacao_ano": 2026,
+      "microrregiao": "Porecatu",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4100905",
+      "nome": "Amaporã",
+      "populacao": 4646,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4101002",
+      "nome": "Ampére",
+      "populacao": 20479,
+      "populacao_ano": 2026,
+      "microrregiao": "Capanema",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4101051",
+      "nome": "Anahy",
+      "populacao": 2973,
+      "populacao_ano": 2026,
+      "microrregiao": "Cascavel",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4101101",
+      "nome": "Andirá",
+      "populacao": 19944,
+      "populacao_ano": 2026,
+      "microrregiao": "Cornélio Procópio",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4101150",
+      "nome": "Ângulo",
+      "populacao": 3380,
+      "populacao_ano": 2026,
+      "microrregiao": "Astorga",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4101200",
+      "nome": "Antonina",
+      "populacao": 18091,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranaguá",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4101309",
+      "nome": "Antônio Olinto",
+      "populacao": 7027,
+      "populacao_ano": 2026,
+      "microrregiao": "São Mateus do Sul",
+      "mesorregiao": "Sudeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4101408",
+      "nome": "Apucarana",
+      "populacao": 135481,
+      "populacao_ano": 2026,
+      "microrregiao": "Apucarana",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4101507",
+      "nome": "Arapongas",
+      "populacao": 125767,
+      "populacao_ano": 2026,
+      "microrregiao": "Apucarana",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4101606",
+      "nome": "Arapoti",
+      "populacao": 26321,
+      "populacao_ano": 2026,
+      "microrregiao": "Jaguariaíva",
+      "mesorregiao": "Centro Oriental Paranaense"
+    },
+    {
+      "codigo_ibge": "4101655",
+      "nome": "Arapuã",
+      "populacao": 3571,
+      "populacao_ano": 2026,
+      "microrregiao": "Ivaiporã",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4101705",
+      "nome": "Araruna",
+      "populacao": 14958,
+      "populacao_ano": 2026,
+      "microrregiao": "Campo Mourão",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4101804",
+      "nome": "Araucária",
+      "populacao": 164291,
+      "populacao_ano": 2026,
+      "microrregiao": "Curitiba",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4101853",
+      "nome": "Ariranha do Ivaí",
+      "populacao": 2346,
+      "populacao_ano": 2026,
+      "microrregiao": "Ivaiporã",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4101903",
+      "nome": "Assaí",
+      "populacao": 13320,
+      "populacao_ano": 2026,
+      "microrregiao": "Assaí",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4102000",
+      "nome": "Assis Chateaubriand",
+      "populacao": 38591,
+      "populacao_ano": 2026,
+      "microrregiao": "Toledo",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4102109",
+      "nome": "Astorga",
+      "populacao": 26262,
+      "populacao_ano": 2026,
+      "microrregiao": "Astorga",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4102208",
+      "nome": "Atalaia",
+      "populacao": 4050,
+      "populacao_ano": 2026,
+      "microrregiao": "Astorga",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4102307",
+      "nome": "Balsa Nova",
+      "populacao": 13994,
+      "populacao_ano": 2026,
+      "microrregiao": "Curitiba",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4102406",
+      "nome": "Bandeirantes",
+      "populacao": 31690,
+      "populacao_ano": 2026,
+      "microrregiao": "Cornélio Procópio",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4102505",
+      "nome": "Barbosa Ferraz",
+      "populacao": 10465,
+      "populacao_ano": 2026,
+      "microrregiao": "Campo Mourão",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4102604",
+      "nome": "Barracão",
+      "populacao": 9904,
+      "populacao_ano": 2026,
+      "microrregiao": "Francisco Beltrão",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4102703",
+      "nome": "Barra do Jacaré",
+      "populacao": 2877,
+      "populacao_ano": 2026,
+      "microrregiao": "Jacarezinho",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4102752",
+      "nome": "Bela Vista da Caroba",
+      "populacao": 4128,
+      "populacao_ano": 2026,
+      "microrregiao": "Capanema",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4102802",
+      "nome": "Bela Vista do Paraíso",
+      "populacao": 14967,
+      "populacao_ano": 2026,
+      "microrregiao": "Porecatu",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4102901",
+      "nome": "Bituruna",
+      "populacao": 15615,
+      "populacao_ano": 2026,
+      "microrregiao": "União da Vitória",
+      "mesorregiao": "Sudeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4103008",
+      "nome": "Boa Esperança",
+      "populacao": 4595,
+      "populacao_ano": 2026,
+      "microrregiao": "Goioerê",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4103024",
+      "nome": "Boa Esperança do Iguaçu",
+      "populacao": 2402,
+      "populacao_ano": 2026,
+      "microrregiao": "Francisco Beltrão",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4103040",
+      "nome": "Boa Ventura de São Roque",
+      "populacao": 6235,
+      "populacao_ano": 2026,
+      "microrregiao": "Pitanga",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4103057",
+      "nome": "Boa Vista da Aparecida",
+      "populacao": 8022,
+      "populacao_ano": 2026,
+      "microrregiao": "Cascavel",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4103107",
+      "nome": "Bocaiúva do Sul",
+      "populacao": 13541,
+      "populacao_ano": 2026,
+      "microrregiao": "Curitiba",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4103156",
+      "nome": "Bom Jesus do Sul",
+      "populacao": 4083,
+      "populacao_ano": 2026,
+      "microrregiao": "Francisco Beltrão",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4103206",
+      "nome": "Bom Sucesso",
+      "populacao": 6675,
+      "populacao_ano": 2026,
+      "microrregiao": "Faxinal",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4103222",
+      "nome": "Bom Sucesso do Sul",
+      "populacao": 3239,
+      "populacao_ano": 2026,
+      "microrregiao": "Pato Branco",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4103305",
+      "nome": "Borrazópolis",
+      "populacao": 7809,
+      "populacao_ano": 2026,
+      "microrregiao": "Faxinal",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4103354",
+      "nome": "Braganey",
+      "populacao": 4691,
+      "populacao_ano": 2026,
+      "microrregiao": "Cascavel",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4103370",
+      "nome": "Brasilândia do Sul",
+      "populacao": 3891,
+      "populacao_ano": 2026,
+      "microrregiao": "Umuarama",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4103404",
+      "nome": "Cafeara",
+      "populacao": 2644,
+      "populacao_ano": 2026,
+      "microrregiao": "Astorga",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4103453",
+      "nome": "Cafelândia",
+      "populacao": 20411,
+      "populacao_ano": 2026,
+      "microrregiao": "Cascavel",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4103479",
+      "nome": "Cafezal do Sul",
+      "populacao": 4591,
+      "populacao_ano": 2026,
+      "microrregiao": "Umuarama",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4103503",
+      "nome": "Califórnia",
+      "populacao": 9002,
+      "populacao_ano": 2026,
+      "microrregiao": "Apucarana",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4103602",
+      "nome": "Cambará",
+      "populacao": 23352,
+      "populacao_ano": 2026,
+      "microrregiao": "Jacarezinho",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4103701",
+      "nome": "Cambé",
+      "populacao": 111553,
+      "populacao_ano": 2026,
+      "microrregiao": "Londrina",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4103800",
+      "nome": "Cambira",
+      "populacao": 10182,
+      "populacao_ano": 2026,
+      "microrregiao": "Apucarana",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4103909",
+      "nome": "Campina da Lagoa",
+      "populacao": 16035,
+      "populacao_ano": 2026,
+      "microrregiao": "Goioerê",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4103958",
+      "nome": "Campina do Simão",
+      "populacao": 3945,
+      "populacao_ano": 2026,
+      "microrregiao": "Guarapuava",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4104006",
+      "nome": "Campina Grande do Sul",
+      "populacao": 51154,
+      "populacao_ano": 2026,
+      "microrregiao": "Curitiba",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4104055",
+      "nome": "Campo Bonito",
+      "populacao": 3974,
+      "populacao_ano": 2026,
+      "microrregiao": "Cascavel",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4104105",
+      "nome": "Campo do Tenente",
+      "populacao": 7717,
+      "populacao_ano": 2026,
+      "microrregiao": "Rio Negro",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4104204",
+      "nome": "Campo Largo",
+      "populacao": 146002,
+      "populacao_ano": 2026,
+      "microrregiao": "Curitiba",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4104253",
+      "nome": "Campo Magro",
+      "populacao": 32227,
+      "populacao_ano": 2026,
+      "microrregiao": "Curitiba",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4104303",
+      "nome": "Campo Mourão",
+      "populacao": 104881,
+      "populacao_ano": 2026,
+      "microrregiao": "Campo Mourão",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4104402",
+      "nome": "Cândido de Abreu",
+      "populacao": 14995,
+      "populacao_ano": 2026,
+      "microrregiao": "Ivaiporã",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4104428",
+      "nome": "Candói",
+      "populacao": 15173,
+      "populacao_ano": 2026,
+      "microrregiao": "Guarapuava",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4104451",
+      "nome": "Cantagalo",
+      "populacao": 10548,
+      "populacao_ano": 2026,
+      "microrregiao": "Guarapuava",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4104501",
+      "nome": "Capanema",
+      "populacao": 21208,
+      "populacao_ano": 2026,
+      "microrregiao": "Capanema",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4104600",
+      "nome": "Capitão Leônidas Marques",
+      "populacao": 14754,
+      "populacao_ano": 2026,
+      "microrregiao": "Cascavel",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4104659",
+      "nome": "Carambeí",
+      "populacao": 24721,
+      "populacao_ano": 2026,
+      "microrregiao": "Ponta Grossa",
+      "mesorregiao": "Centro Oriental Paranaense"
+    },
+    {
+      "codigo_ibge": "4104709",
+      "nome": "Carlópolis",
+      "populacao": 17985,
+      "populacao_ano": 2026,
+      "microrregiao": "Wenceslau Braz",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4104808",
+      "nome": "Cascavel",
+      "populacao": 372026,
+      "populacao_ano": 2026,
+      "microrregiao": "Cascavel",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4104907",
+      "nome": "Castro",
+      "populacao": 76015,
+      "populacao_ano": 2026,
+      "microrregiao": "Ponta Grossa",
+      "mesorregiao": "Centro Oriental Paranaense"
+    },
+    {
+      "codigo_ibge": "4105003",
+      "nome": "Catanduvas",
+      "populacao": 10636,
+      "populacao_ano": 2026,
+      "microrregiao": "Cascavel",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4105102",
+      "nome": "Centenário do Sul",
+      "populacao": 10881,
+      "populacao_ano": 2026,
+      "microrregiao": "Astorga",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4105201",
+      "nome": "Cerro Azul",
+      "populacao": 15681,
+      "populacao_ano": 2026,
+      "microrregiao": "Cerro Azul",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4105300",
+      "nome": "Céu Azul",
+      "populacao": 11258,
+      "populacao_ano": 2026,
+      "microrregiao": "Foz do Iguaçu",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4105409",
+      "nome": "Chopinzinho",
+      "populacao": 21690,
+      "populacao_ano": 2026,
+      "microrregiao": "Pato Branco",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4105508",
+      "nome": "Cianorte",
+      "populacao": 83579,
+      "populacao_ano": 2026,
+      "microrregiao": "Cianorte",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4105607",
+      "nome": "Cidade Gaúcha",
+      "populacao": 11730,
+      "populacao_ano": 2026,
+      "microrregiao": "Cianorte",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4105706",
+      "nome": "Clevelândia",
+      "populacao": 14699,
+      "populacao_ano": 2026,
+      "microrregiao": "Palmas",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4105805",
+      "nome": "Colombo",
+      "populacao": 242698,
+      "populacao_ano": 2026,
+      "microrregiao": "Curitiba",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4105904",
+      "nome": "Colorado",
+      "populacao": 23347,
+      "populacao_ano": 2026,
+      "microrregiao": "Astorga",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4106001",
+      "nome": "Congonhinhas",
+      "populacao": 8447,
+      "populacao_ano": 2026,
+      "microrregiao": "Cornélio Procópio",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4106100",
+      "nome": "Conselheiro Mairinck",
+      "populacao": 3464,
+      "populacao_ano": 2026,
+      "microrregiao": "Ibaiti",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4106209",
+      "nome": "Contenda",
+      "populacao": 20205,
+      "populacao_ano": 2026,
+      "microrregiao": "Curitiba",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4106308",
+      "nome": "Corbélia",
+      "populacao": 18004,
+      "populacao_ano": 2026,
+      "microrregiao": "Cascavel",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4106407",
+      "nome": "Cornélio Procópio",
+      "populacao": 45614,
+      "populacao_ano": 2026,
+      "microrregiao": "Cornélio Procópio",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4106456",
+      "nome": "Coronel Domingos Soares",
+      "populacao": 5342,
+      "populacao_ano": 2026,
+      "microrregiao": "Palmas",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4106506",
+      "nome": "Coronel Vivida",
+      "populacao": 24107,
+      "populacao_ano": 2026,
+      "microrregiao": "Pato Branco",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4106555",
+      "nome": "Corumbataí do Sul",
+      "populacao": 3755,
+      "populacao_ano": 2026,
+      "microrregiao": "Campo Mourão",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4106571",
+      "nome": "Cruzeiro do Iguaçu",
+      "populacao": 4120,
+      "populacao_ano": 2026,
+      "microrregiao": "Francisco Beltrão",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4106605",
+      "nome": "Cruzeiro do Oeste",
+      "populacao": 25071,
+      "populacao_ano": 2026,
+      "microrregiao": "Umuarama",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4106704",
+      "nome": "Cruzeiro do Sul",
+      "populacao": 4539,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4106803",
+      "nome": "Cruz Machado",
+      "populacao": 15632,
+      "populacao_ano": 2026,
+      "microrregiao": "União da Vitória",
+      "mesorregiao": "Sudeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4106852",
+      "nome": "Cruzmaltina",
+      "populacao": 2854,
+      "populacao_ano": 2026,
+      "microrregiao": "Faxinal",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4106902",
+      "nome": "Curitiba",
+      "populacao": 1832183,
+      "populacao_ano": 2026,
+      "microrregiao": "Curitiba",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4107009",
+      "nome": "Curiúva",
+      "populacao": 13767,
+      "populacao_ano": 2026,
+      "microrregiao": "Ibaiti",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4107108",
+      "nome": "Diamante do Norte",
+      "populacao": 5116,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4107124",
+      "nome": "Diamante do Sul",
+      "populacao": 3126,
+      "populacao_ano": 2026,
+      "microrregiao": "Cascavel",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4107157",
+      "nome": "Diamante D'Oeste",
+      "populacao": 4484,
+      "populacao_ano": 2026,
+      "microrregiao": "Toledo",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4107207",
+      "nome": "Dois Vizinhos",
+      "populacao": 48127,
+      "populacao_ano": 2026,
+      "microrregiao": "Francisco Beltrão",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4107256",
+      "nome": "Douradina",
+      "populacao": 9737,
+      "populacao_ano": 2026,
+      "microrregiao": "Umuarama",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4107306",
+      "nome": "Doutor Camargo",
+      "populacao": 6547,
+      "populacao_ano": 2026,
+      "microrregiao": "Floraí",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4107405",
+      "nome": "Enéas Marques",
+      "populacao": 6140,
+      "populacao_ano": 2026,
+      "microrregiao": "Francisco Beltrão",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4107504",
+      "nome": "Engenheiro Beltrão",
+      "populacao": 12258,
+      "populacao_ano": 2026,
+      "microrregiao": "Campo Mourão",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4107520",
+      "nome": "Esperança Nova",
+      "populacao": 1844,
+      "populacao_ano": 2026,
+      "microrregiao": "Umuarama",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4107538",
+      "nome": "Entre Rios do Oeste",
+      "populacao": 4810,
+      "populacao_ano": 2026,
+      "microrregiao": "Toledo",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4107546",
+      "nome": "Espigão Alto do Iguaçu",
+      "populacao": 4888,
+      "populacao_ano": 2026,
+      "microrregiao": "Guarapuava",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4107553",
+      "nome": "Farol",
+      "populacao": 2968,
+      "populacao_ano": 2026,
+      "microrregiao": "Campo Mourão",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4107603",
+      "nome": "Faxinal",
+      "populacao": 16548,
+      "populacao_ano": 2026,
+      "microrregiao": "Faxinal",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4107652",
+      "nome": "Fazenda Rio Grande",
+      "populacao": 170123,
+      "populacao_ano": 2026,
+      "microrregiao": "Curitiba",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4107702",
+      "nome": "Fênix",
+      "populacao": 4469,
+      "populacao_ano": 2026,
+      "microrregiao": "Campo Mourão",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4107736",
+      "nome": "Fernandes Pinheiro",
+      "populacao": 6420,
+      "populacao_ano": 2026,
+      "microrregiao": "Prudentópolis",
+      "mesorregiao": "Sudeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4107751",
+      "nome": "Figueira",
+      "populacao": 8115,
+      "populacao_ano": 2026,
+      "microrregiao": "Ibaiti",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4107801",
+      "nome": "Floraí",
+      "populacao": 4789,
+      "populacao_ano": 2026,
+      "microrregiao": "Floraí",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4107850",
+      "nome": "Flor da Serra do Sul",
+      "populacao": 4315,
+      "populacao_ano": 2026,
+      "microrregiao": "Francisco Beltrão",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4107900",
+      "nome": "Floresta",
+      "populacao": 11801,
+      "populacao_ano": 2026,
+      "microrregiao": "Floraí",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4108007",
+      "nome": "Florestópolis",
+      "populacao": 11667,
+      "populacao_ano": 2026,
+      "microrregiao": "Porecatu",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4108106",
+      "nome": "Flórida",
+      "populacao": 2718,
+      "populacao_ano": 2026,
+      "microrregiao": "Astorga",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4108205",
+      "nome": "Formosa do Oeste",
+      "populacao": 7769,
+      "populacao_ano": 2026,
+      "microrregiao": "Toledo",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4108304",
+      "nome": "Foz do Iguaçu",
+      "populacao": 299112,
+      "populacao_ano": 2026,
+      "microrregiao": "Foz do Iguaçu",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4108320",
+      "nome": "Francisco Alves",
+      "populacao": 8677,
+      "populacao_ano": 2026,
+      "microrregiao": "Umuarama",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4108403",
+      "nome": "Francisco Beltrão",
+      "populacao": 103424,
+      "populacao_ano": 2026,
+      "microrregiao": "Francisco Beltrão",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4108452",
+      "nome": "Foz do Jordão",
+      "populacao": 4863,
+      "populacao_ano": 2026,
+      "microrregiao": "Guarapuava",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4108502",
+      "nome": "General Carneiro",
+      "populacao": 10531,
+      "populacao_ano": 2026,
+      "microrregiao": "União da Vitória",
+      "mesorregiao": "Sudeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4108551",
+      "nome": "Godoy Moreira",
+      "populacao": 2889,
+      "populacao_ano": 2026,
+      "microrregiao": "Ivaiporã",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4108601",
+      "nome": "Goioerê",
+      "populacao": 28895,
+      "populacao_ano": 2026,
+      "microrregiao": "Goioerê",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4108650",
+      "nome": "Goioxim",
+      "populacao": 6412,
+      "populacao_ano": 2026,
+      "microrregiao": "Guarapuava",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4108700",
+      "nome": "Grandes Rios",
+      "populacao": 5466,
+      "populacao_ano": 2026,
+      "microrregiao": "Ivaiporã",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4108809",
+      "nome": "Guaíra",
+      "populacao": 33145,
+      "populacao_ano": 2026,
+      "microrregiao": "Toledo",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4108908",
+      "nome": "Guairaçá",
+      "populacao": 6786,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4108957",
+      "nome": "Guamiranga",
+      "populacao": 7913,
+      "populacao_ano": 2026,
+      "microrregiao": "Prudentópolis",
+      "mesorregiao": "Sudeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4109005",
+      "nome": "Guapirama",
+      "populacao": 4902,
+      "populacao_ano": 2026,
+      "microrregiao": "Wenceslau Braz",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4109104",
+      "nome": "Guaporema",
+      "populacao": 2208,
+      "populacao_ano": 2026,
+      "microrregiao": "Cianorte",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4109203",
+      "nome": "Guaraci",
+      "populacao": 4719,
+      "populacao_ano": 2026,
+      "microrregiao": "Astorga",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4109302",
+      "nome": "Guaraniaçu",
+      "populacao": 13718,
+      "populacao_ano": 2026,
+      "microrregiao": "Cascavel",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4109401",
+      "nome": "Guarapuava",
+      "populacao": 190542,
+      "populacao_ano": 2026,
+      "microrregiao": "Guarapuava",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4109500",
+      "nome": "Guaraqueçaba",
+      "populacao": 7418,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranaguá",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4109609",
+      "nome": "Guaratuba",
+      "populacao": 45529,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranaguá",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4109658",
+      "nome": "Honório Serpa",
+      "populacao": 4740,
+      "populacao_ano": 2026,
+      "microrregiao": "Palmas",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4109708",
+      "nome": "Ibaiti",
+      "populacao": 29465,
+      "populacao_ano": 2026,
+      "microrregiao": "Ibaiti",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4109757",
+      "nome": "Ibema",
+      "populacao": 6352,
+      "populacao_ano": 2026,
+      "microrregiao": "Cascavel",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4109807",
+      "nome": "Ibiporã",
+      "populacao": 53486,
+      "populacao_ano": 2026,
+      "microrregiao": "Londrina",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4109906",
+      "nome": "Icaraíma",
+      "populacao": 9158,
+      "populacao_ano": 2026,
+      "microrregiao": "Umuarama",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4110003",
+      "nome": "Iguaraçu",
+      "populacao": 5777,
+      "populacao_ano": 2026,
+      "microrregiao": "Astorga",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4110052",
+      "nome": "Iguatu",
+      "populacao": 2150,
+      "populacao_ano": 2026,
+      "microrregiao": "Cascavel",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4110078",
+      "nome": "Imbaú",
+      "populacao": 15235,
+      "populacao_ano": 2026,
+      "microrregiao": "Telêmaco Borba",
+      "mesorregiao": "Centro Oriental Paranaense"
+    },
+    {
+      "codigo_ibge": "4110102",
+      "nome": "Imbituva",
+      "populacao": 30940,
+      "populacao_ano": 2026,
+      "microrregiao": "Prudentópolis",
+      "mesorregiao": "Sudeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4110201",
+      "nome": "Inácio Martins",
+      "populacao": 9477,
+      "populacao_ano": 2026,
+      "microrregiao": "Guarapuava",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4110300",
+      "nome": "Inajá",
+      "populacao": 2453,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4110409",
+      "nome": "Indianópolis",
+      "populacao": 4553,
+      "populacao_ano": 2026,
+      "microrregiao": "Cianorte",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4110508",
+      "nome": "Ipiranga",
+      "populacao": 14321,
+      "populacao_ano": 2026,
+      "microrregiao": "Prudentópolis",
+      "mesorregiao": "Sudeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4110607",
+      "nome": "Iporã",
+      "populacao": 16149,
+      "populacao_ano": 2026,
+      "microrregiao": "Umuarama",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4110656",
+      "nome": "Iracema do Oeste",
+      "populacao": 2314,
+      "populacao_ano": 2026,
+      "microrregiao": "Toledo",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4110706",
+      "nome": "Irati",
+      "populacao": 61192,
+      "populacao_ano": 2026,
+      "microrregiao": "Irati",
+      "mesorregiao": "Sudeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4110805",
+      "nome": "Iretama",
+      "populacao": 10836,
+      "populacao_ano": 2026,
+      "microrregiao": "Campo Mourão",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4110904",
+      "nome": "Itaguajé",
+      "populacao": 4525,
+      "populacao_ano": 2026,
+      "microrregiao": "Astorga",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4110953",
+      "nome": "Itaipulândia",
+      "populacao": 12267,
+      "populacao_ano": 2026,
+      "microrregiao": "Foz do Iguaçu",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4111001",
+      "nome": "Itambaracá",
+      "populacao": 5766,
+      "populacao_ano": 2026,
+      "microrregiao": "Cornélio Procópio",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4111100",
+      "nome": "Itambé",
+      "populacao": 6236,
+      "populacao_ano": 2026,
+      "microrregiao": "Floraí",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4111209",
+      "nome": "Itapejara d'Oeste",
+      "populacao": 12980,
+      "populacao_ano": 2026,
+      "microrregiao": "Pato Branco",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4111258",
+      "nome": "Itaperuçu",
+      "populacao": 33763,
+      "populacao_ano": 2026,
+      "microrregiao": "Curitiba",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4111308",
+      "nome": "Itaúna do Sul",
+      "populacao": 3606,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4111407",
+      "nome": "Ivaí",
+      "populacao": 13501,
+      "populacao_ano": 2026,
+      "microrregiao": "Prudentópolis",
+      "mesorregiao": "Sudeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4111506",
+      "nome": "Ivaiporã",
+      "populacao": 33619,
+      "populacao_ano": 2026,
+      "microrregiao": "Ivaiporã",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4111555",
+      "nome": "Ivaté",
+      "populacao": 6746,
+      "populacao_ano": 2026,
+      "microrregiao": "Umuarama",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4111605",
+      "nome": "Ivatuba",
+      "populacao": 2666,
+      "populacao_ano": 2026,
+      "microrregiao": "Floraí",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4111704",
+      "nome": "Jaboti",
+      "populacao": 5687,
+      "populacao_ano": 2026,
+      "microrregiao": "Ibaiti",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4111803",
+      "nome": "Jacarezinho",
+      "populacao": 41571,
+      "populacao_ano": 2026,
+      "microrregiao": "Jacarezinho",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4111902",
+      "nome": "Jaguapitã",
+      "populacao": 16085,
+      "populacao_ano": 2026,
+      "microrregiao": "Astorga",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4112009",
+      "nome": "Jaguariaíva",
+      "populacao": 36575,
+      "populacao_ano": 2026,
+      "microrregiao": "Jaguariaíva",
+      "mesorregiao": "Centro Oriental Paranaense"
+    },
+    {
+      "codigo_ibge": "4112108",
+      "nome": "Jandaia do Sul",
+      "populacao": 22000,
+      "populacao_ano": 2026,
+      "microrregiao": "Apucarana",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4112207",
+      "nome": "Janiópolis",
+      "populacao": 5766,
+      "populacao_ano": 2026,
+      "microrregiao": "Goioerê",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4112306",
+      "nome": "Japira",
+      "populacao": 5062,
+      "populacao_ano": 2026,
+      "microrregiao": "Ibaiti",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4112405",
+      "nome": "Japurá",
+      "populacao": 9430,
+      "populacao_ano": 2026,
+      "microrregiao": "Cianorte",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4112504",
+      "nome": "Jardim Alegre",
+      "populacao": 12118,
+      "populacao_ano": 2026,
+      "microrregiao": "Ivaiporã",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4112603",
+      "nome": "Jardim Olinda",
+      "populacao": 1345,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4112702",
+      "nome": "Jataizinho",
+      "populacao": 11992,
+      "populacao_ano": 2026,
+      "microrregiao": "Assaí",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4112751",
+      "nome": "Jesuítas",
+      "populacao": 11047,
+      "populacao_ano": 2026,
+      "microrregiao": "Toledo",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4112801",
+      "nome": "Joaquim Távora",
+      "populacao": 12415,
+      "populacao_ano": 2026,
+      "microrregiao": "Wenceslau Braz",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4112900",
+      "nome": "Jundiaí do Sul",
+      "populacao": 3366,
+      "populacao_ano": 2026,
+      "microrregiao": "Jacarezinho",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4112959",
+      "nome": "Juranda",
+      "populacao": 7906,
+      "populacao_ano": 2026,
+      "microrregiao": "Goioerê",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4113007",
+      "nome": "Jussara",
+      "populacao": 6791,
+      "populacao_ano": 2026,
+      "microrregiao": "Cianorte",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4113106",
+      "nome": "Kaloré",
+      "populacao": 4671,
+      "populacao_ano": 2026,
+      "microrregiao": "Faxinal",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4113205",
+      "nome": "Lapa",
+      "populacao": 45877,
+      "populacao_ano": 2026,
+      "microrregiao": "Lapa",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4113254",
+      "nome": "Laranjal",
+      "populacao": 5478,
+      "populacao_ano": 2026,
+      "microrregiao": "Pitanga",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4113304",
+      "nome": "Laranjeiras do Sul",
+      "populacao": 33267,
+      "populacao_ano": 2026,
+      "microrregiao": "Guarapuava",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4113403",
+      "nome": "Leópolis",
+      "populacao": 3701,
+      "populacao_ano": 2026,
+      "microrregiao": "Cornélio Procópio",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4113429",
+      "nome": "Lidianópolis",
+      "populacao": 3985,
+      "populacao_ano": 2026,
+      "microrregiao": "Ivaiporã",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4113452",
+      "nome": "Lindoeste",
+      "populacao": 5208,
+      "populacao_ano": 2026,
+      "microrregiao": "Cascavel",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4113502",
+      "nome": "Loanda",
+      "populacao": 24090,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4113601",
+      "nome": "Lobato",
+      "populacao": 4719,
+      "populacao_ano": 2026,
+      "microrregiao": "Astorga",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4113700",
+      "nome": "Londrina",
+      "populacao": 584465,
+      "populacao_ano": 2026,
+      "microrregiao": "Londrina",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4113734",
+      "nome": "Luiziana",
+      "populacao": 6619,
+      "populacao_ano": 2026,
+      "microrregiao": "Campo Mourão",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4113759",
+      "nome": "Lunardelli",
+      "populacao": 4846,
+      "populacao_ano": 2026,
+      "microrregiao": "Ivaiporã",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4113809",
+      "nome": "Lupionópolis",
+      "populacao": 4942,
+      "populacao_ano": 2026,
+      "microrregiao": "Astorga",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4113908",
+      "nome": "Mallet",
+      "populacao": 13698,
+      "populacao_ano": 2026,
+      "microrregiao": "Irati",
+      "mesorregiao": "Sudeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4114005",
+      "nome": "Mamborê",
+      "populacao": 13519,
+      "populacao_ano": 2026,
+      "microrregiao": "Campo Mourão",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4114104",
+      "nome": "Mandaguaçu",
+      "populacao": 35253,
+      "populacao_ano": 2026,
+      "microrregiao": "Astorga",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4114203",
+      "nome": "Mandaguari",
+      "populacao": 38564,
+      "populacao_ano": 2026,
+      "microrregiao": "Maringá",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4114302",
+      "nome": "Mandirituba",
+      "populacao": 29437,
+      "populacao_ano": 2026,
+      "microrregiao": "Curitiba",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4114351",
+      "nome": "Manfrinópolis",
+      "populacao": 2770,
+      "populacao_ano": 2026,
+      "microrregiao": "Francisco Beltrão",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4114401",
+      "nome": "Mangueirinha",
+      "populacao": 16709,
+      "populacao_ano": 2026,
+      "microrregiao": "Palmas",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4114500",
+      "nome": "Manoel Ribas",
+      "populacao": 14740,
+      "populacao_ano": 2026,
+      "microrregiao": "Ivaiporã",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4114609",
+      "nome": "Marechal Cândido Rondon",
+      "populacao": 59291,
+      "populacao_ano": 2026,
+      "microrregiao": "Toledo",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4114708",
+      "nome": "Maria Helena",
+      "populacao": 5921,
+      "populacao_ano": 2026,
+      "microrregiao": "Umuarama",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4114807",
+      "nome": "Marialva",
+      "populacao": 45360,
+      "populacao_ano": 2026,
+      "microrregiao": "Maringá",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4114906",
+      "nome": "Marilândia do Sul",
+      "populacao": 8750,
+      "populacao_ano": 2026,
+      "microrregiao": "Apucarana",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4115002",
+      "nome": "Marilena",
+      "populacao": 7474,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4115101",
+      "nome": "Mariluz",
+      "populacao": 9886,
+      "populacao_ano": 2026,
+      "microrregiao": "Umuarama",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4115200",
+      "nome": "Maringá",
+      "populacao": 432635,
+      "populacao_ano": 2026,
+      "microrregiao": "Maringá",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4115309",
+      "nome": "Mariópolis",
+      "populacao": 6535,
+      "populacao_ano": 2026,
+      "microrregiao": "Pato Branco",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4115358",
+      "nome": "Maripá",
+      "populacao": 6878,
+      "populacao_ano": 2026,
+      "microrregiao": "Toledo",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4115408",
+      "nome": "Marmeleiro",
+      "populacao": 16728,
+      "populacao_ano": 2026,
+      "microrregiao": "Francisco Beltrão",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4115457",
+      "nome": "Marquinho",
+      "populacao": 4465,
+      "populacao_ano": 2026,
+      "microrregiao": "Guarapuava",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4115507",
+      "nome": "Marumbi",
+      "populacao": 4786,
+      "populacao_ano": 2026,
+      "microrregiao": "Faxinal",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4115606",
+      "nome": "Matelândia",
+      "populacao": 19368,
+      "populacao_ano": 2026,
+      "microrregiao": "Foz do Iguaçu",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4115705",
+      "nome": "Matinhos",
+      "populacao": 42671,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranaguá",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4115739",
+      "nome": "Mato Rico",
+      "populacao": 3216,
+      "populacao_ano": 2026,
+      "microrregiao": "Pitanga",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4115754",
+      "nome": "Mauá da Serra",
+      "populacao": 9740,
+      "populacao_ano": 2026,
+      "microrregiao": "Apucarana",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4115804",
+      "nome": "Medianeira",
+      "populacao": 58681,
+      "populacao_ano": 2026,
+      "microrregiao": "Foz do Iguaçu",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4115853",
+      "nome": "Mercedes",
+      "populacao": 6248,
+      "populacao_ano": 2026,
+      "microrregiao": "Toledo",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4115903",
+      "nome": "Mirador",
+      "populacao": 2243,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4116000",
+      "nome": "Miraselva",
+      "populacao": 2024,
+      "populacao_ano": 2026,
+      "microrregiao": "Porecatu",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4116059",
+      "nome": "Missal",
+      "populacao": 11459,
+      "populacao_ano": 2026,
+      "microrregiao": "Foz do Iguaçu",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4116109",
+      "nome": "Moreira Sales",
+      "populacao": 10955,
+      "populacao_ano": 2026,
+      "microrregiao": "Goioerê",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4116208",
+      "nome": "Morretes",
+      "populacao": 19248,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranaguá",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4116307",
+      "nome": "Munhoz de Melo",
+      "populacao": 4075,
+      "populacao_ano": 2026,
+      "microrregiao": "Astorga",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4116406",
+      "nome": "Nossa Senhora das Graças",
+      "populacao": 3653,
+      "populacao_ano": 2026,
+      "microrregiao": "Astorga",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4116505",
+      "nome": "Nova Aliança do Ivaí",
+      "populacao": 1316,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4116604",
+      "nome": "Nova América da Colina",
+      "populacao": 3274,
+      "populacao_ano": 2026,
+      "microrregiao": "Cornélio Procópio",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4116703",
+      "nome": "Nova Aurora",
+      "populacao": 14448,
+      "populacao_ano": 2026,
+      "microrregiao": "Cascavel",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4116802",
+      "nome": "Nova Cantu",
+      "populacao": 6700,
+      "populacao_ano": 2026,
+      "microrregiao": "Goioerê",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4116901",
+      "nome": "Nova Esperança",
+      "populacao": 27140,
+      "populacao_ano": 2026,
+      "microrregiao": "Astorga",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4116950",
+      "nome": "Nova Esperança do Sudoeste",
+      "populacao": 5814,
+      "populacao_ano": 2026,
+      "microrregiao": "Francisco Beltrão",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4117008",
+      "nome": "Nova Fátima",
+      "populacao": 7083,
+      "populacao_ano": 2026,
+      "microrregiao": "Cornélio Procópio",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4117057",
+      "nome": "Nova Laranjeiras",
+      "populacao": 12318,
+      "populacao_ano": 2026,
+      "microrregiao": "Guarapuava",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4117107",
+      "nome": "Nova Londrina",
+      "populacao": 13065,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4117206",
+      "nome": "Nova Olímpia",
+      "populacao": 6002,
+      "populacao_ano": 2026,
+      "microrregiao": "Umuarama",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4117214",
+      "nome": "Nova Santa Bárbara",
+      "populacao": 4325,
+      "populacao_ano": 2026,
+      "microrregiao": "Assaí",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4117222",
+      "nome": "Nova Santa Rosa",
+      "populacao": 8624,
+      "populacao_ano": 2026,
+      "microrregiao": "Toledo",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4117255",
+      "nome": "Nova Prata do Iguaçu",
+      "populacao": 13482,
+      "populacao_ano": 2026,
+      "microrregiao": "Francisco Beltrão",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4117271",
+      "nome": "Nova Tebas",
+      "populacao": 6818,
+      "populacao_ano": 2026,
+      "microrregiao": "Ivaiporã",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4117297",
+      "nome": "Novo Itacolomi",
+      "populacao": 3246,
+      "populacao_ano": 2026,
+      "microrregiao": "Apucarana",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4117305",
+      "nome": "Ortigueira",
+      "populacao": 24808,
+      "populacao_ano": 2026,
+      "microrregiao": "Telêmaco Borba",
+      "mesorregiao": "Centro Oriental Paranaense"
+    },
+    {
+      "codigo_ibge": "4117404",
+      "nome": "Ourizona",
+      "populacao": 3181,
+      "populacao_ano": 2026,
+      "microrregiao": "Floraí",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4117453",
+      "nome": "Ouro Verde do Oeste",
+      "populacao": 7169,
+      "populacao_ano": 2026,
+      "microrregiao": "Toledo",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4117503",
+      "nome": "Paiçandu",
+      "populacao": 49694,
+      "populacao_ano": 2026,
+      "microrregiao": "Maringá",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4117602",
+      "nome": "Palmas",
+      "populacao": 50564,
+      "populacao_ano": 2026,
+      "microrregiao": "Palmas",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4117701",
+      "nome": "Palmeira",
+      "populacao": 35054,
+      "populacao_ano": 2026,
+      "microrregiao": "Ponta Grossa",
+      "mesorregiao": "Centro Oriental Paranaense"
+    },
+    {
+      "codigo_ibge": "4117800",
+      "nome": "Palmital",
+      "populacao": 12766,
+      "populacao_ano": 2026,
+      "microrregiao": "Pitanga",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4117909",
+      "nome": "Palotina",
+      "populacao": 37431,
+      "populacao_ano": 2026,
+      "microrregiao": "Toledo",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4118006",
+      "nome": "Paraíso do Norte",
+      "populacao": 13819,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4118105",
+      "nome": "Paranacity",
+      "populacao": 9506,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4118204",
+      "nome": "Paranaguá",
+      "populacao": 150436,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranaguá",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4118303",
+      "nome": "Paranapoema",
+      "populacao": 2328,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4118402",
+      "nome": "Paranavaí",
+      "populacao": 96870,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4118451",
+      "nome": "Pato Bragado",
+      "populacao": 6060,
+      "populacao_ano": 2026,
+      "microrregiao": "Toledo",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4118501",
+      "nome": "Pato Branco",
+      "populacao": 99041,
+      "populacao_ano": 2026,
+      "microrregiao": "Pato Branco",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4118600",
+      "nome": "Paula Freitas",
+      "populacao": 5720,
+      "populacao_ano": 2026,
+      "microrregiao": "União da Vitória",
+      "mesorregiao": "Sudeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4118709",
+      "nome": "Paulo Frontin",
+      "populacao": 6385,
+      "populacao_ano": 2026,
+      "microrregiao": "União da Vitória",
+      "mesorregiao": "Sudeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4118808",
+      "nome": "Peabiru",
+      "populacao": 13476,
+      "populacao_ano": 2026,
+      "microrregiao": "Campo Mourão",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4118857",
+      "nome": "Perobal",
+      "populacao": 7691,
+      "populacao_ano": 2026,
+      "microrregiao": "Umuarama",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4118907",
+      "nome": "Pérola",
+      "populacao": 12493,
+      "populacao_ano": 2026,
+      "microrregiao": "Umuarama",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4119004",
+      "nome": "Pérola d'Oeste",
+      "populacao": 6184,
+      "populacao_ano": 2026,
+      "microrregiao": "Capanema",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4119103",
+      "nome": "Piên",
+      "populacao": 14557,
+      "populacao_ano": 2026,
+      "microrregiao": "Rio Negro",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4119152",
+      "nome": "Pinhais",
+      "populacao": 131857,
+      "populacao_ano": 2026,
+      "microrregiao": "Curitiba",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4119202",
+      "nome": "Pinhalão",
+      "populacao": 6698,
+      "populacao_ano": 2026,
+      "microrregiao": "Ibaiti",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4119251",
+      "nome": "Pinhal de São Bento",
+      "populacao": 2813,
+      "populacao_ano": 2026,
+      "microrregiao": "Francisco Beltrão",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4119301",
+      "nome": "Pinhão",
+      "populacao": 30431,
+      "populacao_ano": 2026,
+      "microrregiao": "Guarapuava",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4119400",
+      "nome": "Piraí do Sul",
+      "populacao": 23991,
+      "populacao_ano": 2026,
+      "microrregiao": "Jaguariaíva",
+      "mesorregiao": "Centro Oriental Paranaense"
+    },
+    {
+      "codigo_ibge": "4119509",
+      "nome": "Piraquara",
+      "populacao": 129035,
+      "populacao_ano": 2026,
+      "microrregiao": "Curitiba",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4119608",
+      "nome": "Pitanga",
+      "populacao": 34583,
+      "populacao_ano": 2026,
+      "microrregiao": "Pitanga",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4119657",
+      "nome": "Pitangueiras",
+      "populacao": 3155,
+      "populacao_ano": 2026,
+      "microrregiao": "Londrina",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4119707",
+      "nome": "Planaltina do Paraná",
+      "populacao": 4123,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4119806",
+      "nome": "Planalto",
+      "populacao": 14766,
+      "populacao_ano": 2026,
+      "microrregiao": "Capanema",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4119905",
+      "nome": "Ponta Grossa",
+      "populacao": 378527,
+      "populacao_ano": 2026,
+      "microrregiao": "Ponta Grossa",
+      "mesorregiao": "Centro Oriental Paranaense"
+    },
+    {
+      "codigo_ibge": "4119954",
+      "nome": "Pontal do Paraná",
+      "populacao": 33730,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranaguá",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4120002",
+      "nome": "Porecatu",
+      "populacao": 11113,
+      "populacao_ano": 2026,
+      "microrregiao": "Porecatu",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4120101",
+      "nome": "Porto Amazonas",
+      "populacao": 4046,
+      "populacao_ano": 2026,
+      "microrregiao": "Lapa",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4120150",
+      "nome": "Porto Barreiro",
+      "populacao": 3023,
+      "populacao_ano": 2026,
+      "microrregiao": "Guarapuava",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4120200",
+      "nome": "Porto Rico",
+      "populacao": 3410,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4120309",
+      "nome": "Porto Vitória",
+      "populacao": 3487,
+      "populacao_ano": 2026,
+      "microrregiao": "União da Vitória",
+      "mesorregiao": "Sudeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4120333",
+      "nome": "Prado Ferreira",
+      "populacao": 3833,
+      "populacao_ano": 2026,
+      "microrregiao": "Porecatu",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4120358",
+      "nome": "Pranchita",
+      "populacao": 5838,
+      "populacao_ano": 2026,
+      "microrregiao": "Capanema",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4120408",
+      "nome": "Presidente Castelo Branco",
+      "populacao": 4277,
+      "populacao_ano": 2026,
+      "microrregiao": "Astorga",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4120507",
+      "nome": "Primeiro de Maio",
+      "populacao": 10018,
+      "populacao_ano": 2026,
+      "microrregiao": "Porecatu",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4120606",
+      "nome": "Prudentópolis",
+      "populacao": 50988,
+      "populacao_ano": 2026,
+      "microrregiao": "Prudentópolis",
+      "mesorregiao": "Sudeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4120655",
+      "nome": "Quarto Centenário",
+      "populacao": 4087,
+      "populacao_ano": 2026,
+      "microrregiao": "Goioerê",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4120705",
+      "nome": "Quatiguá",
+      "populacao": 8491,
+      "populacao_ano": 2026,
+      "microrregiao": "Wenceslau Braz",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4120804",
+      "nome": "Quatro Barras",
+      "populacao": 25663,
+      "populacao_ano": 2026,
+      "microrregiao": "Curitiba",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4120853",
+      "nome": "Quatro Pontes",
+      "populacao": 4714,
+      "populacao_ano": 2026,
+      "microrregiao": "Toledo",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4120903",
+      "nome": "Quedas do Iguaçu",
+      "populacao": 31431,
+      "populacao_ano": 2026,
+      "microrregiao": "Guarapuava",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4121000",
+      "nome": "Querência do Norte",
+      "populacao": 10560,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4121109",
+      "nome": "Quinta do Sol",
+      "populacao": 5047,
+      "populacao_ano": 2026,
+      "microrregiao": "Campo Mourão",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4121208",
+      "nome": "Quitandinha",
+      "populacao": 18963,
+      "populacao_ano": 2026,
+      "microrregiao": "Rio Negro",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4121257",
+      "nome": "Ramilândia",
+      "populacao": 4284,
+      "populacao_ano": 2026,
+      "microrregiao": "Foz do Iguaçu",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4121307",
+      "nome": "Rancho Alegre",
+      "populacao": 3445,
+      "populacao_ano": 2026,
+      "microrregiao": "Assaí",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4121356",
+      "nome": "Rancho Alegre D'Oeste",
+      "populacao": 2609,
+      "populacao_ano": 2026,
+      "microrregiao": "Goioerê",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4121406",
+      "nome": "Realeza",
+      "populacao": 20276,
+      "populacao_ano": 2026,
+      "microrregiao": "Capanema",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4121505",
+      "nome": "Rebouças",
+      "populacao": 14846,
+      "populacao_ano": 2026,
+      "microrregiao": "Irati",
+      "mesorregiao": "Sudeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4121604",
+      "nome": "Renascença",
+      "populacao": 6947,
+      "populacao_ano": 2026,
+      "microrregiao": "Francisco Beltrão",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4121703",
+      "nome": "Reserva",
+      "populacao": 24856,
+      "populacao_ano": 2026,
+      "microrregiao": "Telêmaco Borba",
+      "mesorregiao": "Centro Oriental Paranaense"
+    },
+    {
+      "codigo_ibge": "4121752",
+      "nome": "Reserva do Iguaçu",
+      "populacao": 6447,
+      "populacao_ano": 2026,
+      "microrregiao": "Guarapuava",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4121802",
+      "nome": "Ribeirão Claro",
+      "populacao": 12959,
+      "populacao_ano": 2026,
+      "microrregiao": "Jacarezinho",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4121901",
+      "nome": "Ribeirão do Pinhal",
+      "populacao": 13129,
+      "populacao_ano": 2026,
+      "microrregiao": "Cornélio Procópio",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4122008",
+      "nome": "Rio Azul",
+      "populacao": 14174,
+      "populacao_ano": 2026,
+      "microrregiao": "Irati",
+      "mesorregiao": "Sudeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4122107",
+      "nome": "Rio Bom",
+      "populacao": 3206,
+      "populacao_ano": 2026,
+      "microrregiao": "Faxinal",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4122156",
+      "nome": "Rio Bonito do Iguaçu",
+      "populacao": 14345,
+      "populacao_ano": 2026,
+      "microrregiao": "Guarapuava",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4122172",
+      "nome": "Rio Branco do Ivaí",
+      "populacao": 3835,
+      "populacao_ano": 2026,
+      "microrregiao": "Ivaiporã",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4122206",
+      "nome": "Rio Branco do Sul",
+      "populacao": 40745,
+      "populacao_ano": 2026,
+      "microrregiao": "Curitiba",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4122305",
+      "nome": "Rio Negro",
+      "populacao": 31954,
+      "populacao_ano": 2026,
+      "microrregiao": "Rio Negro",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4122404",
+      "nome": "Rolândia",
+      "populacao": 76671,
+      "populacao_ano": 2026,
+      "microrregiao": "Londrina",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4122503",
+      "nome": "Roncador",
+      "populacao": 11321,
+      "populacao_ano": 2026,
+      "microrregiao": "Campo Mourão",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4122602",
+      "nome": "Rondon",
+      "populacao": 9261,
+      "populacao_ano": 2026,
+      "microrregiao": "Cianorte",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4122651",
+      "nome": "Rosário do Ivaí",
+      "populacao": 5475,
+      "populacao_ano": 2026,
+      "microrregiao": "Ivaiporã",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4122701",
+      "nome": "Sabáudia",
+      "populacao": 9678,
+      "populacao_ano": 2026,
+      "microrregiao": "Apucarana",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4122800",
+      "nome": "Salgado Filho",
+      "populacao": 4074,
+      "populacao_ano": 2026,
+      "microrregiao": "Francisco Beltrão",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4122909",
+      "nome": "Salto do Itararé",
+      "populacao": 5214,
+      "populacao_ano": 2026,
+      "microrregiao": "Wenceslau Braz",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4123006",
+      "nome": "Salto do Lontra",
+      "populacao": 15800,
+      "populacao_ano": 2026,
+      "microrregiao": "Francisco Beltrão",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4123105",
+      "nome": "Santa Amélia",
+      "populacao": 3333,
+      "populacao_ano": 2026,
+      "microrregiao": "Cornélio Procópio",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4123204",
+      "nome": "Santa Cecília do Pavão",
+      "populacao": 3340,
+      "populacao_ano": 2026,
+      "microrregiao": "Assaí",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4123303",
+      "nome": "Santa Cruz de Monte Castelo",
+      "populacao": 8872,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4123402",
+      "nome": "Santa Fé",
+      "populacao": 11789,
+      "populacao_ano": 2026,
+      "microrregiao": "Astorga",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4123501",
+      "nome": "Santa Helena",
+      "populacao": 26601,
+      "populacao_ano": 2026,
+      "microrregiao": "Toledo",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4123600",
+      "nome": "Santa Inês",
+      "populacao": 1739,
+      "populacao_ano": 2026,
+      "microrregiao": "Astorga",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4123709",
+      "nome": "Santa Isabel do Ivaí",
+      "populacao": 9052,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4123808",
+      "nome": "Santa Izabel do Oeste",
+      "populacao": 14519,
+      "populacao_ano": 2026,
+      "microrregiao": "Capanema",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4123824",
+      "nome": "Santa Lúcia",
+      "populacao": 3621,
+      "populacao_ano": 2026,
+      "microrregiao": "Cascavel",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4123857",
+      "nome": "Santa Maria do Oeste",
+      "populacao": 9786,
+      "populacao_ano": 2026,
+      "microrregiao": "Pitanga",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4123907",
+      "nome": "Santa Mariana",
+      "populacao": 10856,
+      "populacao_ano": 2026,
+      "microrregiao": "Cornélio Procópio",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4123956",
+      "nome": "Santa Mônica",
+      "populacao": 3348,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4124004",
+      "nome": "Santana do Itararé",
+      "populacao": 5663,
+      "populacao_ano": 2026,
+      "microrregiao": "Wenceslau Braz",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4124020",
+      "nome": "Santa Tereza do Oeste",
+      "populacao": 14113,
+      "populacao_ano": 2026,
+      "microrregiao": "Cascavel",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4124053",
+      "nome": "Santa Terezinha de Itaipu",
+      "populacao": 25510,
+      "populacao_ano": 2026,
+      "microrregiao": "Foz do Iguaçu",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4124103",
+      "nome": "Santo Antônio da Platina",
+      "populacao": 45730,
+      "populacao_ano": 2026,
+      "microrregiao": "Jacarezinho",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4124202",
+      "nome": "Santo Antônio do Caiuá",
+      "populacao": 2460,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4124301",
+      "nome": "Santo Antônio do Paraíso",
+      "populacao": 2070,
+      "populacao_ano": 2026,
+      "microrregiao": "Cornélio Procópio",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4124400",
+      "nome": "Santo Antônio do Sudoeste",
+      "populacao": 25273,
+      "populacao_ano": 2026,
+      "microrregiao": "Francisco Beltrão",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4124509",
+      "nome": "Santo Inácio",
+      "populacao": 6521,
+      "populacao_ano": 2026,
+      "microrregiao": "Astorga",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4124608",
+      "nome": "São Carlos do Ivaí",
+      "populacao": 6741,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4124707",
+      "nome": "São Jerônimo da Serra",
+      "populacao": 10853,
+      "populacao_ano": 2026,
+      "microrregiao": "Assaí",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4124806",
+      "nome": "São João",
+      "populacao": 12377,
+      "populacao_ano": 2026,
+      "microrregiao": "Pato Branco",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4124905",
+      "nome": "São João do Caiuá",
+      "populacao": 5587,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4125001",
+      "nome": "São João do Ivaí",
+      "populacao": 10586,
+      "populacao_ano": 2026,
+      "microrregiao": "Ivaiporã",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4125100",
+      "nome": "São João do Triunfo",
+      "populacao": 13900,
+      "populacao_ano": 2026,
+      "microrregiao": "São Mateus do Sul",
+      "mesorregiao": "Sudeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4125209",
+      "nome": "São Jorge d'Oeste",
+      "populacao": 9605,
+      "populacao_ano": 2026,
+      "microrregiao": "Francisco Beltrão",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4125308",
+      "nome": "São Jorge do Ivaí",
+      "populacao": 5149,
+      "populacao_ano": 2026,
+      "microrregiao": "Floraí",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4125357",
+      "nome": "São Jorge do Patrocínio",
+      "populacao": 6718,
+      "populacao_ano": 2026,
+      "microrregiao": "Umuarama",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4125407",
+      "nome": "São José da Boa Vista",
+      "populacao": 5994,
+      "populacao_ano": 2026,
+      "microrregiao": "Wenceslau Braz",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4125456",
+      "nome": "São José das Palmeiras",
+      "populacao": 4039,
+      "populacao_ano": 2026,
+      "microrregiao": "Toledo",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4125506",
+      "nome": "São José dos Pinhais",
+      "populacao": 353874,
+      "populacao_ano": 2026,
+      "microrregiao": "Curitiba",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4125555",
+      "nome": "São Manoel do Paraná",
+      "populacao": 2178,
+      "populacao_ano": 2026,
+      "microrregiao": "Cianorte",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4125605",
+      "nome": "São Mateus do Sul",
+      "populacao": 43558,
+      "populacao_ano": 2026,
+      "microrregiao": "São Mateus do Sul",
+      "mesorregiao": "Sudeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4125704",
+      "nome": "São Miguel do Iguaçu",
+      "populacao": 30624,
+      "populacao_ano": 2026,
+      "microrregiao": "Foz do Iguaçu",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4125753",
+      "nome": "São Pedro do Iguaçu",
+      "populacao": 5686,
+      "populacao_ano": 2026,
+      "microrregiao": "Toledo",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4125803",
+      "nome": "São Pedro do Ivaí",
+      "populacao": 8423,
+      "populacao_ano": 2026,
+      "microrregiao": "Ivaiporã",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4125902",
+      "nome": "São Pedro do Paraná",
+      "populacao": 2736,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4126009",
+      "nome": "São Sebastião da Amoreira",
+      "populacao": 8028,
+      "populacao_ano": 2026,
+      "microrregiao": "Assaí",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4126108",
+      "nome": "São Tomé",
+      "populacao": 5275,
+      "populacao_ano": 2026,
+      "microrregiao": "Cianorte",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4126207",
+      "nome": "Sapopema",
+      "populacao": 6775,
+      "populacao_ano": 2026,
+      "microrregiao": "Ibaiti",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4126256",
+      "nome": "Sarandi",
+      "populacao": 130211,
+      "populacao_ano": 2026,
+      "microrregiao": "Maringá",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4126272",
+      "nome": "Saudade do Iguaçu",
+      "populacao": 6479,
+      "populacao_ano": 2026,
+      "microrregiao": "Pato Branco",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4126306",
+      "nome": "Sengés",
+      "populacao": 17151,
+      "populacao_ano": 2026,
+      "microrregiao": "Jaguariaíva",
+      "mesorregiao": "Centro Oriental Paranaense"
+    },
+    {
+      "codigo_ibge": "4126355",
+      "nome": "Serranópolis do Iguaçu",
+      "populacao": 5188,
+      "populacao_ano": 2026,
+      "microrregiao": "Foz do Iguaçu",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4126405",
+      "nome": "Sertaneja",
+      "populacao": 5642,
+      "populacao_ano": 2026,
+      "microrregiao": "Cornélio Procópio",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4126504",
+      "nome": "Sertanópolis",
+      "populacao": 16228,
+      "populacao_ano": 2026,
+      "microrregiao": "Porecatu",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4126603",
+      "nome": "Siqueira Campos",
+      "populacao": 24299,
+      "populacao_ano": 2026,
+      "microrregiao": "Wenceslau Braz",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4126652",
+      "nome": "Sulina",
+      "populacao": 3501,
+      "populacao_ano": 2026,
+      "microrregiao": "Pato Branco",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4126678",
+      "nome": "Tamarana",
+      "populacao": 10444,
+      "populacao_ano": 2026,
+      "microrregiao": "Londrina",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4126702",
+      "nome": "Tamboara",
+      "populacao": 4999,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4126801",
+      "nome": "Tapejara",
+      "populacao": 16404,
+      "populacao_ano": 2026,
+      "microrregiao": "Cianorte",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4126900",
+      "nome": "Tapira",
+      "populacao": 5802,
+      "populacao_ano": 2026,
+      "microrregiao": "Umuarama",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4127007",
+      "nome": "Teixeira Soares",
+      "populacao": 9495,
+      "populacao_ano": 2026,
+      "microrregiao": "Prudentópolis",
+      "mesorregiao": "Sudeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4127106",
+      "nome": "Telêmaco Borba",
+      "populacao": 77798,
+      "populacao_ano": 2026,
+      "microrregiao": "Telêmaco Borba",
+      "mesorregiao": "Centro Oriental Paranaense"
+    },
+    {
+      "codigo_ibge": "4127205",
+      "nome": "Terra Boa",
+      "populacao": 18278,
+      "populacao_ano": 2026,
+      "microrregiao": "Campo Mourão",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4127304",
+      "nome": "Terra Rica",
+      "populacao": 14938,
+      "populacao_ano": 2026,
+      "microrregiao": "Paranavaí",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4127403",
+      "nome": "Terra Roxa",
+      "populacao": 18719,
+      "populacao_ano": 2026,
+      "microrregiao": "Toledo",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4127502",
+      "nome": "Tibagi",
+      "populacao": 20408,
+      "populacao_ano": 2026,
+      "microrregiao": "Telêmaco Borba",
+      "mesorregiao": "Centro Oriental Paranaense"
+    },
+    {
+      "codigo_ibge": "4127601",
+      "nome": "Tijucas do Sul",
+      "populacao": 18646,
+      "populacao_ano": 2026,
+      "microrregiao": "Rio Negro",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4127700",
+      "nome": "Toledo",
+      "populacao": 162658,
+      "populacao_ano": 2026,
+      "microrregiao": "Toledo",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4127809",
+      "nome": "Tomazina",
+      "populacao": 8500,
+      "populacao_ano": 2026,
+      "microrregiao": "Wenceslau Braz",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4127858",
+      "nome": "Três Barras do Paraná",
+      "populacao": 11115,
+      "populacao_ano": 2026,
+      "microrregiao": "Cascavel",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4127882",
+      "nome": "Tunas do Paraná",
+      "populacao": 6859,
+      "populacao_ano": 2026,
+      "microrregiao": "Curitiba",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4127908",
+      "nome": "Tuneiras do Oeste",
+      "populacao": 8028,
+      "populacao_ano": 2026,
+      "microrregiao": "Cianorte",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4127957",
+      "nome": "Tupãssi",
+      "populacao": 8213,
+      "populacao_ano": 2026,
+      "microrregiao": "Toledo",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4127965",
+      "nome": "Turvo",
+      "populacao": 14110,
+      "populacao_ano": 2026,
+      "microrregiao": "Guarapuava",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4128005",
+      "nome": "Ubiratã",
+      "populacao": 25928,
+      "populacao_ano": 2026,
+      "microrregiao": "Goioerê",
+      "mesorregiao": "Centro Ocidental Paranaense"
+    },
+    {
+      "codigo_ibge": "4128104",
+      "nome": "Umuarama",
+      "populacao": 124077,
+      "populacao_ano": 2026,
+      "microrregiao": "Umuarama",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4128203",
+      "nome": "União da Vitória",
+      "populacao": 56701,
+      "populacao_ano": 2026,
+      "microrregiao": "União da Vitória",
+      "mesorregiao": "Sudeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4128302",
+      "nome": "Uniflor",
+      "populacao": 2086,
+      "populacao_ano": 2026,
+      "microrregiao": "Astorga",
+      "mesorregiao": "Norte Central Paranaense"
+    },
+    {
+      "codigo_ibge": "4128401",
+      "nome": "Uraí",
+      "populacao": 10242,
+      "populacao_ano": 2026,
+      "microrregiao": "Assaí",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4128500",
+      "nome": "Wenceslau Braz",
+      "populacao": 19392,
+      "populacao_ano": 2026,
+      "microrregiao": "Wenceslau Braz",
+      "mesorregiao": "Norte Pioneiro Paranaense"
+    },
+    {
+      "codigo_ibge": "4128534",
+      "nome": "Ventania",
+      "populacao": 9742,
+      "populacao_ano": 2026,
+      "microrregiao": "Telêmaco Borba",
+      "mesorregiao": "Centro Oriental Paranaense"
+    },
+    {
+      "codigo_ibge": "4128559",
+      "nome": "Vera Cruz do Oeste",
+      "populacao": 8131,
+      "populacao_ano": 2026,
+      "microrregiao": "Foz do Iguaçu",
+      "mesorregiao": "Oeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4128609",
+      "nome": "Verê",
+      "populacao": 8080,
+      "populacao_ano": 2026,
+      "microrregiao": "Francisco Beltrão",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4128625",
+      "nome": "Alto Paraíso",
+      "populacao": 3058,
+      "populacao_ano": 2026,
+      "microrregiao": "Umuarama",
+      "mesorregiao": "Noroeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4128633",
+      "nome": "Doutor Ulysses",
+      "populacao": 5742,
+      "populacao_ano": 2026,
+      "microrregiao": "Cerro Azul",
+      "mesorregiao": "Metropolitana de Curitiba"
+    },
+    {
+      "codigo_ibge": "4128658",
+      "nome": "Virmond",
+      "populacao": 3818,
+      "populacao_ano": 2026,
+      "microrregiao": "Guarapuava",
+      "mesorregiao": "Centro-Sul Paranaense"
+    },
+    {
+      "codigo_ibge": "4128708",
+      "nome": "Vitorino",
+      "populacao": 10724,
+      "populacao_ano": 2026,
+      "microrregiao": "Pato Branco",
+      "mesorregiao": "Sudoeste Paranaense"
+    },
+    {
+      "codigo_ibge": "4128807",
+      "nome": "Xambrê",
+      "populacao": 5822,
+      "populacao_ano": 2026,
+      "microrregiao": "Umuarama",
+      "mesorregiao": "Noroeste Paranaense"
+    }
+  ]
+}

@@ -88,6 +88,17 @@ import { GET as leadsResumoGet } from "./leads/resumo/route";
 import { GET as leadsExportarGet } from "./leads/exportar/route";
 import { GET as leadsPedidosGet } from "./leads/pedidos/route";
 import { POST as leadsPedidoDecisaoPost } from "./leads/pedidos/[id]/route";
+import { GET as territorioGet } from "./territorio/route";
+import { GET as territorioExportarGet } from "./territorio/exportar/route";
+import { POST as territorioLeadsPost } from "./territorio/leads/route";
+import { GET as entidadesGet, POST as entidadesPost } from "./entidades/route";
+import { GET as entidadeGet, PATCH as entidadePatch } from "./entidades/[id]/route";
+import { DELETE as membrosDelete, POST as membrosPost } from "./entidades/[id]/membros/route";
+import { GET as municipiosGet } from "./municipios/route";
+import { PUT as estadoPut } from "./estados/[uf]/route";
+import { GET as visoesGet, POST as visoesPost } from "./crm/visoes/route";
+import { DELETE as visaoDelete } from "./crm/visoes/[id]/route";
+import { GET as buscaCrmGet } from "./crm/busca/route";
 
 type Handler = (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => Promise<Response>;
 
@@ -146,7 +157,23 @@ const ROTAS: { rota: string; url: string; area: Area; handler: Handler }[] = [
   { rota: "POST /api/leads/[id]/vendedor", url: `/api/leads/${ID}/vendedor`, area: "crm_gestao", handler: leadVendedorPost as Handler },
   { rota: "GET /api/leads/exportar", url: "/api/leads/exportar?formato=csv", area: "crm_gestao", handler: leadsExportarGet as Handler },
   { rota: "GET /api/leads/pedidos", url: "/api/leads/pedidos", area: "crm_gestao", handler: leadsPedidosGet as Handler },
-  { rota: "POST /api/leads/pedidos/[id]", url: `/api/leads/pedidos/${ID}`, area: "crm_gestao", handler: leadsPedidoDecisaoPost as Handler }
+  { rota: "POST /api/leads/pedidos/[id]", url: `/api/leads/pedidos/${ID}`, area: "crm_gestao", handler: leadsPedidoDecisaoPost as Handler },
+  // Base territorial (rodada 16-A2): ler = "crm" (admin e vendas); exportar, cadastrar entidade/membro e liberar estado = "crm_gestao".
+  { rota: "GET /api/territorio", url: "/api/territorio?uf=PR", area: "crm", handler: territorioGet as Handler },
+  { rota: "POST /api/territorio/leads", url: "/api/territorio/leads", area: "crm", handler: territorioLeadsPost as Handler },
+  { rota: "GET /api/territorio/exportar", url: "/api/territorio/exportar?formato=csv", area: "crm_gestao", handler: territorioExportarGet as Handler },
+  { rota: "GET /api/entidades", url: "/api/entidades", area: "crm", handler: entidadesGet as Handler },
+  { rota: "POST /api/entidades", url: "/api/entidades", area: "crm_gestao", handler: entidadesPost as Handler },
+  { rota: "GET /api/entidades/[id]", url: `/api/entidades/${ID}`, area: "crm", handler: entidadeGet as Handler },
+  { rota: "PATCH /api/entidades/[id]", url: `/api/entidades/${ID}`, area: "crm_gestao", handler: entidadePatch as Handler },
+  { rota: "POST /api/entidades/[id]/membros", url: `/api/entidades/${ID}/membros`, area: "crm_gestao", handler: membrosPost as Handler },
+  { rota: "DELETE /api/entidades/[id]/membros", url: `/api/entidades/${ID}/membros`, area: "crm_gestao", handler: membrosDelete as Handler },
+  { rota: "GET /api/municipios", url: "/api/municipios?busca=curitiba", area: "crm", handler: municipiosGet as Handler },
+  { rota: "PUT /api/estados/[uf]", url: "/api/estados/PR", area: "crm_gestao", handler: estadoPut as unknown as Handler },
+  { rota: "GET /api/crm/visoes", url: "/api/crm/visoes", area: "crm", handler: visoesGet as Handler },
+  { rota: "POST /api/crm/visoes", url: "/api/crm/visoes", area: "crm", handler: visoesPost as Handler },
+  { rota: "DELETE /api/crm/visoes/[id]", url: `/api/crm/visoes/${ID}`, area: "crm", handler: visaoDelete as Handler },
+  { rota: "GET /api/crm/busca", url: "/api/crm/busca?q=curitiba", area: "crm", handler: buscaCrmGet as Handler }
 ];
 
 /**

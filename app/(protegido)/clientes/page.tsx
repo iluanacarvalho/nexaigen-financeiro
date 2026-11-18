@@ -346,11 +346,12 @@ function FormCliente({ cliente, erro, onSalvar }: { cliente: ClientePrefeitura |
         </div>
       )}
 
-      {plano.faixaHabitantes !== null && (
-        <section aria-label="Porte do município" className="rounded border border-slate-200 bg-slate-50 p-3 text-sm sm:col-span-2">
-          <p className="font-medium text-navy">
-            {plano.rotulo} — {plano.faixaHabitantes}
-          </p>
+      {/* Desde a 16-A2 todo plano tem faixa de população (inclusive a Dispensa); a taxa de implantação continua só nos 3 portes. */}
+      <section aria-label="Porte do município" className="rounded border border-slate-200 bg-slate-50 p-3 text-sm sm:col-span-2">
+        <p className="font-medium text-navy">
+          {plano.rotulo} — {plano.faixaHabitantes}
+        </p>
+        {plano.taxaImplantacaoCentavos !== null && (
           <label className="mt-2 block">
             <span className="font-medium text-slate-700">Taxa de implantação e treinamento (R$)</span>
             <input
@@ -364,8 +365,8 @@ function FormCliente({ cliente, erro, onSalvar }: { cliente: ClientePrefeitura |
               de implantação criada em Notas fiscais.
             </span>
           </label>
-        </section>
-      )}
+        )}
+      </section>
 
       <CampoTexto rotulo="Dia de vencimento do contrato" tipo="number" valor={dados.diaVencimento} onMudar={(v) => alterar({ diaVencimento: v })} />
       <CampoTexto rotulo="Data de início do contrato" tipo="date" valor={dados.dataInicio} onMudar={(v) => alterar({ dataInicio: v })} obrigatorio />
