@@ -542,3 +542,27 @@ Os valores são o **padrão sugerido**: o combinado com cada prefeitura fica em 
 ```
 
 Ou leia o JSON direto (`fetch("https://<endereço-do-financeiro>/api/publico/mapa-clientes")`) e desenhe no próprio site.
+
+## 26. Pendências fechadas (rodada 15-C)
+
+- **Disputa de dois admins.** `lib/equipeServico.concorrencia.integration.test.ts` cria um **banco temporário** com nome único (`CREATE DATABASE`), aplica nele as mesmas migrations do projeto (`scripts/aplicarMigracoes.ts`, a mesma função do `npm run migrate`), coloca dois admins se rebaixando um ao outro ao mesmo tempo, em duas conexões, por 20 rodadas, e derruba o banco no fim (`DROP DATABASE … WITH (FORCE)`), mesmo se falhar.
+  - Só roda com `DATABASE_URL` em localhost/127.0.0.1/::1, e nunca toca as contas reais.
+  - Sempre exatamente um rebaixamento passa e o outro recebe "último admin".
+  - Prova feita: sem o `for update` em `lib/equipeServico.ts`, o teste falha já na primeira rodada (os dois passam, sobra zero admin).
+- **Encerrados sem evento no relatório de novos contratos.** Não há migration retroativa, porque não há data para usar:
+  - antes da migration `0011` (rodada 12-A), nenhum código gravava `status_contrato = 'encerrado'` (só SQL manual), e não existia coluna de data de encerramento; um evento retroativo teria de **inventar** a data;
+  - desde a `0011`, o único caminho que encerra (`lib/cancelamentoServico.ts#encerrar`) grava o evento `contrato_encerrado` na mesma transação;
+  - no banco local não havia nenhum caso (0 clientes encerrados).
+  - Consequência: um encerrado sem evento continua fora do MRR, mas não entra em "encerrados no mês" de nenhum mês. `lib/relatorioContratos.integration.test.ts` garante que isso não quebra o relatório.
+  - **Se aparecer algum em produção, conferir à mão** com: `select id, nome from cliente_prefeitura c where status_contrato = 'encerrado' and not exists (select 1 from cliente_evento_contrato e where e.cliente_id = c.id and e.tipo = 'contrato_encerrado')`.
+- **Toque no `/mapa`.** Tocar ou clicar num ponto (ou Enter/Espaço com o foco nele) abre o rótulo "Nome — UF". Tocar em outro ponto troca, tocar de novo no mesmo fecha, e tocar fora ou Esc fecha.
+  - Hover e foco continuam mostrando o rótulo, e a lista textual continua lá.
+  - Só os pontos são interativos (`app/mapa/PontosDoMapa.tsx`); os contornos continuam desenhados no servidor.
+  - O `<svg>` passou de `role="img"` para `role="group"`: com `img`, o leitor de tela escondia os pontos, que são botões.
+- **Gerador do mapa.** A parte pura (validar a malha, calcular os limites, projetar, simplificar, montar o arquivo) é `lib/geracaoMapaBrasil.ts`, testada sem rede com uma malha de 3 estados (`testes/fixtures/malha-3-estados.json`). O script ficou só "baixar → gerar → gravar". Regerado com o código novo, o `lib/mapaBrasil.gerado.ts` saiu idêntico byte a byte.
+
+## Riscos aceitos
+
+| Data | Risco | Por que é aceito | Quando rever |
+|---|---|---|---|
+| 2026-11-17 | `picomatch` (dependência **só de desenvolvimento**, via tailwindcss, vitest/vite, eslint) — advisory **GHSA-fc5q-39xc-vjpf** (ReDoS em extglobs), alto, faixa `<= 4.0.7`, **sem versão corrigida publicada** (4.0.7 é a última; as linhas 2.x/3.x também estão na faixa). O `npm audit` completo mostra 21 "high", todos dessa cadeia. | Não vai para produção: `npm audit --omit=dev` = 0. Os padrões glob vêm só da configuração do próprio projeto (tailwind/vitest/eslint), nunca de entrada de usuário. As "correções" que o npm sugere são rebaixamentos de versão principal (vitest 3, eslint-config-next 14, tailwind 4), que **não** foram aplicados (nada de `--force`). No CI, o passo **bloqueante** é `npm audit --omit=dev --audit-level=high` (só produção); a auditoria completa é informativa (`npm audit \|\| true`). | Quando sair versão corrigida do `picomatch` (acima de 4.0.7, ou 2.x/3.x corrigida): atualizar sem `--force` e sem rebaixar vitest/eslint-config-next/tailwind. |

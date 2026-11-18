@@ -100,10 +100,4 @@ describe("projeção e mapa gerado", () => {
       expect(p.y).toBeLessThanOrEqual(MAPA_BRASIL.altura);
     }
   });
-  it("27 UFs, cada uma um path SVG; nenhuma URL no desenho (a página não baixa nada de fora)", () => {
-    expect(MAPA_BRASIL.estados.map((e) => e.uf)).toHaveLength(27);
-    expect(new Set(MAPA_BRASIL.estados.map((e) => e.uf)).size).toBe(27);
-    for (const e of MAPA_BRASIL.estados) expect(e.d).toMatch(/^M[\d. ]+(L[\d. ]+)*Z(M[\d. ]+(L[\d. ]+)*Z)*$/);
-    expect(JSON.stringify(MAPA_BRASIL.estados)).not.toMatch(/https?:/);
-  });
 });

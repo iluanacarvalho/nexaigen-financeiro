@@ -6,11 +6,8 @@
 // scripts/** no nexaigen-educa: tooling de deploy/CI, não código de
 // runtime do app).
 
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { Client } from "pg";
-
-const MIGRATIONS_DIR = join(__dirname, "..", "db", "migrations");
+import { aplicarMigracoes } from "./aplicarMigracoes";
 
 async function main() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -21,46 +18,14 @@ async function main() {
 
   const client = new Client({ connectionString: databaseUrl });
   await client.connect();
-
   try {
-    await client.query(`
-      create table if not exists _migrations (
-        nome text primary key,
-        aplicada_em timestamptz not null default now()
-      )
-    `);
-
-    const { rows: aplicadas } = await client.query<{ nome: string }>("select nome from _migrations");
-    const jaAplicadas = new Set(aplicadas.map((r) => r.nome));
-
-    const arquivos = readdirSync(MIGRATIONS_DIR)
-      .filter((f) => f.endsWith(".sql"))
-      .sort();
-
-    for (const arquivo of arquivos) {
-      if (jaAplicadas.has(arquivo)) {
-        console.log(`↷ ${arquivo} (já aplicada)`);
-        continue;
-      }
-
-      const sql = readFileSync(join(MIGRATIONS_DIR, arquivo), "utf-8");
-      console.log(`→ aplicando ${arquivo}...`);
-
-      try {
-        await client.query("begin");
-        await client.query(sql);
-        await client.query("insert into _migrations (nome) values ($1)", [arquivo]);
-        await client.query("commit");
-        console.log(`✓ ${arquivo}`);
-      } catch (erro) {
-        await client.query("rollback");
-        console.error(`✗ ${arquivo} falhou — parando sem marcar como aplicada.`);
-        console.error(erro);
-        process.exit(1);
-      }
-    }
-
+    // A lógica (um arquivo por transação, registro em _migrations) mora em scripts/aplicarMigracoes.ts desde a rodada 15-C.
+    await aplicarMigracoes(client, (linha) => console.log(linha));
     console.log("Migrações em dia.");
+  } catch (erro) {
+    console.error("✗ parando sem marcar a migration que falhou como aplicada.");
+    console.error(erro);
+    process.exit(1);
   } finally {
     await client.end();
   }

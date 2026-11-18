@@ -105,6 +105,31 @@ describe("relatório de novos contratos — fixtures em Postgres real, valores e
   });
 });
 
+describe("contrato encerrado SEM evento na trilha (anterior à rodada 12-A) — não quebra o relatório (rodada 15-C)", () => {
+  // Por que não existe evento retroativo (README, "Encerrados sem evento"): antes da 0011 nenhum
+  // código gravava 'encerrado' (só SQL manual) e não havia data de encerramento nenhuma — um evento
+  // retroativo teria de INVENTAR a data. Depois da 0011, o único caminho que encerra
+  // (lib/cancelamentoServico.ts#encerrar) grava o evento na mesma transação.
+  it("legado (sem data e sem evento) e manual pós-0011 (com término, sem evento): relatório calcula, não conta como encerrado no mês, MRR igual ao Painel", async () => {
+    await emTransacaoDesfeita(async (c) => {
+      await c.query(`delete from cliente_prefeitura`); // só dentro desta transação (desfeita no fim)
+      await cliente(c, { nome: "Legado encerrado", inicio: "2026-11-03", valor: "4000.00", status: "encerrado" });
+      await cliente(c, { nome: "Encerrado à mão", inicio: "2024-01-01", valor: "2500.00", status: "encerrado", pedido: "2026-10-01" });
+      await cliente(c, { nome: "Ativo", inicio: "2026-11-05", valor: "1000.00" });
+
+      const r = await obterRelatorioContratos("2026-11", AGORA, c);
+      expect(r.novos).toEqual({ quantidade: 2, mrrCentavos: 500000, implantacaoACobrarCentavos: 0 }); // novo no mês pela assinatura, mesmo já encerrado
+      expect(r.encerrados).toEqual({ quantidade: 0, mrrCentavos: 0 }); // sem evento, sem data: não dá pra dizer o mês
+      expect(r.emAvisoPrevio).toEqual({ quantidade: 0, mrrCentavos: 0 });
+      expect(r.contratos.find((x) => x.nome === "Legado encerrado")).toMatchObject({ statusContrato: "encerrado" });
+      const painel = await obterPainelFinanceiro(AGORA, c);
+      expect(r.mrrCarteiraHojeCentavos).toBe(painel.kpis.mrr.valorCentavos);
+      expect(r.mrrCarteiraHojeCentavos).toBe(100000); // encerrados (com ou sem evento) fora do MRR
+      expect((await obterRelatorioContratos("2026-10", AGORA, c)).encerrados.quantidade).toBe(0);
+    });
+  });
+});
+
 describe("GET /api/relatorios/novos-contratos — rota real (financeiro)", () => {
   let equipeId: string;
   let cookie: string;

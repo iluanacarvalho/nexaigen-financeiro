@@ -4,7 +4,8 @@
 // ou imagens de fora). Server Component: leitura do banco mockada.
 
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 const { mapaMock } = vi.hoisted(() => ({ mapaMock: vi.fn() }));
 vi.mock("@/lib/mapaPublicoRepositorio", () => ({ obterMapaPublico: mapaMock }));
@@ -32,7 +33,7 @@ describe("/mapa — página pública", () => {
     mapaMock.mockResolvedValue({ atualizadoEm: "2026-11-17T15:00:00.000Z", total: 0, municipios: [] });
     render(await MapaPage());
     expect(screen.getByText("Em breve, as primeiras prefeituras")).toBeTruthy();
-    expect(screen.getByRole("img", { name: "Mapa do Brasil" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Mapa do Brasil" })).toBeTruthy();
     expect(document.querySelectorAll("path")).toHaveLength(27);
     expect(screen.queryAllByTestId("ponto-municipio")).toHaveLength(0);
     expect(screen.queryByRole("heading", { name: "Lista de prefeituras atendidas" })).toBeNull();
@@ -43,9 +44,9 @@ describe("/mapa — página pública", () => {
     mapaMock.mockResolvedValue(COM_PONTOS);
     render(await MapaPage());
     expect(screen.getByText("2 prefeituras atendidas")).toBeTruthy();
-    expect(screen.getByRole("img", { name: "Mapa do Brasil com 2 prefeituras atendidas" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Mapa do Brasil com 2 prefeituras atendidas" })).toBeTruthy();
 
-    const pontos = screen.getAllByTestId("ponto-municipio");
+    const pontos = screen.getAllByRole("button");
     expect(pontos.map((p) => p.getAttribute("aria-label"))).toEqual(["Prefeitura de Curitiba — PR", "Prefeitura de São Paulo — SP"]);
     for (const p of pontos) {
       expect(p.getAttribute("tabindex")).toBe("0"); // tocar/teclado também mostra o nome
@@ -63,5 +64,61 @@ describe("/mapa — página pública", () => {
     mapaMock.mockResolvedValue({ ...COM_PONTOS, total: 1, municipios: COM_PONTOS.municipios.slice(0, 1) });
     render(await MapaPage());
     expect(screen.getByText("1 prefeitura atendida")).toBeTruthy();
+  });
+
+  describe("toque/clique e teclado (rodada 15-C)", () => {
+    const rotuloVisivel = () => screen.queryAllByTestId("rotulo-ponto").filter((r) => r.getAttribute("data-visivel") === "sim").map((r) => r.textContent);
+
+    it("tocar abre o rótulo; tocar em outro troca; tocar de novo no mesmo fecha; tocar fora fecha", async () => {
+      mapaMock.mockResolvedValue(COM_PONTOS);
+      const usuario = userEvent.setup();
+      render(await MapaPage());
+      const [curitiba, saoPaulo] = screen.getAllByRole("button");
+      expect(rotuloVisivel()).toEqual([]);
+
+      await usuario.click(curitiba);
+      expect(rotuloVisivel()).toEqual(["Prefeitura de Curitiba — PR"]);
+      expect(curitiba.getAttribute("aria-pressed")).toBe("true");
+
+      await usuario.click(saoPaulo);
+      expect(rotuloVisivel()).toEqual(["Prefeitura de São Paulo — SP"]);
+      expect(curitiba.getAttribute("aria-pressed")).toBe("false");
+
+      await usuario.click(saoPaulo);
+      expect(rotuloVisivel()).toEqual([]);
+
+      await usuario.click(curitiba);
+      await usuario.click(screen.getByRole("heading", { name: "Prefeituras que usam a NEXAIGEN" })); // fora de qualquer ponto
+      expect(rotuloVisivel()).toEqual([]);
+
+      await usuario.click(saoPaulo);
+      fireEvent.click(document.querySelector("path")!); // tocar no contorno de um estado também é "fora"
+      expect(rotuloVisivel()).toEqual([]);
+    });
+
+    it("teclado: Tab chega no ponto, Enter abre, Espaço troca pro outro, Esc fecha", async () => {
+      mapaMock.mockResolvedValue(COM_PONTOS);
+      const usuario = userEvent.setup();
+      render(await MapaPage());
+      await usuario.tab();
+      expect(document.activeElement?.getAttribute("aria-label")).toBe("Prefeitura de Curitiba — PR");
+      await usuario.keyboard("{Enter}");
+      expect(rotuloVisivel()).toEqual(["Prefeitura de Curitiba — PR"]);
+      await usuario.tab();
+      await usuario.keyboard(" ");
+      expect(rotuloVisivel()).toEqual(["Prefeitura de São Paulo — SP"]);
+      await usuario.keyboard("{Escape}");
+      expect(rotuloVisivel()).toEqual([]);
+    });
+
+    it("hover e foco continuam mostrando o rótulo (CSS group-hover/group-focus) mesmo sem nada aberto", async () => {
+      mapaMock.mockResolvedValue(COM_PONTOS);
+      render(await MapaPage());
+      for (const rotulo of screen.getAllByTestId("rotulo-ponto")) {
+        expect(rotulo.getAttribute("class")).toContain("group-hover:opacity-100");
+        expect(rotulo.getAttribute("class")).toContain("group-focus:opacity-100");
+      }
+      expect(screen.getByRole("region", { name: "Lista de prefeituras atendidas" })).toBeTruthy();
+    });
   });
 });
