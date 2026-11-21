@@ -17,7 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { NextRequest } from "next/server";
-import { bancoLocal, criarBancoTemporario, type BancoTemporario } from "@/testes/bancoTemporario";
+import { bancoLocal, criarBancoTemporario, encerrarBancoTemporario, type BancoTemporario } from "@/testes/bancoTemporario";
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL não configurada. Rode: docker compose up -d && npm run migrate && npm run test:integration");
@@ -78,10 +78,8 @@ describe.skipIf(!LOCAL)("lote do Território — dois lotes simultâneos (banco 
     codigos = pr.municipios.slice(0, RODADAS * POR_RODADA).map((m) => m.codigo_ibge);
   }, 60_000);
 
-  afterAll(async () => {
-    await (globalThis as { __nexaigenFinPgPool?: { end: () => Promise<void> } }).__nexaigenFinPgPool?.end();
-    await banco?.derrubar();
-  });
+  // Ordem (16-A4): fecha o pool da aplicação ANTES do drop — encerrarBancoTemporario faz e confere.
+  afterAll(() => encerrarBancoTemporario(banco), 60_000);
 
   it(`${RODADAS} rodadas: dois lotes ao mesmo tempo sobre os mesmos ${POR_RODADA} municípios — cada um vira lead UMA vez; o perdedor recebe os pulados, nunca 500`, async () => {
     let colisoesNaHora = 0; // pulados descobertos no INSERT (23505 + savepoint), não na leitura

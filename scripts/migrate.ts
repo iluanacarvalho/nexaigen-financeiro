@@ -17,6 +17,9 @@ async function main() {
   }
 
   const client = new Client({ connectionString: databaseUrl });
+  // Conexão derrubada pelo servidor (reinício, failover) emite "error": sem listener o Node lança uma exceção
+  // solta. Com ele, a migration em andamento falha pela própria consulta (rollback do arquivo) — rodada 16-A4.
+  client.on("error", (erro: Error & { code?: string }) => console.error(`✗ conexão com o banco caiu (${erro.code ?? "sem código"}): ${erro.message.slice(0, 200)}`));
   await client.connect();
   try {
     // A lógica (um arquivo por transação, registro em _migrations) mora em scripts/aplicarMigracoes.ts desde a rodada 15-C.

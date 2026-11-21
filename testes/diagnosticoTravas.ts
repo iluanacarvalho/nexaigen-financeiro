@@ -12,6 +12,7 @@ import { Client } from "pg";
 
 async function comConexao<T>(url: string, fn: (c: Client) => Promise<T>): Promise<T> {
   const c = new Client({ connectionString: url, application_name: "teste:diagnostico-travas" });
+  c.on("error", () => undefined); // conexão curta, só leitura de catálogo: queda vira erro da consulta, nunca exceção solta (16-A4)
   await c.connect();
   try {
     return await fn(c);

@@ -18,7 +18,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
-import { bancoLocal, criarBancoTemporario, type BancoTemporario } from "@/testes/bancoTemporario";
+import { bancoLocal, criarBancoTemporario, encerrarBancoTemporario, type BancoTemporario } from "@/testes/bancoTemporario";
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL não configurada. Rode: docker compose up -d && npm run migrate && npm run test:integration");
@@ -87,11 +87,8 @@ describe.skipIf(!LOCAL)("CRM — Postgres real (banco temporário)", () => {
     await conta("rh", "rh", "Rita RH");
   });
 
-  afterAll(async () => {
-    const pool = (globalThis as { __nexaigenFinPgPool?: { end: () => Promise<void> } }).__nexaigenFinPgPool;
-    await pool?.end();
-    await banco?.derrubar();
-  });
+  // Ordem (16-A4): fecha o pool da aplicação ANTES do drop — encerrarBancoTemporario faz e confere.
+  afterAll(() => encerrarBancoTemporario(banco), 60_000);
 
   describe("papéis", () => {
     it("financeiro e rh: 403 em TODAS as rotas do CRM (inclusive a consulta)", async () => {

@@ -19,10 +19,29 @@ export function bancoLocal(): boolean {
   return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(new URL(process.env.DATABASE_URL).hostname);
 }
 
+/**
+ * Todo Client "pg" deste helper tem listener de "error" (rodada 16-A4): uma
+ * conexão parada derrubada pelo servidor emite "error" — sem listener, vira
+ * exceção não capturada e derruba o processo do vitest.
+ */
+export function ouvirErroDeConexao(cliente: Client, rotulo: string): Client {
+  cliente.on("error", (erro: Error & { code?: string }) => {
+    console.error(`[teste] conexão "${rotulo}" caiu (${erro.code ?? "sem código"}): ${erro.message.slice(0, 200)}`);
+  });
+  return cliente;
+}
+
 export interface BancoTemporario {
   nome: string;
   url: string;
-  /** Derruba o banco (mesmo com conexões abertas). Idempotente. */
+  /**
+   * Derruba o banco. ANTES, confere que ninguém mais está conectado a ele
+   * (quem usou o banco tem de ter fechado pool e clientes — use
+   * encerrarBancoTemporario); espera até 3 s conexões que ainda estão
+   * fechando. Se sobrou alguém: derruba MESMO ASSIM (with force — não deixa
+   * banco pra trás) e LANÇA dizendo quem era (aplicação, estado, consulta) —
+   * o arquivo de teste falha apontando a conexão esquecida. Idempotente.
+   */
   derrubar: () => Promise<void>;
 }
 
@@ -30,7 +49,7 @@ export async function criarBancoTemporario(prefixo: string): Promise<BancoTempor
   if (!bancoLocal()) throw new Error("Banco temporário só com DATABASE_URL local.");
   const original = process.env.DATABASE_URL!;
   const nome = `financeiro_teste_${prefixo}_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
-  const admin = new Client({ connectionString: original });
+  const admin = ouvirErroDeConexao(new Client({ connectionString: original, application_name: "teste:banco-temporario" }), "admin do banco temporário");
   await admin.connect();
   await admin.query(`create database "${nome}"`);
   const url = new URL(original);
@@ -40,12 +59,34 @@ export async function criarBancoTemporario(prefixo: string): Promise<BancoTempor
   const derrubar = async () => {
     if (derrubado) return;
     derrubado = true;
-    await admin.query(`drop database if exists "${nome}" with (force)`);
-    await admin.end();
+    const conectados = async () =>
+      (
+        await admin.query<{ pid: number; aplicacao: string; estado: string | null; consulta: string | null }>(
+          `select pid, application_name as aplicacao, state as estado, left(regexp_replace(query, '\\s+', ' ', 'g'), 120) as consulta
+           from pg_stat_activity where datname = $1 and pid <> pg_backend_pid()`,
+          [nome]
+        )
+      ).rows;
+    let sobras = await conectados();
+    for (let i = 0; sobras.length > 0 && i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 100)); // conexão que acabou de fechar some em milissegundos
+      sobras = await conectados();
+    }
+    try {
+      await admin.query(`drop database if exists "${nome}" with (force)`);
+    } finally {
+      await admin.end();
+    }
+    if (sobras.length > 0) {
+      throw new Error(
+        `Banco temporário ${nome} ainda tinha ${sobras.length} conexão(ões) abertas na hora do drop — feche o pool e os clientes ANTES (encerrarBancoTemporario):\n` +
+          sobras.map((c) => `  pid ${c.pid} · ${c.aplicacao || "(sem nome)"} · ${c.estado ?? "—"} · ${c.consulta ?? ""}`).join("\n")
+      );
+    }
   };
 
   try {
-    const migrador = new Client({ connectionString: url.toString() });
+    const migrador = ouvirErroDeConexao(new Client({ connectionString: url.toString() }), "migrador do banco temporário");
     await migrador.connect();
     try {
       // Como PRODUÇÃO (rodada 16-A3): nenhum seed de desenvolvimento (nada de PR liberado sozinho) — cada teste libera o que precisa.
@@ -86,8 +127,20 @@ export async function confirmarBancoTemporario(banco: BancoTemporario | null, co
   if (atual !== banco.nome) throw new Error(`Fora do banco temporário (${atual}) — abortado antes de qualquer DDL.`);
 }
 
-/** Fecha o pool da aplicação (lib/db) e derruba o banco temporário. Idempotente. */
-export async function encerrarBancoTemporario(banco: BancoTemporario | null): Promise<void> {
-  await (globalThis as { __nexaigenFinPgPool?: { end: () => Promise<void>; ended?: boolean } }).__nexaigenFinPgPool?.end().catch(() => undefined);
+/**
+ * ENCERRA TUDO e só então derruba o banco (rodada 16-A4) — a ORDEM importa:
+ * `drop database ... with (force)` mata as conexões que ainda estiverem
+ * abertas, e uma conexão OCIOSA morta emite "error" (antes do listener do
+ * pool, isso virava "Unhandled Error: terminating connection due to
+ * administrator command" e o comando saía com código 1 mesmo com os testes
+ * passando). Ordem: (1) clientes "pg" próprios do arquivo, (2) o pool da
+ * aplicação (lib/db, em globalThis), (3) o drop — que ainda confere que não
+ * sobrou ninguém conectado e falha apontando quem, se sobrou.
+ */
+export async function encerrarBancoTemporario(banco: BancoTemporario | null, ...clientes: { end: () => Promise<void> }[]): Promise<void> {
+  await Promise.all(clientes.map((c) => c.end().catch(() => undefined)));
+  const global = globalThis as { __nexaigenFinPgPool?: { end: () => Promise<void> } };
+  await global.__nexaigenFinPgPool?.end().catch(() => undefined);
+  delete global.__nexaigenFinPgPool; // pool encerrado não serve mais pra nada
   await banco?.derrubar();
 }

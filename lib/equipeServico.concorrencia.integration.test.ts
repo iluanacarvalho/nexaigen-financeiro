@@ -20,7 +20,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Client } from "pg";
-import { bancoLocal, criarBancoTemporario, type BancoTemporario } from "@/testes/bancoTemporario";
+import { bancoLocal, criarBancoTemporario, encerrarBancoTemporario, ouvirErroDeConexao, type BancoTemporario } from "@/testes/bancoTemporario";
 import { alterarPapel, type ResultadoAlterarPapel } from "./equipeServico";
 import type { Executor } from "./db";
 
@@ -32,7 +32,7 @@ const BANCO_LOCAL = bancoLocal();
 const RODADAS = 20;
 
 describe.skipIf(!BANCO_LOCAL)("dois admins se rebaixando ao mesmo tempo — banco temporário isolado", () => {
-  const admin = new Client({ connectionString: process.env.DATABASE_URL });
+  const admin = ouvirErroDeConexao(new Client({ connectionString: process.env.DATABASE_URL }), "admin do teste");
   let banco: BancoTemporario | null = null;
   let conexoes: Client[] = [];
   let adminA: string;
@@ -41,7 +41,7 @@ describe.skipIf(!BANCO_LOCAL)("dois admins se rebaixando ao mesmo tempo — banc
   beforeAll(async () => {
     await admin.connect();
     banco = await criarBancoTemporario("concorrencia"); // TODAS as migrations do projeto, num banco novo
-    conexoes = [0, 1, 2].map(() => new Client({ connectionString: banco!.url }));
+    conexoes = [0, 1, 2].map((i) => ouvirErroDeConexao(new Client({ connectionString: banco!.url }), `conexão ${i}`));
     await Promise.all(conexoes.map((c) => c.connect()));
     const { rows } = await conexoes[0].query<{ id: string }>(
       `insert into equipe_nexaigen (nome, email, senha_hash, senha_temporaria, papel)
@@ -52,8 +52,8 @@ describe.skipIf(!BANCO_LOCAL)("dois admins se rebaixando ao mesmo tempo — banc
   }, 60_000);
 
   afterAll(async () => {
-    await Promise.all(conexoes.map((c) => c.end().catch(() => undefined)));
-    await banco?.derrubar();
+    // Ordem (16-A4): as 3 conexões do banco temporário fecham ANTES do drop (o helper fecha e confere); o admin é do banco compartilhado.
+    await encerrarBancoTemporario(banco, ...conexoes);
     await admin.end();
   }, 60_000);
 

@@ -73,12 +73,48 @@ declare global {
   var __nexaigenFinPgPool: Pool | undefined;
 }
 
+/**
+ * Conexão OCIOSA do pool que caiu (rodada 16-A4). Com o driver "pg", quando o
+ * servidor derruba uma conexão parada no pool — reinício do Postgres,
+ * failover/manutenção do Railway, queda de rede, "terminating connection due
+ * to administrator command" (57P01) —, o pool emite "error". SEM listener, o
+ * Node trata como exceção não capturada e DERRUBA O PROCESSO. Com ele: uma
+ * linha curta no log e segue; o pool já descartou aquele cliente e abre outro
+ * na próxima consulta. (Erro numa consulta EM ANDAMENTO não passa por aqui:
+ * rejeita a promessa da consulta, como sempre.)
+ *
+ * Só o código e a mensagem do Postgres/rede — NUNCA a connection string nem
+ * dado de consulta; qualquer URL de banco que aparecer na mensagem é ocultada.
+ */
+export function registrarErroDeConexaoOciosa(erro: Error & { code?: string }): void {
+  const mensagem = String(erro?.message ?? erro)
+    .replace(/postgres(ql)?:\/\/\S+/gi, "[url do banco ocultada]")
+    .slice(0, 200);
+  console.error(`[db] conexão ociosa do pool caiu (${erro?.code ?? "sem código"}): ${mensagem} — descartada; a próxima consulta abre outra.`);
+}
+
 function criarPool(): Pool {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
     throw new Error("DATABASE_URL não configurada.");
   }
-  return new Pool({ connectionString, max: 10 });
+  const novo = new Pool({
+    connectionString,
+    max: 10,
+    // Conexão parada há 10 s é fechada (o padrão do pg, agora explícito): menos conexões ociosas pra um
+    // reinício/failover derrubar, e o pool não fica segurando conexão que o proxy do Railway já fechou.
+    idleTimeoutMillis: 10_000,
+    // Abrir conexão nova espera no máximo 15 s (o padrão é ESPERAR PRA SEMPRE): com o banco fora do ar a
+    // requisição falha com erro claro em vez de pendurar. Folgado de propósito — com a máquina sobrecarregada
+    // (load ~200 medido nos testes) abrir conexão leva bem mais que o normal.
+    connectionTimeoutMillis: 15_000,
+    // Keepalive de TCP: conexão "morta" por queda de rede (sem aviso do servidor) é descoberta pelo
+    // sistema operacional em vez de ficar parecendo viva até a próxima consulta.
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10_000
+  });
+  novo.on("error", registrarErroDeConexaoOciosa);
+  return novo;
 }
 
 // Cacheia o pool em globalThis sempre — evita vazar conexões em

@@ -753,3 +753,15 @@ Um ex-cliente com lead aberto aparece como **ex-cliente** (precedência 1); a et
 - **Admin:** vê "N leads sem município vinculado", com link para a lista filtrada (`sem_municipio=true`).
 - **Entidades do lead** (etiquetas, filtro e exportação) só pelo código: lead sem código não mostra etiqueta, mostra "vincular município".
 
+## 30. Pool de conexões resiliente e saída limpa da suíte (rodada 16-A4)
+
+- **Produção:** o pool do Postgres (`lib/db.ts`) agora tem tratamento de erro. Antes, uma conexão **parada** derrubada pelo servidor (reinício do Postgres, failover ou manutenção do Railway, queda de rede) emitia `error` sem ninguém ouvindo e **derrubava o processo do servidor**. Agora vira uma linha curta no log (código e mensagem, nunca a URL do banco), e a próxima consulta abre uma conexão nova.
+- **Opções do pool, explícitas e comentadas:**
+  - conexão parada é fechada em 10 s;
+  - abrir conexão nova espera no máximo 15 s (antes esperava para sempre);
+  - keepalive de TCP ligado.
+- **Prova:** `lib/db.pool.integration.test.ts` roda um processo filho com o pool real, faz o servidor matar a conexão parada (`pg_terminate_backend`) e confere que o processo **não cai** e que a consulta seguinte funciona. Sem o tratamento, o filho cai (código de saída 1) e o teste falha.
+- **Os outros clientes de longa duração também ouvem erro:** o migrador (`npm run migrate`), o admin do banco temporário e a trava da suíte.
+- **Suíte de integração:** os testes com banco temporário fecham o pool e as conexões **antes** de apagar o banco (`encerrarBancoTemporario`). O apagamento ainda confere se sobrou alguém conectado e, se sobrou, falha dizendo quem. Antes, uma conexão parada morta pelo `DROP … WITH (FORCE)` aparecia como "Unhandled Errors" e o comando saía com **código 1 mesmo com todos os testes passando**.
+- **Regra:** sempre conferir o código de saída do comando, não só a contagem de testes.
+

@@ -34,9 +34,12 @@ jobs:
       JWT_SECRET: ci-apenas-nao-usar-em-producao-${{ github.run_id }}
 
     steps:
-      - uses: actions/checkout@v4
+      # Ações na major v7 (rodada 16-A4): as v4 rodavam no Node 20 (descontinuado nos runners; vinham sendo
+      # forçadas a rodar no Node 24). v7 roda NATIVAMENTE em node24 (action.yml `runs.using: node24`) —
+      # checkout v7.0.1, setup-node v7.1.0. Isto é o runtime das AÇÕES; o Node do PROJETO continua 22 (abaixo).
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm

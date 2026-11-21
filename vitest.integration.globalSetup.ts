@@ -17,6 +17,8 @@ const CHAVE = "nexaigen-financeiro:test:integration";
 export default async function setup(): Promise<() => Promise<void>> {
   if (!process.env.DATABASE_URL) return async () => undefined; // os arquivos já explicam a falta de DATABASE_URL
   const conexao = new Client({ connectionString: process.env.DATABASE_URL, application_name: "teste:trava-da-suite" });
+  // Fica aberta a suíte inteira: se o servidor derrubar esta conexão parada, sem listener o processo do vitest cairia (rodada 16-A4).
+  conexao.on("error", (erro: Error & { code?: string }) => console.error(`[teste] conexão da trava da suíte caiu (${erro.code ?? "sem código"}): ${erro.message.slice(0, 200)}`));
   await conexao.connect();
   const [{ obtida }] = (await conexao.query<{ obtida: boolean }>("select pg_try_advisory_lock(hashtext($1)) as obtida", [CHAVE])).rows;
   if (!obtida) {

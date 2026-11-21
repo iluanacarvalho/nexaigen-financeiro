@@ -21,7 +21,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { NextRequest } from "next/server";
-import { bancoLocal, criarBancoTemporario, type BancoTemporario } from "@/testes/bancoTemporario";
+import { bancoLocal, criarBancoTemporario, encerrarBancoTemporario, type BancoTemporario } from "@/testes/bancoTemporario";
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL não configurada. Rode: docker compose up -d && npm run migrate && npm run test:integration");
@@ -139,10 +139,8 @@ describe.skipIf(!LOCAL)("Território — Postgres real (banco temporário)", () 
     ]);
   }, TEMPO);
 
-  afterAll(async () => {
-    await (globalThis as { __nexaigenFinPgPool?: { end: () => Promise<void> } }).__nexaigenFinPgPool?.end();
-    await banco?.derrubar();
-  });
+  // Ordem (16-A4): fecha o pool da aplicação ANTES do drop — encerrarBancoTemporario faz e confere.
+  afterAll(() => encerrarBancoTemporario(banco), 60_000);
 
   it("importar municípios é idempotente: 399 do PR na 1ª vez; na 2ª, nada muda; nunca apaga", async () => {
     expect(primeiraImportacao).toEqual({ inseridos: 399, atualizados: 0, inalterados: 0, totalDaUf: 399 });
