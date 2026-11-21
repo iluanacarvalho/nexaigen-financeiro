@@ -22,6 +22,7 @@ vi.mock("./alertaErroSistema", () => ({ alertarErroSistema: vi.fn() }));
 
 import { NextRequest } from "next/server";
 import { query, withTransaction } from "./db";
+import { confirmarBancoTemporario, encerrarBancoTemporario } from "@/testes/bancoTemporario";
 import { gerarAccessToken, NOME_COOKIE_ACCESS } from "./auth";
 import { autorizarDivulgacao, definirCodigoIbge, revogarDivulgacao } from "./divulgacaoServico";
 import { registrarCancelamento, retratarCancelamento } from "./cancelamentoServico";
@@ -32,9 +33,11 @@ import { hojeEmSaoPaulo } from "./painelFinanceiro";
 import { PUT as DIVULGACAO } from "@/app/api/clientes/[id]/divulgacao/route";
 import { GET as MAPA_PUBLICO } from "@/app/api/publico/mapa-clientes/route";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL não configurada. Rode: docker compose up -d && npm run migrate && npm run test:integration");
-}
+// Este arquivo faz DDL (migration aplicada sobre estado antigo) → roda INTEIRO num banco TEMPORÁRIO (rodada 16-A3),
+// nunca no compartilhado: o DDL pega trava exclusiva e ficava esperando outras conexões. vi.hoisted roda antes dos imports.
+const banco = await vi.hoisted(async () => (await import("@/testes/bancoTemporario")).trocarParaBancoTemporario("mapa"));
+beforeAll(() => confirmarBancoTemporario(banco, (sql) => query(sql)));
+afterAll(() => encerrarBancoTemporario(banco));
 
 const SQL_0013 = readFileSync(join(process.cwd(), "db/migrations/0013_cliente_mapa_publico.sql"), "utf-8");
 const AGORA = new Date("2026-11-17T15:00:00Z");
@@ -98,7 +101,7 @@ async function autorizado(c: PoolClient, nome: string, extra: { status?: string;
 
 const nomesNoMapa = async (c: PoolClient) => (await obterMapaPublico(AGORA, c)).municipios.map((m) => m.nome);
 
-describe("migration 0013 — Postgres real", () => {
+describe.skipIf(!banco)("migration 0013 — Postgres real (banco temporário)", () => {
   it("aplicada 2× sobre o estado pré-0013: ninguém autorizado; CHECK de evento antigo trocado pelo nomeado; requisitos garantidos", async () => {
     await emTransacaoDesfeita(async (c) => {
       await c.query(`alter table cliente_prefeitura drop column codigo_ibge, drop column latitude, drop column longitude, drop column autorizacao_divulgacao, drop column autorizacao_divulgacao_em, drop column autorizacao_divulgacao_por`);

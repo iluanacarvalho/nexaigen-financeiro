@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   const agora = new Date();
   const hoje = hojeEmSaoPaulo(agora);
   const { leads } = await listarLeads(
-    { etapa: f.etapa, vendedorId: f.vendedor_id, uf: f.uf, origem: f.origem, busca: f.busca, parados: f.parados, vencidas: f.vencidas, planos: f.plano, ignorarSugerido: f.ignorar_sugerido, entidadeId: f.entidade, ordenar: f.ordenar, direcao: f.direcao, pagina: 1, porPagina: LIMITE_EXPORTACAO },
+    { etapa: f.etapa, vendedorId: f.vendedor_id, uf: f.uf, origem: f.origem, busca: f.busca, parados: f.parados, vencidas: f.vencidas, planos: f.plano, ignorarSugerido: f.ignorar_sugerido, entidadeId: f.entidade, semMunicipio: f.sem_municipio, ordenar: f.ordenar, direcao: f.direcao, pagina: 1, porPagina: LIMITE_EXPORTACAO },
     escopoDe(contexto!),
     hoje
   );

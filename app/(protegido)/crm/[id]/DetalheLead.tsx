@@ -5,6 +5,9 @@
 // contato" (tipo + texto, com o aviso de LGPD), mudar etapa ("Mover
 // para…"), troca de vendedor (só admin) e a linha do tempo do histórico
 // (mais recente primeiro). Toda ação recarrega os dados do servidor.
+// Rodada 16-A3: em estado liberado no Território o município da edição é
+// escolhido na base; lead SEM código IBGE mostra "Vincular ao município"
+// (etiquetas de entidade só com município vinculado).
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -18,6 +21,7 @@ import Selos from "../Selos";
 import EtiquetasEntidades from "../EtiquetasEntidades";
 import { SeloPlano } from "../territorio/SelosTerritorio";
 import type { EntidadeEtiqueta } from "@/lib/territorio";
+import EscolherMunicipio, { type MunicipioEscolhido } from "../EscolherMunicipio";
 
 async function enviar(url: string, metodo: string, corpo: object): Promise<string | null> {
   const res = await fetch(url, { method: metodo, headers: { "content-type": "application/json" }, body: JSON.stringify(corpo) });
@@ -107,12 +111,46 @@ export function LinhaDoTempo({ historico }: { historico: InteracaoLead[] }) {
   );
 }
 
+export function VincularMunicipio({ lead, onVinculado }: { lead: Pick<LeadListado, "id" | "uf" | "versao" | "municipio_nome">; onVinculado: () => void }) {
+  const [escolhido, setEscolhido] = useState<MunicipioEscolhido | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  return (
+    <section id="vincular" aria-label="Vincular ao município" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+      <p className="font-medium text-amber-900">Este lead não está vinculado a um município da base — sem isso, as entidades (associações, consórcios) do município não aparecem.</p>
+      <div className="mt-2 max-w-md">
+        <EscolherMunicipio uf={lead.uf} escolhido={escolhido} onEscolher={setEscolhido} rotulo={`Município de "${lead.municipio_nome}"`} />
+      </div>
+      <button
+        type="button"
+        disabled={!escolhido || enviando}
+        onClick={async () => {
+          setEnviando(true);
+          const falha = await enviar(`/api/leads/${lead.id}/municipio`, "POST", { versao: lead.versao, codigo_ibge: escolhido!.codigo_ibge });
+          setEnviando(false);
+          setErro(falha);
+          if (!falha) onVinculado();
+        }}
+        className="mt-2 rounded bg-navy px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+      >
+        Vincular ao município
+      </button>
+      {erro && (
+        <p role="alert" className="mt-1 text-xs text-red-700">
+          {erro}
+        </p>
+      )}
+    </section>
+  );
+}
+
 export default function DetalheLead({
   lead,
   historico,
   admin,
   vendedores,
-  entidades = []
+  entidades = [],
+  ufsLiberadas = []
 }: {
   lead: LeadListado;
   historico: InteracaoLead[];
@@ -120,6 +158,8 @@ export default function DetalheLead({
   vendedores: { id: string; nome: string }[];
   /** Entidades (associações/consórcios) do município — rodada 16-A2. */
   entidades?: EntidadeEtiqueta[];
+  /** UFs liberadas no Território: nelas o município vem da base (16-A3). */
+  ufsLiberadas?: string[];
 }) {
   const router = useRouter();
   const recarregar = () => router.refresh();
@@ -128,6 +168,10 @@ export default function DetalheLead({
   const [acaoData, setAcaoData] = useState(lead.proxima_acao_em ?? "");
   const [acaoTexto, setAcaoTexto] = useState(lead.proxima_acao_descricao ?? "");
   const [novoVendedor, setNovoVendedor] = useState(lead.vendedor_id);
+  const [ufEdicao, setUfEdicao] = useState(lead.uf);
+  const municipioAtual: MunicipioEscolhido | null = lead.codigo_ibge ? { codigo_ibge: lead.codigo_ibge, nome: lead.municipio_nome, uf: lead.uf, populacao: lead.populacao } : null;
+  const [escolhidoEdicao, setEscolhidoEdicao] = useState<MunicipioEscolhido | null>(municipioAtual);
+  const edicaoDaBase = ufsLiberadas.includes(ufEdicao);
 
   async function salvarCampos(campos: object) {
     const falha = await enviar(`/api/leads/${lead.id}`, "PATCH", { versao: lead.versao, ...campos });
@@ -154,8 +198,15 @@ export default function DetalheLead({
         </span>
       </div>
       <div className="mb-4">
-        <EtiquetasEntidades entidades={entidades} />
+        {lead.codigo_ibge ? (
+          <EtiquetasEntidades entidades={entidades} />
+        ) : (
+          <p className="text-xs text-amber-800" data-testid="sem-municipio">
+            Sem município vinculado — {ufsLiberadas.includes(lead.uf) ? <a href="#vincular" className="underline">vincular município</a> : "a base deste estado ainda não está liberada"}.
+          </p>
+        )}
       </div>
+      {!lead.codigo_ibge && ufsLiberadas.includes(lead.uf) && <VincularMunicipio lead={lead} onVinculado={recarregar} />}
       {erro && (
         <p role="alert" className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">
           {erro}
@@ -178,11 +229,20 @@ export default function DetalheLead({
                 e.preventDefault();
                 const fd = new FormData(e.currentTarget);
                 const t = (k: string) => String(fd.get(k) ?? "").trim();
+                // Estado liberado: o município vem da base (escolhido); sem escolha, o município não muda.
+                const municipio = edicaoDaBase
+                  ? escolhidoEdicao
+                    ? { municipio_nome: escolhidoEdicao.nome, uf: escolhidoEdicao.uf, codigo_ibge: escolhidoEdicao.codigo_ibge, populacao: lead.populacao ?? escolhidoEdicao.populacao }
+                    : ufEdicao === lead.uf
+                      ? {}
+                      : null
+                  : { municipio_nome: t("municipio_nome"), uf: ufEdicao, codigo_ibge: t("codigo_ibge") || null, populacao: t("populacao") === "" ? null : Number(t("populacao")) };
+                if (municipio === null) {
+                  setErro("Escolha o município na base (estado liberado no Território).");
+                  return;
+                }
                 salvarCampos({
-                  municipio_nome: t("municipio_nome"),
-                  uf: t("uf"),
-                  codigo_ibge: t("codigo_ibge") || null,
-                  populacao: t("populacao") === "" ? null : Number(t("populacao")),
+                  ...municipio,
                   plano_interesse: t("plano_interesse") || null,
                   origem: t("origem"),
                   valor_mensal_estimado: t("valor") || null,
@@ -193,9 +253,43 @@ export default function DetalheLead({
                 });
               }}
             >
+              <label className="block">
+                <span className="text-slate-600">UF</span>
+                <select
+                  name="uf"
+                  value={ufEdicao}
+                  onChange={(e) => {
+                    setUfEdicao(e.target.value);
+                    setEscolhidoEdicao(e.target.value === lead.uf ? municipioAtual : null);
+                  }}
+                  className="mt-0.5 w-full rounded border border-slate-300 px-2 py-1"
+                >
+                  {UFS.map((uf) => (
+                    <option key={uf} value={uf}>
+                      {uf}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {edicaoDaBase ? (
+                <EscolherMunicipio uf={ufEdicao} escolhido={escolhidoEdicao} onEscolher={setEscolhidoEdicao} />
+              ) : (
+                <>
+                  <label className="block">
+                    <span className="text-slate-600">Município</span>
+                    <input name="municipio_nome" defaultValue={lead.municipio_nome} className="mt-0.5 w-full rounded border border-slate-300 px-2 py-1" />
+                  </label>
+                  <label className="block">
+                    <span className="text-slate-600">Código IBGE</span>
+                    <input name="codigo_ibge" defaultValue={lead.codigo_ibge ?? ""} className="mt-0.5 w-full rounded border border-slate-300 px-2 py-1" />
+                  </label>
+                  <label className="block">
+                    <span className="text-slate-600">População</span>
+                    <input name="populacao" type="number" min={0} defaultValue={lead.populacao ?? ""} className="mt-0.5 w-full rounded border border-slate-300 px-2 py-1" />
+                  </label>
+                </>
+              )}
               {[
-                ["Município", "municipio_nome", lead.municipio_nome],
-                ["Código IBGE", "codigo_ibge", lead.codigo_ibge ?? ""],
                 ["Valor mensal estimado (R$)", "valor", lead.valor_mensal_estimado_centavos === null ? "" : centavosParaTextoCampo(lead.valor_mensal_estimado_centavos)],
                 ["Contato", "contato_nome", lead.contato_nome ?? ""],
                 ["Cargo", "contato_cargo", lead.contato_cargo ?? ""],
@@ -207,20 +301,6 @@ export default function DetalheLead({
                   <input name={nome} defaultValue={valor} className="mt-0.5 w-full rounded border border-slate-300 px-2 py-1" />
                 </label>
               ))}
-              <label className="block">
-                <span className="text-slate-600">UF</span>
-                <select name="uf" defaultValue={lead.uf} className="mt-0.5 w-full rounded border border-slate-300 px-2 py-1">
-                  {UFS.map((uf) => (
-                    <option key={uf} value={uf}>
-                      {uf}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-slate-600">População</span>
-                <input name="populacao" type="number" min={0} defaultValue={lead.populacao ?? ""} className="mt-0.5 w-full rounded border border-slate-300 px-2 py-1" />
-              </label>
               <label className="block">
                 <span className="text-slate-600">Plano de interesse</span>
                 <select name="plano_interesse" defaultValue={lead.plano_interesse ?? ""} className="mt-0.5 w-full rounded border border-slate-300 px-2 py-1">

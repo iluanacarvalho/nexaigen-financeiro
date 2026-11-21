@@ -17,6 +17,10 @@ if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL não configurada. Rode: docker compose up -d && npm run migrate && npm run test:integration");
 }
 
+// Timeout EXPLÍCITO (regra da 16-A3: teste com bcrypt): cada cenário faz até ~11 verificações bcrypt de custo 12 — com a
+// máquina sobrecarregada (load ~130 medido) isso passou de 30 s. 120 s cobre a carga sem esconder travamento de verdade.
+const TEMPO_BCRYPT = 120_000;
+
 const SENHA = "senha-correta-123";
 const sufixo = randomUUID().slice(0, 8);
 const contas: { id: string; email: string; tokenVersion: number }[] = [];
@@ -52,7 +56,7 @@ function login(email: string, senha: string, ip: string) {
 
 beforeAll(async () => {
   await criarConta("bloqueio");
-});
+}, TEMPO_BCRYPT);
 
 // Janela fixa de 15 min: nunca começar um cenário a menos de 20 s da virada (ver testes/janelaRateLimit.ts; cada cenário leva poucos segundos, e a espera cabe no hookTimeout de 30 s).
 beforeEach(() => aguardarLongeDaViradaDaJanela(15 * 60, 20));
@@ -64,7 +68,7 @@ afterAll(async () => {
   await query(`delete from equipe_nexaigen where id = any($1::uuid[])`, [contas.map((c) => c.id)]);
 });
 
-describe("POST /api/auth/login — 5 falhas em 15 min", () => {
+describe("POST /api/auth/login — 5 falhas em 15 min", { timeout: TEMPO_BCRYPT }, () => {
   it("5 senhas erradas → 401 genérico; a 6ª tentativa → 429 com Retry-After, mesmo com a senha CERTA", async () => {
     const [conta] = contas;
     const ip = novoIp();
@@ -84,7 +88,10 @@ describe("POST /api/auth/login — 5 falhas em 15 min", () => {
   });
 
   it("o bloqueio é por E-MAIL: o mesmo e-mail continua bloqueado vindo de outro IP", async () => {
-    const [conta] = contas;
+    // Conta PRÓPRIA (rodada 16-A3): antes dependia do bloqueio deixado pelo teste anterior — se ele estourasse o tempo sob carga, este falhava em cascata.
+    const conta = await criarConta("outro-ip");
+    const ip = novoIp();
+    for (let i = 1; i <= 5; i++) expect((await login(conta.email, `errada-${i}`, ip)).status).toBe(401);
     expect((await login(conta.email.toUpperCase(), SENHA, novoIp())).status).toBe(429); // normalizado: mesma conta
   });
 
@@ -140,7 +147,7 @@ describe("POST /api/auth/login — 5 falhas em 15 min", () => {
   });
 });
 
-describe("POST /api/auth/trocar-senha — 10 tentativas por conta em 15 min", () => {
+describe("POST /api/auth/trocar-senha — 10 tentativas por conta em 15 min", { timeout: TEMPO_BCRYPT }, () => {
   it("10 tentativas com senha atual errada → 400; a 11ª → 429", async () => {
     const conta = await criarConta("trocar");
     const token = await gerarAccessToken({ equipeId: conta.id, nome: "Teste trocar", precisaTrocarSenha: false, tokenVersion: conta.tokenVersion });

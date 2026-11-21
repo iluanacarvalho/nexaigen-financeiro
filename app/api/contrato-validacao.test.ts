@@ -40,7 +40,7 @@ const { queryMock, withTransactionMock, trocarSenhaMock, servicoNotas, servicoCa
     consultarLeads: vi.fn()
   }
 }));
-vi.mock("@/lib/db", () => ({ query: queryMock, withTransaction: withTransactionMock }));
+vi.mock("@/lib/db", () => ({ query: queryMock, withTransaction: withTransactionMock, consultasJuntas: (_e: unknown, tarefas: (() => Promise<unknown>)[]) => Promise.all(tarefas.map((t) => t())) }));
 vi.mock("@/lib/rateLimit", async (original) => ({
   ...(await original<typeof import("@/lib/rateLimit")>()),
   registrarTentativa: vi.fn(async () => ({ permitido: true, contagem: 1, retryAfterSegundos: 60 })),

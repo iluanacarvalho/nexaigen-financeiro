@@ -114,6 +114,12 @@ export const EtapaSchema = z.discriminatedUnion(
   { error: "acao inválida — use mover, perder ou reabrir." }
 );
 
+/** Vincular lead antigo ao município da base (rodada 16-A3). */
+export const VincularMunicipioSchema = z.strictObject({
+  versao: z.number().int().min(1, { error: "Envie a versão do lead que você leu." }),
+  codigo_ibge: z.string().trim().refine(codigoIbgeValido, { error: "O código IBGE do município tem exatamente 7 dígitos." })
+});
+
 export const VendedorSchema = z.strictObject({ vendedor_id: z.uuid({ error: "vendedor_id inválido." }) });
 export const DecisaoPedidoSchema = z.strictObject({ decisao: z.enum(["aprovado", "negado"], { error: "decisao inválida — use aprovado ou negado." }) });
 
@@ -148,6 +154,8 @@ export const FiltrosLeadsSchema = z.strictObject({
     .optional(),
   ignorar_sugerido: booleanoQuery.optional(),
   entidade: z.uuid({ error: "entidade inválida." }).optional(),
+  /** Só leads SEM município vinculado (sem código IBGE) — rodada 16-A3. */
+  sem_municipio: booleanoQuery.optional(),
   ordenar: z.enum(ORDENACOES_LEAD).default("atualizado"),
   direcao: z.enum(["asc", "desc"]).default("desc"),
   ...paginacao

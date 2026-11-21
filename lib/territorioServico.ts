@@ -90,7 +90,8 @@ export async function criarLeadsEmLote(
   return withTransaction(async (c) => {
     if (!(await vendedorValido(c, vendedor))) return { ok: false as const, motivo: "dados_invalidos" as const, campo: "vendedor_id", erro: MENSAGEM_VENDEDOR_INVALIDO };
     const plano = await planejar(alvo, autor, hoje, c);
-    if (plano.linhas.length === 0) return { ok: false as const, motivo: "conflito" as const, erro: "Nenhuma prefeitura para criar lead — todas foram puladas (veja a prévia)." };
+    // Nada a criar (tudo já é cliente/lead — inclusive porque outra pessoa criou um segundo antes): não é erro; volta a lista de puladas.
+    if (plano.linhas.length === 0) return { ok: true as const, criados: [], pulados: plano.pulados };
     if (plano.linhas.length > LIMITE_LOTE) return { ok: false as const, motivo: "dados_invalidos" as const, erro: `No máximo ${LIMITE_LOTE} leads por lote — refine os filtros.` };
     const criados: (ItemLote & { lead_id: string })[] = [];
     const pulados = [...plano.pulados];

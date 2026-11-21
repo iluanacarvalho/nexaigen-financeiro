@@ -34,11 +34,12 @@ interface Filtros {
   planos: string[];
   ignorar_sugerido: boolean;
   entidade: string;
+  sem_municipio: boolean;
   ordenar: string;
   direcao: "asc" | "desc";
 }
 
-const INICIAIS: Filtros = { etapa: "", uf: "", origem: "", busca: "", vendedor_id: "", parados: false, vencidas: false, planos: [], ignorar_sugerido: false, entidade: "", ordenar: "atualizado", direcao: "desc" };
+const INICIAIS: Filtros = { etapa: "", uf: "", origem: "", busca: "", vendedor_id: "", parados: false, vencidas: false, planos: [], ignorar_sugerido: false, entidade: "", sem_municipio: false, ordenar: "atualizado", direcao: "desc" };
 
 /** Query da URL (link compartilhável / visão salva) → filtros. Valor estranho volta ao padrão (a API validaria de novo). */
 export function filtrosDaQuery(query: string): Filtros {
@@ -58,6 +59,7 @@ export function filtrosDaQuery(query: string): Filtros {
       .filter((x) => (PLANOS_FILTRO as readonly string[]).includes(x)),
     ignorar_sugerido: texto("ignorar_sugerido") === "true",
     entidade: texto("entidade"),
+    sem_municipio: texto("sem_municipio") === "true",
     ordenar: texto("ordenar") || INICIAIS.ordenar,
     direcao: texto("direcao") === "asc" ? "asc" : "desc"
   };
@@ -75,6 +77,7 @@ export function montarQueryLeads(f: Filtros, pagina?: number): string {
   if (f.vencidas) p.set("vencidas", "true");
   if (f.planos.length) p.set("plano", f.planos.join(","));
   if (f.ignorar_sugerido) p.set("ignorar_sugerido", "true");
+  if (f.sem_municipio) p.set("sem_municipio", "true");
   return p.toString();
 }
 
@@ -208,6 +211,10 @@ export default function ListaLeads({
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={filtros.vencidas} onChange={(e) => mudar({ vencidas: e.target.checked })} />
           <span>Só ação vencida</span>
+        </label>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={filtros.sem_municipio} onChange={(e) => mudar({ sem_municipio: e.target.checked })} />
+          <span>Só sem município vinculado</span>
         </label>
         <fieldset className="sm:col-span-2">
           <legend className="text-slate-600">Plano</legend>

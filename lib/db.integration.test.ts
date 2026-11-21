@@ -9,7 +9,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { query } from "./db";
+import { consultasJuntas, query, withTransaction } from "./db";
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL não configurada. Rode: docker compose up -d && npm run migrate && npm run test:integration");
@@ -152,4 +152,27 @@ describe("colunas arquivo_pdf_chave/arquivo_pdf_nome (0002_nota_fiscal_arquivo_p
 
     await query(`delete from nota_fiscal where id = $1`, [notaId]);
   });
+});
+
+describe("consultasJuntas — leituras juntas sem empilhar consultas numa conexão de transação (rodada 16-A3)", () => {
+  it("no pool: em paralelo; num client de transação: em sequência, SEM o aviso do pg ('already executing a query'); o Promise.all antigo dispara o aviso", async () => {
+    const avisos: string[] = [];
+    const ouvir = (w: Error) => avisos.push(w.message);
+    process.on("warning", ouvir);
+    try {
+      expect(await consultasJuntas(undefined, [() => query<{ n: number }>("select 1 as n"), () => query<{ t: string }>("select 'a' as t")])).toEqual([[{ n: 1 }], [{ t: "a" }]]);
+      const dentro = await withTransaction((c) =>
+        consultasJuntas(c, [() => query<{ n: number }>("select pg_sleep(0.05), 1 as n", [], c), () => query<{ n: number }>("select 2 as n", [], c), () => query<{ n: number }>("select 3 as n", [], c)])
+      );
+      expect(dentro.map((r) => r[0].n)).toEqual([1, 2, 3]);
+      await new Promise((r) => setImmediate(r));
+      expect(avisos.filter((a) => /already executing a query/.test(a))).toEqual([]);
+      // Contraprova: o jeito antigo (Promise.all no MESMO client) dispara o aviso — o pg avisa quando já há consulta ESPERANDO na fila (3ª simultânea).
+      await withTransaction((c) => Promise.all([query("select pg_sleep(0.05)", [], c), query("select 1", [], c), query("select 2", [], c)]));
+      await new Promise((r) => setImmediate(r));
+      expect(avisos.some((a) => /already executing a query/.test(a))).toBe(true);
+    } finally {
+      process.off("warning", ouvir);
+    }
+  }, 30_000);
 });

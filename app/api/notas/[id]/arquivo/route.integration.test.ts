@@ -17,13 +17,16 @@ vi.mock("@/lib/alertaErroSistema", () => ({ alertarErroSistema: vi.fn() }));
 import { NextRequest } from "next/server";
 import { bucketEmMemoria } from "@/testes/bucketEmMemoria";
 import { query, withTransaction } from "@/lib/db";
+import { confirmarBancoTemporario, encerrarBancoTemporario } from "@/testes/bancoTemporario";
 import { gerarAccessToken, NOME_COOKIE_ACCESS } from "@/lib/auth";
 import { GET, POST } from "./route";
 import { GET as GET_VERSOES } from "./versoes/route";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL não configurada. Rode: docker compose up -d && npm run migrate && npm run test:integration");
-}
+// Este arquivo faz DDL (migration aplicada sobre estado antigo) → roda INTEIRO num banco TEMPORÁRIO (rodada 16-A3),
+// nunca no compartilhado: o DDL pega trava exclusiva e ficava esperando outras conexões. vi.hoisted roda antes dos imports.
+const banco = await vi.hoisted(async () => (await import("@/testes/bancoTemporario")).trocarParaBancoTemporario("pdfnota"));
+beforeAll(() => confirmarBancoTemporario(banco, (sql) => query(sql)));
+afterAll(() => encerrarBancoTemporario(banco));
 
 const sufixo = randomUUID().slice(0, 8);
 let equipeId: string;
@@ -201,7 +204,7 @@ describe("versões do PDF — fluxo completo em Postgres real", () => {
   });
 });
 
-describe("migration 0005 — backfill de nota legada", () => {
+describe.skipIf(!banco)("migration 0005 — backfill de nota legada (banco temporário)", () => {
   it("nota com PDF anterior ao histórico vira v1 ao aplicar a migration (e reaplicar não duplica)", async () => {
     const sql = readFileSync(join(process.cwd(), "db/migrations/0005_nota_fiscal_arquivo_versao.sql"), "utf-8");
     class Desfazer extends Error {}

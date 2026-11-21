@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
   if (f.vendedor_id && !escopo.admin) return NextResponse.json({ erro: "Só administrador filtra por vendedor." }, { status: 403 });
 
   const { leads, total } = await listarLeads(
-    { etapa: f.etapa, vendedorId: f.vendedor_id, uf: f.uf, origem: f.origem, busca: f.busca, parados: f.parados, vencidas: f.vencidas, planos: f.plano, ignorarSugerido: f.ignorar_sugerido, entidadeId: f.entidade, ordenar: f.ordenar, direcao: f.direcao, pagina: f.pagina, porPagina: f.por_pagina },
+    { etapa: f.etapa, vendedorId: f.vendedor_id, uf: f.uf, origem: f.origem, busca: f.busca, parados: f.parados, vencidas: f.vencidas, planos: f.plano, ignorarSugerido: f.ignorar_sugerido, entidadeId: f.entidade, semMunicipio: f.sem_municipio, ordenar: f.ordenar, direcao: f.direcao, pagina: f.pagina, porPagina: f.por_pagina },
     escopo,
     hojeEmSaoPaulo(new Date())
   );

@@ -19,6 +19,7 @@ vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => (cookieDaPag
 
 import { NextRequest } from "next/server";
 import { query, withTransaction } from "./db";
+import { confirmarBancoTemporario, encerrarBancoTemporario } from "@/testes/bancoTemporario";
 import { gerarAccessToken, NOME_COOKIE_ACCESS, obterContextoAutenticado } from "./auth";
 import { alterarPapel } from "./equipeServico";
 import type { Papel } from "./papeis";
@@ -35,9 +36,11 @@ import Inicio from "@/app/(protegido)/page";
 import BoasVindas from "@/app/(protegido)/BoasVindas";
 import Dashboard from "@/app/(protegido)/Dashboard";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL não configurada. Rode: docker compose up -d && npm run migrate && npm run test:integration");
-}
+// Este arquivo faz DDL (migration aplicada sobre estado antigo) → roda INTEIRO num banco TEMPORÁRIO (rodada 16-A3),
+// nunca no compartilhado: o DDL pega trava exclusiva e ficava esperando outras conexões. vi.hoisted roda antes dos imports.
+const banco = await vi.hoisted(async () => (await import("@/testes/bancoTemporario")).trocarParaBancoTemporario("papeis"));
+beforeAll(() => confirmarBancoTemporario(banco, (sql) => query(sql)));
+afterAll(() => encerrarBancoTemporario(banco));
 
 const SQL_0012 = readFileSync(join(process.cwd(), "db/migrations/0012_papel_equipe.sql"), "utf-8");
 const sufixo = randomUUID().slice(0, 8);
@@ -78,7 +81,7 @@ afterAll(async () => {
   await query(`delete from equipe_nexaigen where id = any($1::uuid[])`, [contas]);
 });
 
-describe("migration 0012 — Postgres real", () => {
+describe.skipIf(!banco)("migration 0012 — Postgres real (banco temporário)", () => {
   it("aplicada 2× sobre o estado pré-0012: quem existia vira admin; CHECK recusa papel fora da lista; default admin", async () => {
     await emTransacaoDesfeita(async (c) => {
       await c.query(`alter table equipe_nexaigen drop column papel`);

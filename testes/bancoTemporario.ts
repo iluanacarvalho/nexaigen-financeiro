@@ -48,7 +48,8 @@ export async function criarBancoTemporario(prefixo: string): Promise<BancoTempor
     const migrador = new Client({ connectionString: url.toString() });
     await migrador.connect();
     try {
-      await aplicarMigracoes(migrador, undefined, { desenvolvimento: true });
+      // Como PRODUÇÃO (rodada 16-A3): nenhum seed de desenvolvimento (nada de PR liberado sozinho) — cada teste libera o que precisa.
+      await aplicarMigracoes(migrador, undefined, { desenvolvimento: false });
     } finally {
       await migrador.end();
     }
@@ -57,4 +58,36 @@ export async function criarBancoTemporario(prefixo: string): Promise<BancoTempor
     throw erro;
   }
   return { nome, url: url.toString(), derrubar };
+}
+
+/**
+ * Pra arquivo de teste que faz DDL (rodada 16-A3): cria o banco temporário e
+ * TROCA process.env.DATABASE_URL — tem de rodar ANTES de qualquer import de
+ * lib/db (o pool lê a URL na importação). Uso, no topo do arquivo:
+ *
+ *   const banco = await vi.hoisted(async () => (await import("../testes/bancoTemporario")).trocarParaBancoTemporario("planos"));
+ *   afterAll(() => encerrarBancoTemporario(banco));
+ *
+ * (`vi.hoisted` roda antes dos imports estáticos.) DATABASE_URL não local →
+ * null: o teste de DDL PULA (describe.skipIf(!banco)) — nunca roda no banco
+ * compartilhado.
+ */
+export async function trocarParaBancoTemporario(prefixo: string): Promise<BancoTemporario | null> {
+  if (!bancoLocal()) return null;
+  const banco = await criarBancoTemporario(prefixo);
+  process.env.DATABASE_URL = banco.url;
+  return banco;
+}
+
+/** Confere (no beforeAll) que o pool da aplicação está MESMO no banco temporário — senão aborta antes de qualquer DDL. */
+export async function confirmarBancoTemporario(banco: BancoTemporario | null, consultar: (sql: string) => Promise<{ atual: string }[]>): Promise<void> {
+  if (!banco) return;
+  const [{ atual }] = await consultar("select current_database() as atual");
+  if (atual !== banco.nome) throw new Error(`Fora do banco temporário (${atual}) — abortado antes de qualquer DDL.`);
+}
+
+/** Fecha o pool da aplicação (lib/db) e derruba o banco temporário. Idempotente. */
+export async function encerrarBancoTemporario(banco: BancoTemporario | null): Promise<void> {
+  await (globalThis as { __nexaigenFinPgPool?: { end: () => Promise<void>; ended?: boolean } }).__nexaigenFinPgPool?.end().catch(() => undefined);
+  await banco?.derrubar();
 }

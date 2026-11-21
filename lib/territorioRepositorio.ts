@@ -15,7 +15,7 @@
 // leads, etiquetas), e as regras rodam em TS (lib/territorio.ts — uma função
 // só pra todas as telas).
 
-import { query, type Executor } from "./db";
+import { consultasJuntas, query, type Executor } from "./db";
 import { TIPOS_ATIVIDADE } from "./crm";
 import { UFS_BRASIL, type TipoEntidade } from "./entidades";
 import { nomeDeMunicipioNormalizado, normalizarNome } from "./ibge";
@@ -171,10 +171,10 @@ export async function carregarLinhas(alvo: AlvoTerritorio, leitor: Leitor, hoje:
   const municipios = await lerMunicipios(alvo, ufs, executor);
   const codigos = municipios.map((m) => m.codigo_ibge);
   const ufsDosMunicipios = [...new Set(municipios.map((m) => m.uf))];
-  const [clientes, leads, etiquetas] = await Promise.all([
-    lerClientes(codigos, ufsDosMunicipios, executor),
-    lerLeads(codigos, ufsDosMunicipios, executor),
-    etiquetasPorMunicipio(codigos, leitor, hoje, executor, ufs)
+  const [clientes, leads, etiquetas] = await consultasJuntas(executor, [
+    () => lerClientes(codigos, ufsDosMunicipios, executor),
+    () => lerLeads(codigos, ufsDosMunicipios, executor),
+    () => etiquetasPorMunicipio(codigos, leitor, hoje, executor, ufs)
   ]);
   return municipios.map((m) => montarLinha(m, clientesDoMunicipioBase(clientes, m), leadsDoMunicipioBase(leads, m), etiquetas.get(m.codigo_ibge) ?? [], leitor, hoje));
 }
@@ -310,6 +310,8 @@ export interface MunicipioEncontrado {
   codigo_ibge: string;
   nome: string;
   uf: string;
+  /** Dado público do IBGE (preenche o lead escolhido na base — rodada 16-A3). */
+  populacao: number | null;
 }
 
 /** Município por nome (sem acento/caixa) ou código, só nos estados visíveis. */
@@ -317,7 +319,7 @@ export async function buscarMunicipios(busca: string, leitor: Leitor, uf?: strin
   const ufs = await ufsVisiveis(leitor, executor);
   const termo = nomeDeMunicipioNormalizado(busca).replace(/[\\%_]/g, (c) => `\\${c}`);
   return query<MunicipioEncontrado>(
-    `select codigo_ibge, nome, uf from municipio_base
+    `select codigo_ibge, nome, uf, populacao from municipio_base
      where uf = any($1::text[]) and ($2::text is null or uf = $2::text)
        and (codigo_ibge = $3 or nome_busca like $4 escape '\\')
      order by (nome_busca = $5) desc, (nome_busca like $6 escape '\\') desc, nome_busca, uf
@@ -341,25 +343,22 @@ export async function buscarNoCrm(busca: string, leitor: Leitor, executor?: Exec
   return { entidades, municipios: await buscarMunicipios(busca, leitor, undefined, 8, executor) };
 }
 
-/** Código IBGE do município de um lead: o próprio, ou o da base com a mesma UF + nome normalizado (se houver um só). */
-export async function codigoDoMunicipioDoLead(lead: { codigo_ibge: string | null; uf: string; municipio_nome: string }, executor?: Executor): Promise<string | null> {
-  if (lead.codigo_ibge) return lead.codigo_ibge;
-  const linhas = await query<{ codigo_ibge: string }>(`select codigo_ibge from municipio_base where uf = $1 and nome_busca = $2`, [lead.uf, nomeDeMunicipioNormalizado(lead.municipio_nome)], executor);
-  return linhas.length === 1 ? linhas[0].codigo_ibge : null;
-}
-
-/** Nomes das entidades (ativas) do município de cada lead — coluna "Entidades" da exportação da carteira (só admin). Uma consulta. */
-export async function nomesDeEntidadesPorLead(leads: { id: string; codigo_ibge: string | null; uf: string; municipio_nome: string }[], executor?: Executor): Promise<Map<string, string[]>> {
+/**
+ * Nomes das entidades (ativas) do município de cada lead — coluna "Entidades"
+ * da exportação da carteira (só admin). SÓ pelo código IBGE (rodada 16-A3):
+ * lead sem código não tem município vinculado. Uma consulta.
+ */
+export async function nomesDeEntidadesPorLead(leads: { id: string; codigo_ibge: string | null }[], executor?: Executor): Promise<Map<string, string[]>> {
   const mapa = new Map<string, string[]>();
-  if (leads.length === 0) return mapa;
+  const comCodigo = leads.filter((l): l is { id: string; codigo_ibge: string } => l.codigo_ibge !== null);
+  if (comCodigo.length === 0) return mapa;
   const linhas = await query<{ lead_id: string; nome: string; sigla: string | null }>(
     `select x.lead_id, e.nome, e.sigla
-     from unnest($1::uuid[], $2::text[], $3::text[], $4::text[]) as x(lead_id, codigo_ibge, uf, nome_busca)
-     join municipio_base m on m.codigo_ibge = x.codigo_ibge or (x.codigo_ibge is null and m.uf = x.uf and m.nome_busca = x.nome_busca)
-     join entidade_membro em on em.codigo_ibge = m.codigo_ibge
+     from unnest($1::uuid[], $2::text[]) as x(lead_id, codigo_ibge)
+     join entidade_membro em on em.codigo_ibge = x.codigo_ibge
      join entidade_intermunicipal e on e.id = em.entidade_id and e.ativo
      order by e.nome`,
-    [leads.map((l) => l.id), leads.map((l) => l.codigo_ibge), leads.map((l) => l.uf), leads.map((l) => nomeDeMunicipioNormalizado(l.municipio_nome))],
+    [comCodigo.map((l) => l.id), comCodigo.map((l) => l.codigo_ibge)],
     executor
   );
   for (const l of linhas) mapa.set(l.lead_id, [...(mapa.get(l.lead_id) ?? []), l.sigla ? `${l.nome} (${l.sigla})` : l.nome]);

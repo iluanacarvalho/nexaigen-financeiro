@@ -61,6 +61,7 @@ function resumo(extra: Partial<ResumoCrm> = {}): ResumoCrm {
     minhasAcoes: [{ id: "l1", municipio_nome: "Arapongas", uf: "PR", etapa: "novo", proxima_acao_em: "2026-11-17", proxima_acao_descricao: "Ligar para a secretária" }],
     cargaPorVendedor: null,
     pedidosPendentes: null,
+    leadsSemMunicipio: null,
     ...extra
   };
 }

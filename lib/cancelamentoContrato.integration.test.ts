@@ -7,14 +7,17 @@
 // de auditoria aceita só os tipos/origens previstos e some junto com o
 // cliente (cascade).
 
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { withTransaction } from "./db";
+import { query, withTransaction } from "./db";
+import { confirmarBancoTemporario, encerrarBancoTemporario } from "@/testes/bancoTemporario";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL não configurada. Rode: docker compose up -d && npm run migrate && npm run test:integration");
-}
+// Este arquivo faz DDL (migration aplicada sobre estado antigo) → roda INTEIRO num banco TEMPORÁRIO (rodada 16-A3),
+// nunca no compartilhado: o DDL pega trava exclusiva e ficava esperando outras conexões. vi.hoisted roda antes dos imports.
+const banco = await vi.hoisted(async () => (await import("@/testes/bancoTemporario")).trocarParaBancoTemporario("cancelamento"));
+beforeAll(() => confirmarBancoTemporario(banco, (sql) => query(sql)));
+afterAll(() => encerrarBancoTemporario(banco));
 
 const SQL_0011 = readFileSync(join(process.cwd(), "db/migrations/0011_cancelamento_contrato.sql"), "utf-8");
 class Desfazer extends Error {}
@@ -45,7 +48,7 @@ async function novoCliente(c: Cliente): Promise<string> {
   return rows[0].id;
 }
 
-describe("migration 0011 — Postgres real", () => {
+describe.skipIf(!banco)("migration 0011 — Postgres real (banco temporário)", () => {
   it("aplicada 2× sobre o estado pré-0011: troca o CHECK antigo (achado pelo catálogo) e não duplica nada", async () => {
     await emTransacaoDesfeita(async (c) => {
       await c.query(`alter table cliente_prefeitura drop constraint ck_cliente_prefeitura_status_contrato`);

@@ -36,7 +36,10 @@ export default defineConfig({
   test: {
     environment: "node",
     // Nenhum teste fala com Resend/bucket de verdade — ver o arquivo.
-    setupFiles: ["./vitest.setup.sem-apis-externas.ts"],
+    // + lock_timeout, nome da conexão por arquivo, diagnóstico de travas e checagem de "idle in transaction" (rodada 16-A3).
+    setupFiles: ["./vitest.setup.sem-apis-externas.ts", "./vitest.integration.setup.ts"],
+    // Uma execução da suíte por banco de cada vez (advisory lock — rodada 16-A3).
+    globalSetup: ["./vitest.integration.globalSetup.ts"],
     include: ["**/*.integration.test.ts"],
     exclude: ["**/node_modules/**"],
     testTimeout: 30_000,

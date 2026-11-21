@@ -106,6 +106,25 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
 }
 
 /**
+ * Várias leituras independentes: EM PARALELO no pool (cada uma pega a sua
+ * conexão); EM SEQUÊNCIA quando `executor` é um client de transação — uma
+ * conexão só executa uma consulta por vez (o driver "pg" ainda enfileira, mas
+ * avisa que deixa de aceitar no pg@9: "Calling client.query() when the client
+ * is already executing a query"). Rodada 16-A3: o lote do Território lê
+ * dentro da transação e disparava esse aviso.
+ */
+export async function consultasJuntas<R extends readonly unknown[]>(
+  executor: Executor | undefined,
+  tarefas: readonly [...{ [K in keyof R]: () => Promise<R[K]> }]
+): Promise<R> {
+  const chamar = (t: unknown) => (t as () => Promise<unknown>)();
+  if (executor === undefined || executor === pool) return (await Promise.all(tarefas.map(chamar))) as unknown as R;
+  const resultados: unknown[] = [];
+  for (const tarefa of tarefas) resultados.push(await chamar(tarefa));
+  return resultados as unknown as R;
+}
+
+/**
  * Empresta UM client do pool pra `fn` rodar tudo dentro da MESMA
  * transação/conexão — necessário sempre que duas ou mais queries
  * precisam ser atômicas entre si.

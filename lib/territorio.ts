@@ -357,7 +357,7 @@ export type TelaVisao = (typeof TELAS_VISAO)[number];
 export const PARAMETROS_POR_TELA: Record<TelaVisao, readonly string[]> = {
   territorio: PARAMETROS_TERRITORIO.filter((p) => p !== "pagina"),
   entidade: PARAMETROS_TERRITORIO.filter((p) => p !== "pagina" && p !== "uf"),
-  leads: ["etapa", "vendedor_id", "uf", "origem", "busca", "parados", "vencidas", "plano", "ignorar_sugerido", "entidade", "ordenar", "direcao"]
+  leads: ["etapa", "vendedor_id", "uf", "origem", "busca", "parados", "vencidas", "plano", "ignorar_sugerido", "entidade", "sem_municipio", "ordenar", "direcao"]
 };
 
 type Entrada = URLSearchParams | Record<string, string | string[] | undefined>;

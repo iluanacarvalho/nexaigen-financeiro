@@ -47,6 +47,9 @@ function Numero({ titulo, valor, legenda }: { titulo: string; valor: string; leg
   );
 }
 
+/** Lista só com os leads sem município vinculado (16-A3). Navegação COMPLETA de propósito (como "Ver todos"): a lista lê os filtros da URL ao montar. */
+export const HREF_SEM_MUNICIPIO = "/crm?visao=lista&sem_municipio=true";
+
 /** Link pra lista paginada já filtrada pela etapa (sempre que a coluna mostra menos do que o total). */
 export function hrefVerTodos(etapa: Etapa): string {
   return `/crm?visao=lista&etapa=${etapa}`;
@@ -108,6 +111,15 @@ export default function PainelCrm({
       </div>
 
       <ConsultaLead />
+
+      {admin && resumo.leadsSemMunicipio !== null && resumo.leadsSemMunicipio > 0 && (
+        <p role="status" className="mb-4 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="aviso-sem-municipio">
+          {resumo.leadsSemMunicipio === 1 ? "1 lead sem município vinculado" : `${resumo.leadsSemMunicipio} leads sem município vinculado`} — as entidades do município não aparecem neles.{" "}
+          <a href={HREF_SEM_MUNICIPIO} className="font-medium underline">
+            Ver e vincular
+          </a>
+        </p>
+      )}
 
       <section aria-label="Números do funil" className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Numero titulo="Leads abertos" valor={String(resumo.abertos.quantidade)} />

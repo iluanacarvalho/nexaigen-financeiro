@@ -17,7 +17,7 @@
 // funções puras (lib/crm.ts) — a equivalência é conferida no teste de
 // integração nas bordas (14/15 e 60/61 dias).
 
-import { query, type Executor } from "./db";
+import { consultasJuntas, query, type Executor } from "./db";
 import {
   DIAS_PARADO,
   ETAPAS,
@@ -60,9 +60,8 @@ const ULTIMA_ATIVIDADE = (pAtividade: string) =>
 
 const DIA_SP = (expr: string) => `((${expr}) at time zone 'America/Sao_Paulo')::date`;
 
-/** Coluna do município da base (0016) do lead `l`: pelo código, ou (lead sem código) por UF + nome normalizado. */
-const MUNICIPIO_DA_BASE = (coluna: string) =>
-  `(select mb.${coluna} from municipio_base mb where mb.codigo_ibge = l.codigo_ibge or (l.codigo_ibge is null and mb.uf = l.uf and mb.nome_busca = l.nome_busca) order by mb.codigo_ibge limit 1)`;
+/** Coluna do município da base (0016) do lead `l` — SÓ pelo código IBGE (rodada 16-A3: lead sem código não tem município; "vincular município"). */
+const MUNICIPIO_DA_BASE = (coluna: string) => `(select mb.${coluna} from municipio_base mb where mb.codigo_ibge = l.codigo_ibge)`;
 
 /**
  * Plano SUGERIDO pela população em SQL — gerado das faixas de lib/planos.ts
@@ -175,6 +174,8 @@ export interface FiltrosLeads {
   ignorarSugerido?: boolean;
   /** Município membro da entidade (ativa). */
   entidadeId?: string;
+  /** Só leads SEM município vinculado (codigo_ibge nulo) — rodada 16-A3. */
+  semMunicipio?: boolean;
   ordenar: OrdenacaoLead;
   direcao: "asc" | "desc";
   pagina: number;
@@ -197,6 +198,7 @@ export async function listarLeads(f: FiltrosLeads, escopo: EscopoCrm, hoje: stri
   if (f.parados) condicoes.push(`${DIA_SP("base.ultima_atividade_em")} < ${p(corteDeDias(hoje, DIAS_PARADO))}::date`);
   if (f.vencidas) condicoes.push(`l.proxima_acao_em < ${p(hoje)}::date`);
   if ((f.planos && f.planos.length > 0) || f.ignorarSugerido) condicoes.push(condicaoPlano(f.planos ?? [], !!f.ignorarSugerido, p));
+  if (f.semMunicipio) condicoes.push(`l.codigo_ibge is null`);
   if (f.entidadeId) {
     condicoes.push(`exists (select 1 from entidade_membro em join entidade_intermunicipal e on e.id = em.entidade_id and e.ativo
       where em.entidade_id = ${p(f.entidadeId)}::uuid and em.codigo_ibge = base.codigo_municipio)`);
@@ -329,17 +331,13 @@ export async function lerClientesDosMunicipios(ufs: string[], codigos: string[],
   );
 }
 
-/** População da base de municípios (0016) pros leads: por código, ou por UF + nome normalizado. */
-async function populacaoDaBase(leads: Pick<LeadCompleto, "uf" | "codigo_ibge" | "municipio_nome">[], executor?: Executor): Promise<(l: Pick<LeadCompleto, "uf" | "codigo_ibge" | "municipio_nome">) => number | null> {
-  if (leads.length === 0) return () => null;
-  const linhas = await query<{ codigo_ibge: string; uf: string; nome_busca: string; populacao: number | null }>(
-    `select codigo_ibge, uf, nome_busca, populacao from municipio_base where codigo_ibge = any($1::text[]) or uf = any($2::text[])`,
-    [[...new Set(leads.map((l) => l.codigo_ibge).filter((c): c is string => c !== null))], [...new Set(leads.filter((l) => l.codigo_ibge === null).map((l) => l.uf))]],
-    executor
-  );
+/** População da base de municípios (0016) pros leads — SÓ pelo código IBGE (rodada 16-A3). */
+async function populacaoDaBase(leads: Pick<LeadCompleto, "codigo_ibge">[], executor?: Executor): Promise<(l: Pick<LeadCompleto, "codigo_ibge">) => number | null> {
+  const codigos = [...new Set(leads.map((l) => l.codigo_ibge).filter((c): c is string => c !== null))];
+  if (codigos.length === 0) return () => null;
+  const linhas = await query<{ codigo_ibge: string; populacao: number | null }>(`select codigo_ibge, populacao from municipio_base where codigo_ibge = any($1::text[])`, [codigos], executor);
   const porCodigo = new Map(linhas.map((m) => [m.codigo_ibge, m.populacao]));
-  const porNome = new Map(linhas.map((m) => [`${m.uf}|${m.nome_busca}`, m.populacao]));
-  return (l) => (l.codigo_ibge !== null ? (porCodigo.get(l.codigo_ibge) ?? null) : (porNome.get(`${l.uf}|${nomeDeMunicipioNormalizado(l.municipio_nome)}`) ?? null));
+  return (l) => (l.codigo_ibge !== null ? (porCodigo.get(l.codigo_ibge) ?? null) : null);
 }
 
 /**
@@ -348,9 +346,9 @@ async function populacaoDaBase(leads: Pick<LeadCompleto, "uf" | "codigo_ibge" | 
  * plano efetivo (rodada 16-A2).
  */
 async function anotarExClientes<T extends Omit<LeadListado, Anotacoes>>(leads: T[], hoje: string, executor?: Executor): Promise<(T & Pick<LeadListado, Anotacoes>)[]> {
-  const [clientes, populacao] = await Promise.all([
-    lerClientesDosMunicipios([...new Set(leads.map((l) => l.uf))], [...new Set(leads.map((l) => l.codigo_ibge).filter((c): c is string => c !== null))], executor),
-    populacaoDaBase(leads, executor)
+  const [clientes, populacao] = await consultasJuntas(executor, [
+    () => lerClientesDosMunicipios([...new Set(leads.map((l) => l.uf))], [...new Set(leads.map((l) => l.codigo_ibge).filter((c): c is string => c !== null))], executor),
+    () => populacaoDaBase(leads, executor)
   ]);
   return leads.map((l) => {
     const doMunicipio = clientesDoMunicipio(clientes, { uf: l.uf, nomeBusca: nomeDeMunicipioNormalizado(l.municipio_nome), codigoIbge: l.codigo_ibge });
@@ -452,6 +450,8 @@ export interface ResumoCrm {
   cargaPorVendedor: { vendedor_id: string; vendedor_nome: string; abertos: number; valorCentavos: number }[] | null;
   /** Só admin: pedidos de reatribuição pendentes. */
   pedidosPendentes: PedidoPendente[] | null;
+  /** Só admin: leads SEM município vinculado (sem código IBGE) — rodada 16-A3, aviso "vincular município". */
+  leadsSemMunicipio: number | null;
 }
 
 export interface PedidoPendente {
@@ -469,15 +469,15 @@ export async function obterResumoCrm(escopo: EscopoCrm, hoje: string, executor?:
   const escopoSql = condicaoEscopo(escopo, pEsc, "l");
   const mes = hoje.slice(0, 7);
 
-  const [porEtapa, perdidos, alcancadas, acoes] = await Promise.all([
-    query<{ etapa: Etapa; quantidade: number; valor: number }>(
+  const [porEtapa, perdidos, alcancadas, acoes] = await consultasJuntas(executor, [
+    () => query<{ etapa: Etapa; quantidade: number; valor: number }>(
       `select l.etapa, count(*)::int as quantidade, coalesce(sum(l.valor_mensal_estimado_centavos), 0)::bigint as valor
        from lead l where ${escopoSql} group by l.etapa`,
       pEsc,
       executor
     ),
     // Perdidos no mês: leads que ESTÃO perdidos e cuja perda foi registrada neste mês (dia em SP).
-    query<{ n: number }>(
+    () => query<{ n: number }>(
       `select count(*)::int as n from lead l
        where ${escopoSql} and l.etapa = 'perdido'
          and exists (select 1 from lead_interacao i where i.lead_id = l.id and i.etapa_nova = 'perdido'
@@ -485,13 +485,13 @@ export async function obterResumoCrm(escopo: EscopoCrm, hoje: string, executor?:
       [...pEsc, mes],
       executor
     ),
-    query<{ etapa: string; alcancadas: string[] | null }>(
+    () => query<{ etapa: string; alcancadas: string[] | null }>(
       `select l.etapa, (select array_agg(i.etapa_nova) from lead_interacao i where i.lead_id = l.id and i.etapa_nova is not null) as alcancadas
        from lead l where ${escopoSql}`,
       pEsc,
       executor
     ),
-    query<ResumoCrm["minhasAcoes"][number]>(
+    () => query<ResumoCrm["minhasAcoes"][number]>(
       `select l.id, l.municipio_nome, l.uf, l.etapa, l.proxima_acao_em, l.proxima_acao_descricao
        from lead l
        where l.vendedor_id = $1::uuid and l.etapa = any($2::text[]) and l.proxima_acao_em <= $3::date
@@ -507,17 +507,22 @@ export async function obterResumoCrm(escopo: EscopoCrm, hoje: string, executor?:
 
   let cargaPorVendedor: ResumoCrm["cargaPorVendedor"] = null;
   let pedidosPendentes: ResumoCrm["pedidosPendentes"] = null;
+  let leadsSemMunicipio: number | null = null;
   if (escopo.admin) {
-    [cargaPorVendedor, pedidosPendentes] = await Promise.all([
-      query<{ vendedor_id: string; vendedor_nome: string; abertos: number; valor: number }>(
+    const [carga, pedidos, semMunicipio] = await consultasJuntas(executor, [
+      () => query<{ vendedor_id: string; vendedor_nome: string; abertos: number; valor: number }>(
         `select l.vendedor_id, q.nome as vendedor_nome, count(*)::int as abertos, coalesce(sum(l.valor_mensal_estimado_centavos), 0)::bigint as valor
          from lead l join equipe_nexaigen q on q.id = l.vendedor_id
          where l.etapa = any($1::text[]) group by l.vendedor_id, q.nome order by abertos desc, q.nome`,
         [ETAPAS_ABERTAS],
         executor
       ).then((rows) => rows.map((r) => ({ vendedor_id: r.vendedor_id, vendedor_nome: r.vendedor_nome, abertos: r.abertos, valorCentavos: Number(r.valor) }))),
-      listarPedidosPendentes(executor)
+      () => listarPedidosPendentes(executor),
+      () => query<{ n: number }>(`select count(*)::int as n from lead where codigo_ibge is null and etapa <> 'ganho'`, [], executor)
     ]);
+    cargaPorVendedor = carga;
+    pedidosPendentes = pedidos;
+    leadsSemMunicipio = semMunicipio[0].n;
   }
 
   return {
@@ -529,7 +534,8 @@ export async function obterResumoCrm(escopo: EscopoCrm, hoje: string, executor?:
     taxasDeAvanco: calcularTaxasDeAvanco(alcancadas.map((r) => ["novo", r.etapa, ...(r.alcancadas ?? [])])),
     minhasAcoes: acoes,
     cargaPorVendedor,
-    pedidosPendentes
+    pedidosPendentes,
+    leadsSemMunicipio
   };
 }
 

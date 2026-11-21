@@ -33,7 +33,8 @@ const { queryMock, lancarSempre } = vi.hoisted(() => {
   };
   return { queryMock: vi.fn(lancarSempre), lancarSempre };
 });
-vi.mock("@/lib/db", () => ({ query: queryMock, withTransaction: queryMock }));
+// consultasJuntas (16-A3) delega pras tarefas — cada uma chama query(), que é o sinal medido aqui.
+vi.mock("@/lib/db", () => ({ query: queryMock, withTransaction: queryMock, consultasJuntas: (_e: unknown, tarefas: (() => Promise<unknown>)[]) => Promise.all(tarefas.map((t) => t())) }));
 
 // Cron continua com seu próprio mock de notificação (mesmo padrão do
 // teste dedicado daquela rota) — não é o alvo deste arquivo, só precisa
@@ -83,6 +84,7 @@ import { POST as leadInteracaoPost } from "./leads/[id]/interacoes/route";
 import { POST as leadEtapaPost } from "./leads/[id]/etapa/route";
 import { POST as leadVendedorPost } from "./leads/[id]/vendedor/route";
 import { POST as leadPedidoPost } from "./leads/[id]/pedidos/route";
+import { POST as leadMunicipioPost } from "./leads/[id]/municipio/route";
 import { GET as leadsConsultaGet } from "./leads/consulta/route";
 import { GET as leadsResumoGet } from "./leads/resumo/route";
 import { GET as leadsExportarGet } from "./leads/exportar/route";
@@ -152,6 +154,7 @@ const ROTAS: { rota: string; url: string; area: Area; handler: Handler }[] = [
   { rota: "POST /api/leads/[id]/interacoes", url: `/api/leads/${ID}/interacoes`, area: "crm", handler: leadInteracaoPost as Handler },
   { rota: "POST /api/leads/[id]/etapa", url: `/api/leads/${ID}/etapa`, area: "crm", handler: leadEtapaPost as Handler },
   { rota: "POST /api/leads/[id]/pedidos", url: `/api/leads/${ID}/pedidos`, area: "crm", handler: leadPedidoPost as Handler },
+  { rota: "POST /api/leads/[id]/municipio", url: `/api/leads/${ID}/municipio`, area: "crm", handler: leadMunicipioPost as Handler },
   { rota: "GET /api/leads/consulta", url: "/api/leads/consulta?busca=jaguapita", area: "crm", handler: leadsConsultaGet as Handler },
   { rota: "GET /api/leads/resumo", url: "/api/leads/resumo", area: "crm", handler: leadsResumoGet as Handler },
   { rota: "POST /api/leads/[id]/vendedor", url: `/api/leads/${ID}/vendedor`, area: "crm_gestao", handler: leadVendedorPost as Handler },

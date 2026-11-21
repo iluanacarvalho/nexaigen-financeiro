@@ -6,7 +6,9 @@
 //        | { modo: "nao_abordados", filtros: {…da URL…}, entidade_id? }
 // previa → 200 { criar, pulados } (nada gravado)
 // criar  → 201 { criados, pulados } — UMA transação (lib/territorioServico.ts);
-//          duplicados e clientes vigentes são PULADOS e listados.
+//          duplicados e clientes vigentes são PULADOS e listados. Nada a criar
+//          (tudo pulado — p.ex. outra pessoa criou ao mesmo tempo) → 200 com
+//          criados: [] e a lista de puladas, nunca erro.
 // 403: vendas atribuindo a outro vendedor · 404: entidade inexistente/não visível.
 
 import { NextRequest, NextResponse } from "next/server";
@@ -47,5 +49,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(await previaLote(alvo, leitor, hoje), { headers: { "cache-control": "no-store" } });
   }
   const r = await criarLeadsEmLote(alvo, vendedor_id, leitor, hoje);
-  return r.ok ? NextResponse.json({ criados: r.criados, pulados: r.pulados }, { status: 201 }) : respostaDeFalha(r);
+  return r.ok ? NextResponse.json({ criados: r.criados, pulados: r.pulados }, { status: r.criados.length > 0 ? 201 : 200 }) : respostaDeFalha(r);
 }

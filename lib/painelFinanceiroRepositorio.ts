@@ -12,7 +12,7 @@
 // integração roda tudo dentro de uma transação que depois é desfeita, pra
 // conferir valores exatos sem depender do que já existe no banco local.
 
-import { query, type Executor } from "./db";
+import { consultasJuntas, query, type Executor } from "./db";
 import {
   hojeEmSaoPaulo,
   mesesDaJanela,
@@ -33,8 +33,8 @@ export async function lerDadosPainel(
   inicioJanela: string,
   executor?: Executor
 ): Promise<{ clientes: LinhaClientePainel[]; notas: LinhaNotaPainel[] }> {
-  const [clientes, notas] = await Promise.all([
-    query<LinhaClientePainel>(
+  const [clientes, notas] = await consultasJuntas(executor, [
+    () => query<LinhaClientePainel>(
       // tem_implantacao_ativa: subconsulta correlacionada por linha, na MESMA query (sem N+1) — olha TODAS as
       // notas de implantação do cliente, não só as da janela (uma paga há 2 anos não pode virar "a cobrar").
       `select c.id, c.nome, c.uf, c.plano, c.valor_mensal, c.status_contrato, c.taxa_implantacao, c.cancelamento_termino_em,
@@ -44,7 +44,7 @@ export async function lerDadosPainel(
       [],
       executor
     ),
-    query<LinhaNotaPainel>(
+    () => query<LinhaNotaPainel>(
       `select id, cliente_id, tipo, valor, competencia, status, data_emissao, data_atesto, data_limite_pagamento, data_pagamento
        from nota_fiscal
        where status <> 'cancelada'

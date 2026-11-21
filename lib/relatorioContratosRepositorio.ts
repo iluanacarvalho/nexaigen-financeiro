@@ -6,14 +6,14 @@
 // contato é lido. `executor` opcional: o teste de integração roda dentro
 // de uma transação desfeita.
 
-import { query, type Executor } from "./db";
+import { consultasJuntas, query, type Executor } from "./db";
 import { hojeEmSaoPaulo } from "./painelFinanceiro";
 import { TIPOS_EVENTO_CONTRATO } from "./cancelamentoServico";
 import { montarRelatorioContratos, type LinhaClienteRelatorio, type LinhaEventoContrato, type RelatorioContratos } from "./relatorioContratos";
 
 export async function lerDadosRelatorio(executor?: Executor): Promise<{ clientes: LinhaClienteRelatorio[]; eventos: LinhaEventoContrato[] }> {
-  const [clientes, eventos] = await Promise.all([
-    query<LinhaClienteRelatorio>(
+  const [clientes, eventos] = await consultasJuntas(executor, [
+    () => query<LinhaClienteRelatorio>(
       `select c.id, c.nome, c.uf, c.plano, c.valor_mensal, c.status_contrato, c.taxa_implantacao, c.cancelamento_termino_em,
          c.data_inicio_contrato, c.municipio_id_externo,
          exists (select 1 from nota_fiscal n where n.cliente_id = c.id and n.tipo = 'implantacao' and n.status <> 'cancelada') as tem_implantacao_ativa
@@ -23,7 +23,7 @@ export async function lerDadosRelatorio(executor?: Executor): Promise<{ clientes
       executor
     ),
     // Só os eventos de CONTRATO — a trilha também guarda a divulgação no mapa público (15-B).
-    query<LinhaEventoContrato>(`select cliente_id, tipo, data_evento, criado_em from cliente_evento_contrato where tipo = any($1::text[])`, [TIPOS_EVENTO_CONTRATO], executor)
+    () => query<LinhaEventoContrato>(`select cliente_id, tipo, data_evento, criado_em from cliente_evento_contrato where tipo = any($1::text[])`, [TIPOS_EVENTO_CONTRATO], executor)
   ]);
   return { clientes, eventos };
 }

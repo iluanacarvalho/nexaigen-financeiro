@@ -7,6 +7,11 @@
 // recusa de novo (409) com o mesmo texto. Escolher o plano preenche o valor
 // estimado com a mensalidade padrão do plano (lib/planos.ts) — editável.
 // Admin escolhe o vendedor; vendas cria sempre pra si.
+//
+// Rodada 16-A3: em estado LIBERADO no Território o município é ESCOLHIDO na
+// base (EscolherMunicipio) — nome, UF, código IBGE e população vêm de lá e
+// ficam travados ("Trocar município"); o servidor exige o código nesses
+// estados. Estado não liberado: cadastro livre, como antes.
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -15,13 +20,17 @@ import { ORIGENS, ROTULO_ORIGEM, etapaAberta, valorSugeridoCentavos } from "@/li
 import { UF_POR_CODIGO, nomeDeMunicipioNormalizado } from "@/lib/ibge";
 import { PLANOS, type IdPlano } from "@/lib/planos";
 import { consultar, textoJaExiste, type ResultadoConsulta } from "../ConsultaLead";
+import EscolherMunicipio, { type MunicipioEscolhido } from "../EscolherMunicipio";
 
 const UFS = Object.values(UF_POR_CODIGO).sort();
 
-export default function FormNovoLead({ admin, vendedores, eu }: { admin: boolean; vendedores: { id: string; nome: string }[]; eu: string }) {
+export default function FormNovoLead({ admin, vendedores, eu, ufsLiberadas = [] }: { admin: boolean; vendedores: { id: string; nome: string }[]; eu: string; ufsLiberadas?: string[] }) {
   const router = useRouter();
-  const [municipio, setMunicipio] = useState("");
+  const [municipioDigitado, setMunicipio] = useState("");
   const [uf, setUf] = useState("");
+  const [escolhido, setEscolhido] = useState<MunicipioEscolhido | null>(null);
+  const daBase = ufsLiberadas.includes(uf);
+  const municipio = daBase ? (escolhido?.nome ?? "") : municipioDigitado;
   const [plano, setPlano] = useState<IdPlano | "">("");
   const [valor, setValor] = useState("");
   const [duplicado, setDuplicado] = useState<ResultadoConsulta | null>(null);
@@ -61,12 +70,18 @@ export default function FormNovoLead({ admin, vendedores, eu }: { admin: boolean
     setErros({});
     setErroGeral(null);
     setEnviando(true);
+    if (daBase && !escolhido) {
+      setEnviando(false);
+      setErros({ codigo_ibge: "Escolha o município na base." });
+      setErroGeral("Escolha o município na lista (estado liberado no Território).");
+      return;
+    }
     const populacao = texto("populacao");
     const corpo = {
       municipio_nome: municipio,
       uf,
-      codigo_ibge: texto("codigo_ibge") || null,
-      populacao: populacao === "" ? null : Number(populacao),
+      codigo_ibge: daBase ? escolhido!.codigo_ibge : texto("codigo_ibge") || null,
+      populacao: daBase ? escolhido!.populacao : populacao === "" ? null : Number(populacao),
       plano_interesse: plano || null,
       valor_mensal_estimado: valor.trim() === "" ? null : valor.trim(),
       contato_nome: texto("contato_nome") || null,
@@ -108,13 +123,18 @@ export default function FormNovoLead({ admin, vendedores, eu }: { admin: boolean
       }}
     >
       <label className="block">
-        <span className="font-medium text-slate-700">Município</span>
-        <input value={municipio} onChange={(e) => setMunicipio(e.target.value)} required maxLength={200} className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5" />
-        {erros.municipio_nome && <span className="mt-1 block text-xs text-red-600">{erros.municipio_nome}</span>}
-      </label>
-      <label className="block">
         <span className="font-medium text-slate-700">UF</span>
-        <select value={uf} onChange={(e) => setUf(e.target.value)} required className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5">
+        <select
+          value={uf}
+          onChange={(e) => {
+            setUf(e.target.value);
+            setEscolhido(null);
+            setErros({}); // erro de um estado (ex.: "escolha o município na base") não vale pro outro
+            setErroGeral(null);
+          }}
+          required
+          className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5"
+        >
           <option value="">Selecione…</option>
           {UFS.map((u) => (
             <option key={u} value={u}>
@@ -123,13 +143,25 @@ export default function FormNovoLead({ admin, vendedores, eu }: { admin: boolean
           ))}
         </select>
       </label>
+      {daBase ? (
+        <div>
+          <EscolherMunicipio uf={uf} escolhido={escolhido} onEscolher={setEscolhido} />
+          {erros.codigo_ibge && <span className="mt-1 block text-xs text-red-600">{erros.codigo_ibge}</span>}
+        </div>
+      ) : (
+        <label className="block">
+          <span className="font-medium text-slate-700">Município</span>
+          <input value={municipioDigitado} onChange={(e) => setMunicipio(e.target.value)} required maxLength={200} className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5" />
+          {erros.municipio_nome && <span className="mt-1 block text-xs text-red-600">{erros.municipio_nome}</span>}
+        </label>
+      )}
       {bloqueado && (
         <p role="alert" className="rounded bg-amber-50 px-3 py-2 text-amber-900 sm:col-span-2">
           {textoJaExiste(duplicado!)} {duplicado!.meu_lead ? "É um lead seu." : "Fale com o vendedor ou peça o lead se estiver parado."}
         </p>
       )}
-      {campo("Código IBGE (7 dígitos, opcional)", "codigo_ibge", { inputMode: "numeric", maxLength: 7, pattern: "[0-9]{7}" })}
-      {campo("População (opcional)", "populacao", { type: "number", min: 0 })}
+      {!daBase && campo("Código IBGE (7 dígitos, opcional)", "codigo_ibge", { inputMode: "numeric", maxLength: 7, pattern: "[0-9]{7}" })}
+      {!daBase && campo("População (opcional)", "populacao", { type: "number", min: 0 })}
       <label className="block">
         <span className="font-medium text-slate-700">Plano de interesse</span>
         <select value={plano} onChange={(e) => escolherPlano(e.target.value as IdPlano | "")} className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5">

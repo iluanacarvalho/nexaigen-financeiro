@@ -5,15 +5,17 @@
 // 'essencial', Dispensa nunca com taxa, tipo da nota, e no máximo UMA nota
 // de implantação ativa por cliente.
 
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { withTransaction } from "./db";
+import { confirmarBancoTemporario, encerrarBancoTemporario } from "../testes/bancoTemporario";
+import { query, withTransaction } from "./db";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL não configurada. Rode: docker compose up -d && npm run migrate && npm run test:integration");
-}
+// DDL (drop/add constraint) → banco TEMPORÁRIO (rodada 16-A3), nunca o compartilhado: roda antes dos imports (vi.hoisted).
+const banco = await vi.hoisted(async () => (await import("../testes/bancoTemporario")).trocarParaBancoTemporario("planos"));
+beforeAll(() => confirmarBancoTemporario(banco, (sql) => query(sql)));
+afterAll(() => encerrarBancoTemporario(banco));
 
 const SQL_0010 = readFileSync(join(process.cwd(), "db/migrations/0010_planos_por_porte.sql"), "utf-8");
 class Desfazer extends Error {}
@@ -36,7 +38,7 @@ async function esperarViolacao(c: Parameters<Parameters<typeof withTransaction>[
   await c.query("rollback to savepoint tentativa");
 }
 
-describe("migration 0010 — Postgres real", () => {
+describe.skipIf(!banco)("migration 0010 — Postgres real (banco temporário)", () => {
   it("aplicada 2× sobre dado legado: converte 'essencial'/'completo' pra 'dispensa' MANTENDO o valor; CHECK novo recusa 'essencial'", async () => {
     await emTransacaoDesfeita(async (c) => {
       // Volta ao estado pré-0010 só nesta transação: tira os CHECKs novos, recoloca um CHECK antigo (com outro nome

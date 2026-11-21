@@ -4,7 +4,7 @@
 // pela exportação e pelo lote "todos os resultados ainda não abordados":
 // os números da planilha e do lote são os MESMOS da tela.
 
-import type { Executor } from "./db";
+import { consultasJuntas, type Executor } from "./db";
 import {
   POR_PAGINA_TERRITORIO,
   filtrarLinhas,
@@ -51,10 +51,10 @@ export async function consultarTerritorio(
   executor?: Executor
 ): Promise<ResultadoTerritorio> {
   const lidos = lerFiltrosTerritorio(entrada);
-  const [visiveis, liberadas, existentes] = await Promise.all([
-    ufsVisiveis(leitor, executor),
-    ufsLiberadas(executor),
-    entidadesAtivasVisiveis(lidos.filtros.entidade ? [lidos.filtros.entidade] : [], leitor, executor)
+  const [visiveis, liberadas, existentes] = await consultasJuntas(executor, [
+    () => ufsVisiveis(leitor, executor),
+    () => ufsLiberadas(executor),
+    () => entidadesAtivasVisiveis(lidos.filtros.entidade ? [lidos.filtros.entidade] : [], leitor, executor)
   ]);
   const saneados = sanearFiltros(lidos.filtros, { admin: leitor.admin, ufsVisiveis: visiveis, entidadeExiste: (id) => existentes.has(id) });
   const filtros = saneados.filtros;

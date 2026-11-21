@@ -124,6 +124,25 @@ async function validarVendedor(c: Executor, vendedorId: string): Promise<{ nome:
   return v;
 }
 
+export const MENSAGEM_ESCOLHA_MUNICIPIO = "Este estado está liberado no Território: escolha o município na base (busca por nome) — o código IBGE é obrigatório.";
+
+/**
+ * MUNICÍPIO DA BASE (rodada 16-A3). Estado LIBERADO no Território
+ * (estado_comercial): o lead PRECISA do código IBGE de um município da base
+ * (municipio_base) desta UF — nome e população vêm da base (o nome digitado
+ * não vale). Estado não liberado: cadastro livre, como antes (devolve null).
+ */
+async function municipioDaBase(c: Executor, uf: string, codigo: string | null): Promise<{ nome: string; populacao: number | null } | null> {
+  const [estado] = await query<{ liberado: boolean }>(`select liberado from estado_comercial where uf = $1`, [uf], c);
+  if (!estado?.liberado) return null;
+  if (!codigo) throw new Recusa({ ok: false, motivo: "dados_invalidos", campo: "codigo_ibge", erro: MENSAGEM_ESCOLHA_MUNICIPIO });
+  const [m] = await query<{ nome: string; uf: string; populacao: number | null }>(`select nome, uf, populacao from municipio_base where codigo_ibge = $1`, [codigo], c);
+  if (!m || m.uf !== uf) {
+    throw new Recusa({ ok: false, motivo: "dados_invalidos", campo: "codigo_ibge", erro: m ? `O código ${codigo} é de ${m.uf}, não de ${uf}.` : `O código ${codigo} não está na base de municípios.` });
+  }
+  return { nome: m.nome, populacao: m.populacao };
+}
+
 /** Mensagem de duplicidade — revela SÓ o vendedor e a etapa (o id só pro dono do lead ou admin). */
 export function mensagemDuplicado(vendedorNome: string, etapa: Etapa): string {
   return `Já existe esse lead: está com ${vendedorNome}, etapa ${ROTULO_ETAPA[etapa]}.`;
@@ -195,10 +214,18 @@ export async function criarLead(
   }
   const valor =
     dados.valor_mensal_estimado_centavos !== undefined ? dados.valor_mensal_estimado_centavos : dados.plano_interesse ? valorSugeridoCentavos(dados.plano_interesse) : null;
-  const chave = { uf: dados.uf, nomeBusca: nomeDeMunicipioNormalizado(dados.municipio_nome), codigoIbge: dados.codigo_ibge };
+  let nome = dados.municipio_nome.trim();
+  let populacao = dados.populacao;
+  let chave = { uf: dados.uf, nomeBusca: nomeDeMunicipioNormalizado(nome), codigoIbge: dados.codigo_ibge };
   try {
     return await executar(async (c) => {
       await validarVendedor(c, vendedorId);
+      const base = await municipioDaBase(c, dados.uf, dados.codigo_ibge);
+      if (base) {
+        nome = base.nome;
+        populacao = dados.populacao ?? base.populacao;
+        chave = { ...chave, nomeBusca: nomeDeMunicipioNormalizado(nome) };
+      }
       const duplicado = await verificarDuplicidade(c, chave, autor);
       if (duplicado) throw new Recusa(duplicado);
       const [lead] = await query<{ id: string }>(
@@ -206,7 +233,7 @@ export async function criarLead(
            contato_nome, contato_cargo, contato_email, contato_telefone, origem, vendedor_id, proxima_acao_em, proxima_acao_descricao, criado_por)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) returning id`,
         [
-          dados.municipio_nome.trim(), chave.nomeBusca, dados.uf, dados.codigo_ibge, dados.populacao, dados.plano_interesse, valor,
+          nome, chave.nomeBusca, dados.uf, dados.codigo_ibge, populacao, dados.plano_interesse, valor,
           dados.contato_nome, dados.contato_cargo, dados.contato_email, dados.contato_telefone, dados.origem, vendedorId,
           dados.proxima_acao_em, dados.proxima_acao_descricao, autor.equipeId
         ],
@@ -264,6 +291,15 @@ export async function editarLead(
       if (campos.plano_interesse && campos.valor_mensal_estimado_centavos === undefined && atual.valor_mensal_estimado_centavos === null) {
         novo.valor_mensal_estimado_centavos = valorSugeridoCentavos(campos.plano_interesse);
       }
+      const mudaMunicipio = (["municipio_nome", "uf", "codigo_ibge"] as const).some((col) => (novo[col] ?? null) !== (atual[col] ?? null));
+      if (mudaMunicipio) {
+        // Estado liberado: o município novo vem da base (código obrigatório; nome e, se vazia, a população da base).
+        const base = await municipioDaBase(c, novo.uf, novo.codigo_ibge);
+        if (base) {
+          novo.municipio_nome = base.nome;
+          if (novo.populacao === null) novo.populacao = base.populacao;
+        }
+      }
       const alterados = CAMPOS_CADASTRAIS.filter((col) => (novo[col] ?? null) !== (atual[col] ?? null));
       if (alterados.length === 0) return { ok: true as const, versao: atual.versao, alterados: [] };
 
@@ -281,6 +317,45 @@ export async function editarLead(
       );
       await registrarHistorico(c, { leadId: id, tipo: "edicao", autorId: autor.equipeId, texto: `Alterou: ${alterados.map((col) => ROTULO_CAMPO[col]).join(", ")}.` });
       return { ok: true as const, versao: linha.versao, alterados };
+    }, executor);
+  } catch (erro) {
+    return traduzirUnico(erro, chave, autor);
+  }
+}
+
+// --- Vincular ao município da base (rodada 16-A3) -------------------------------------------
+
+/**
+ * Lead ANTIGO sem código IBGE → vincula ao município da base (busca na tela).
+ * Dono do lead ou admin (escopo no SQL: lead de colega = 404). O município
+ * tem de estar na base e ser da MESMA UF do lead; o nome passa a ser o da
+ * base, a população só é preenchida se estava vazia. Exige a versão lida
+ * (409 se mudou) e grava 'edicao' no histórico. Nenhuma migração automática
+ * por nome: é sempre uma escolha de alguém.
+ */
+export async function vincularMunicipio(id: string, codigo: string, versaoLida: number, autor: EscopoCrm, executor?: Executor): Promise<ResultadoCrm<{ versao: number }>> {
+  let chave: { uf: string; nomeBusca: string; codigoIbge: string | null; excluirId?: string } = { uf: "", nomeBusca: "", codigoIbge: codigo, excluirId: id };
+  try {
+    return await executar(async (c) => {
+      const atual = await travarLead(c, id, autor);
+      if (atual.versao !== versaoLida) throw new Recusa({ ok: false, motivo: "conflito", erro: MENSAGEM_VERSAO });
+      if (atual.codigo_ibge) throw new Recusa({ ok: false, motivo: "conflito", erro: `Este lead já está vinculado ao município de código ${atual.codigo_ibge}.` });
+      const [m] = await query<{ nome: string; uf: string; populacao: number | null }>(`select nome, uf, populacao from municipio_base where codigo_ibge = $1`, [codigo], c);
+      if (!m) throw new Recusa({ ok: false, motivo: "dados_invalidos", campo: "codigo_ibge", erro: `O código ${codigo} não está na base de municípios.` });
+      if (m.uf !== atual.uf) throw new Recusa({ ok: false, motivo: "dados_invalidos", campo: "codigo_ibge", erro: `O município escolhido é de ${m.uf}, mas o lead é de ${atual.uf}.` });
+      chave = { uf: atual.uf, nomeBusca: nomeDeMunicipioNormalizado(m.nome), codigoIbge: codigo, excluirId: id };
+      if (etapaAberta(atual.etapa)) {
+        const duplicado = await verificarDuplicidade(c, chave, autor);
+        if (duplicado) throw new Recusa(duplicado);
+      }
+      const [linha] = await query<{ versao: number }>(
+        `update lead set codigo_ibge = $1, municipio_nome = $2, nome_busca = $3, populacao = coalesce(populacao, $4), versao = versao + 1, atualizado_em = now()
+         where id = $5 returning versao`,
+        [codigo, m.nome, chave.nomeBusca, m.populacao, id],
+        c
+      );
+      await registrarHistorico(c, { leadId: id, tipo: "edicao", autorId: autor.equipeId, texto: `Vinculou ao município da base: ${m.nome} — ${m.uf} (código ${codigo}).` });
+      return { ok: true as const, versao: linha.versao };
     }, executor);
   } catch (erro) {
     return traduzirUnico(erro, chave, autor);

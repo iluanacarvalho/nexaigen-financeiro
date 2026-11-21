@@ -51,6 +51,11 @@ jobs:
         run: npm audit --omit=dev --audit-level=high
 
       # Informativo: auditoria completa (inclui dev) só pro log, nunca falha o job.
+      # Nasceu informativo por causa do advisory do picomatch (só dev, sem versão
+      # corrigida — GHSA-fc5q-39xc-vjpf); o GitHub RETIROU esse advisory em
+      # 2026-11-18 e a auditoria completa hoje dá 0 (README "Resolvidos").
+      # Continua informativo de propósito: advisory de ferramenta de dev sem
+      # correção publicada não deve travar deploy; produção é o passo acima.
       - name: Auditoria de segurança (tudo — informativo)
         run: npm audit || true
 

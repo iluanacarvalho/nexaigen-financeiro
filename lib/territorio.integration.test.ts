@@ -53,6 +53,9 @@ const rotaVisoes = await import("@/app/api/crm/visoes/route");
 const rotaVisao = await import("@/app/api/crm/visoes/[id]/route");
 const rotaLeads = await import("@/app/api/leads/route");
 const rotaBusca = await import("@/app/api/crm/busca/route");
+const rotaLead = await import("@/app/api/leads/[id]/route");
+const rotaVincular = await import("@/app/api/leads/[id]/municipio/route");
+const rotaResumo = await import("@/app/api/leads/resumo/route");
 const repo = await import("./territorioRepositorio");
 
 const TEMPO = 60_000;
@@ -243,7 +246,7 @@ describe.skipIf(!LOCAL)("Território — Postgres real (banco temporário)", () 
     expect([admin.uf, admin.total]).toEqual(["SC", 2]);
     const busca = (cookie: string) => rotaMunicipios.GET(pedir("/api/municipios?busca=joinville", cookie)).then((r) => r.json());
     expect((await busca(pessoas.vera.cookie)).municipios).toEqual([]);
-    expect((await busca(pessoas.admin.cookie)).municipios).toEqual([{ codigo_ibge: "4209102", nome: "Joinville", uf: "SC" }]);
+    expect((await busca(pessoas.admin.cookie)).municipios).toEqual([{ codigo_ibge: "4209102", nome: "Joinville", uf: "SC", populacao: 650_000 }]);
   }, TEMPO);
 
   it("visão salva: cada pessoa vê só as suas; excluir a de outra pessoa → 404; filtro com entidade desativada é ignorado com aviso", async () => {
@@ -265,6 +268,24 @@ describe.skipIf(!LOCAL)("Território — Postgres real (banco temporário)", () 
     expect((await rotaEntidade.GET(pedir(`/api/entidades/${entidades.sul}`, pessoas.vera.cookie), ctx(entidades.sul))).status).toBe(404); // desativada some pra vendas
     await rotaEntidade.PATCH(pedir(`/api/entidades/${entidades.sul}`, pessoas.admin.cookie, "PATCH", { ativo: true }), ctx(entidades.sul));
     expect((await rotaVisao.DELETE(pedir(`/api/crm/visoes/${id}`, pessoas.vera.cookie, "DELETE"), ctx(id))).status).toBe(200);
+  }, TEMPO);
+
+  it("limite de 30 visões por pessoa: a 31ª é recusada com mensagem clara; outra pessoa não é afetada; excluir uma libera a vaga", async () => {
+    const salvar = (cookie: string, nome: string) => rotaVisoes.POST(pedir("/api/crm/visoes", cookie, "POST", { nome, tela: "territorio", filtros: { uf: "PR" } }));
+    const ids: string[] = [];
+    for (let i = 1; i <= 30; i++) {
+      const r = await salvar(pessoas.vera.cookie, `Visão ${i}`);
+      expect({ i, status: r.status }).toEqual({ i, status: 201 });
+      ids.push((await r.json()).id);
+    }
+    const trigesimaPrimeira = await salvar(pessoas.vera.cookie, "Visão 31");
+    expect(trigesimaPrimeira.status).toBe(409);
+    expect(await trigesimaPrimeira.json()).toEqual({ erro: "Você já tem 30 visões salvas — exclua uma antes de salvar outra." });
+    expect((await salvar(pessoas.beto.cookie, "Visão do Beto")).status).toBe(201); // outra pessoa: conta separada
+    expect((await rotaVisao.DELETE(pedir(`/api/crm/visoes/${ids[0]}`, pessoas.vera.cookie, "DELETE"), ctx(ids[0]))).status).toBe(200);
+    expect((await salvar(pessoas.vera.cookie, "Visão 31")).status).toBe(201);
+    // Limpa (as visões não interferem nos outros testes, mas o banco temporário fica arrumado).
+    await query(`delete from crm_visao_salva where usuario_id = any($1::uuid[])`, [[pessoas.vera.id, pessoas.beto.id]]);
   }, TEMPO);
 
   it("lote por SELEÇÃO: prévia sem gravar; cria só os elegíveis (pula cliente e lead aberto), atribui a quem pediu e grava histórico", async () => {
@@ -302,8 +323,12 @@ describe.skipIf(!LOCAL)("Território — Postgres real (banco temporário)", () 
     const { criados } = await (await rotaLote.POST(pedir("/api/territorio/leads", pessoas.admin.cookie, "POST", { acao: "criar", alvo, vendedor_id: pessoas.beto.id }))).json();
     const [lead] = await query<{ vendedor_id: string; texto: string }>(`select l.vendedor_id, i.texto from lead l join lead_interacao i on i.lead_id = l.id where l.id = $1`, [criados[0].lead_id]);
     expect(lead).toEqual({ vendedor_id: pessoas.beto.id, texto: 'Lead aberto pela entidade Consórcio Teste Sul ("todas as prefeituras ainda não abordadas").' });
-    // Repetir: nada mais a criar → 409 com explicação.
-    expect((await rotaLote.POST(pedir("/api/territorio/leads", pessoas.admin.cookie, "POST", { acao: "criar", alvo }))).status).toBe(409);
+    // Repetir: nada mais a criar → 200 com criados [] e as puladas, cada uma com o motivo (nunca erro).
+    const repetido = await rotaLote.POST(pedir("/api/territorio/leads", pessoas.admin.cookie, "POST", { acao: "criar", alvo }));
+    expect(repetido.status).toBe(200);
+    const corpoRepetido = await repetido.json();
+    expect(corpoRepetido.criados).toEqual([]);
+    expect(corpoRepetido.pulados.find((p: { nome: string }) => p.nome === "Abatiá").motivo).toBe("já tem lead aberto com Beto Vendas — etapa Novo");
   }, TEMPO);
 
   it("lote é ATÔMICO: falha no meio (simulada por trigger no banco temporário) → nenhum lead e nenhum histórico ficam", async () => {
@@ -385,15 +410,74 @@ describe.skipIf(!LOCAL)("Território — Postgres real (banco temporário)", () 
     const busca = await (await rotaBusca.GET(pedir("/api/crm/busca?q=atn", pessoas.vera.cookie))).json();
     expect(busca.entidades.map((e: { sigla: string }) => e.sigla)).toEqual(["ATN"]);
     const buscaMunicipio = await (await rotaBusca.GET(pedir("/api/crm/busca?q=toledo", pessoas.vera.cookie))).json();
-    expect(buscaMunicipio.municipios[0]).toEqual({ codigo_ibge: C.toledo, nome: "Toledo", uf: "PR" });
+    expect(buscaMunicipio.municipios[0]).toEqual({ codigo_ibge: C.toledo, nome: "Toledo", uf: "PR", populacao: 162_658 });
     expect((await (await rotaBusca.GET(pedir("/api/crm/busca?q=joinville", pessoas.vera.cookie))).json()).municipios).toEqual([]);
 
-    // Lead SEM código: o município é achado pela base (UF + nome); etiquetas com a contagem de clientes.
-    expect(await repo.codigoDoMunicipioDoLead({ codigo_ibge: null, uf: "PR", municipio_nome: "Prefeitura de TOLEDO" })).toBe(C.toledo);
-    expect(await repo.codigoDoMunicipioDoLead({ codigo_ibge: null, uf: "PR", municipio_nome: "Não Existe" })).toBeNull();
+    // Etiquetas com a contagem de clientes; entidades do lead SÓ pelo código (16-A3): sem código → nenhuma.
     const etiquetas = await repo.etiquetasPorMunicipio([C.abatia], admin, "2026-11-18");
     expect(etiquetas.get(C.abatia)!.map((e) => [e.sigla, e.clientes])).toEqual([["ATN", 2], ["CTS", 1]]);
-    const nomes = await repo.nomesDeEntidadesPorLead([{ id: randomUUID(), codigo_ibge: null, uf: "PR", municipio_nome: "Curitiba" }]);
-    expect([...nomes.values()]).toEqual([["Associação Teste Norte (ATN)", "Consórcio Teste Sul (CTS)"]]);
+    const comCodigo = randomUUID();
+    const nomes = await repo.nomesDeEntidadesPorLead([{ id: comCodigo, codigo_ibge: C.curitiba }, { id: randomUUID(), codigo_ibge: null }]);
+    expect([...nomes.entries()]).toEqual([[comCodigo, ["Associação Teste Norte (ATN)", "Consórcio Teste Sul (CTS)"]]]);
   }, TEMPO);
+
+  describe("lead com município da BASE (rodada 16-A3)", () => {
+    const criar = (cookie: string, corpo: Record<string, unknown>) => rotaLeads.POST(pedir("/api/leads", cookie, "POST", { origem: "site", ...corpo }));
+
+    it("estado LIBERADO: sem código → 400; código de outra UF ou fora da base → 400; código válido → nome e população vêm da base (o nome digitado não vale)", async () => {
+      const semCodigo = await criar(pessoas.vera.cookie, { municipio_nome: "Altônia", uf: "PR" });
+      expect(semCodigo.status).toBe(400);
+      expect((await semCodigo.json()).detalhes.fieldErrors.codigo_ibge).toEqual(["Este estado está liberado no Território: escolha o município na base (busca por nome) — o código IBGE é obrigatório."]);
+      expect((await (await criar(pessoas.vera.cookie, { municipio_nome: "Qualquer", uf: "PR", codigo_ibge: "4209102" })).json()).detalhes.fieldErrors.codigo_ibge).toEqual(["O código 4209102 é de SC, não de PR."]);
+      expect((await (await criar(pessoas.vera.cookie, { municipio_nome: "Qualquer", uf: "PR", codigo_ibge: "4199998" })).json()).detalhes.fieldErrors.codigo_ibge).toEqual(["O código 4199998 não está na base de municípios."]);
+      const ok = await criar(pessoas.vera.cookie, { municipio_nome: "nome qualquer digitado", uf: "PR", codigo_ibge: "4100509" });
+      expect(ok.status).toBe(201);
+      const [lead] = await query<{ municipio_nome: string; nome_busca: string; populacao: number }>(`select municipio_nome, nome_busca, populacao from lead where id = $1`, [(await ok.json()).id]);
+      expect(lead).toEqual({ municipio_nome: "Altônia", nome_busca: "altonia", populacao: 18525 });
+    }, TEMPO);
+
+    it("estado NÃO liberado: cadastro livre continua (sem código)", async () => {
+      expect((await criar(pessoas.admin.cookie, { municipio_nome: "Município Livre", uf: "SC" })).status).toBe(201);
+    }, TEMPO);
+
+    it("edição: mudar o município em estado liberado exige a base; editar só o contato de lead antigo sem código continua livre", async () => {
+      const [{ id }] = await query<{ id: string }>(
+        `insert into lead (municipio_nome, nome_busca, uf, origem, vendedor_id) values ('Prefeitura de Palotina', 'palotina', 'PR', 'site', $1) returning id`,
+        [pessoas.vera.id]
+      );
+      const editar = (corpo: Record<string, unknown>) => rotaLead.PATCH(pedir(`/api/leads/${id}`, pessoas.vera.cookie, "PATCH", corpo), ctx(id));
+      expect((await editar({ versao: 1, contato_nome: "Secretária" })).status).toBe(200);
+      const trocaSemBase = await editar({ versao: 2, municipio_nome: "Palotina Nova" });
+      expect(trocaSemBase.status).toBe(400);
+      expect((await trocaSemBase.json()).detalhes.fieldErrors.codigo_ibge).toHaveLength(1);
+      expect((await rotaLead.GET(pedir(`/api/leads/${id}`, pessoas.vera.cookie), ctx(id)).then((r) => r.json())).lead.municipio_nome).toBe("Prefeitura de Palotina");
+    }, TEMPO);
+
+    it("VINCULAR ao município: só dono ou admin (colega → 404); mesma UF; grava código, nome da base e histórico; não vincula duas vezes; versão velha → 409", async () => {
+      const [{ id }] = await query<{ id: string }>(`select id from lead where nome_busca = 'palotina'`);
+      const vincular = (cookie: string, corpo: Record<string, unknown>) => rotaVincular.POST(pedir(`/api/leads/${id}/municipio`, cookie, "POST", corpo), ctx(id));
+      expect((await vincular(pessoas.beto.cookie, { versao: 2, codigo_ibge: "4117909" })).status).toBe(404); // lead da Vera
+      expect((await vincular(pessoas.vera.cookie, { versao: 1, codigo_ibge: "4117909" })).status).toBe(409); // versão velha
+      const outraUf = await vincular(pessoas.vera.cookie, { versao: 2, codigo_ibge: "4209102" });
+      expect((await outraUf.json()).detalhes.fieldErrors.codigo_ibge).toEqual(["O município escolhido é de SC, mas o lead é de PR."]);
+      const ok = await vincular(pessoas.vera.cookie, { versao: 2, codigo_ibge: "4117909" });
+      expect([ok.status, await ok.json()]).toEqual([200, { versao: 3 }]);
+      const [lead] = await query<{ codigo_ibge: string; municipio_nome: string; populacao: number }>(`select codigo_ibge, municipio_nome, populacao from lead where id = $1`, [id]);
+      expect(lead).toEqual({ codigo_ibge: "4117909", municipio_nome: "Palotina", populacao: 37431 });
+      const [h] = await query<{ tipo: string; texto: string }>(`select tipo, texto from lead_interacao where lead_id = $1 order by em desc limit 1`, [id]);
+      expect(h).toEqual({ tipo: "edicao", texto: "Vinculou ao município da base: Palotina — PR (código 4117909)." });
+      expect((await vincular(pessoas.vera.cookie, { versao: 3, codigo_ibge: "4117909" })).status).toBe(409); // já vinculado
+    }, TEMPO);
+
+    it("admin: contagem e filtro de leads SEM município vinculado (vendas não recebe a contagem)", async () => {
+      const [{ n }] = await query<{ n: number }>(`select count(*)::int as n from lead where codigo_ibge is null and etapa <> 'ganho'`);
+      expect(n).toBeGreaterThan(0);
+      const resumoAdmin = await (await rotaResumo.GET(pedir("/api/leads/resumo", pessoas.admin.cookie))).json();
+      expect(resumoAdmin.leadsSemMunicipio).toBe(n);
+      expect((await (await rotaResumo.GET(pedir("/api/leads/resumo", pessoas.vera.cookie))).json()).leadsSemMunicipio).toBeNull();
+      const lista = await (await rotaLeads.GET(pedir("/api/leads?sem_municipio=true&por_pagina=100", pessoas.admin.cookie))).json();
+      expect(lista.total).toBe(n);
+      expect(lista.leads.every((l: { codigo_ibge: string | null }) => l.codigo_ibge === null)).toBe(true);
+    }, TEMPO);
+  });
 });

@@ -563,9 +563,13 @@ Ou leia o JSON direto (`fetch("https://<endereço-do-financeiro>/api/publico/map
 
 ## Riscos aceitos
 
-| Data | Risco | Por que é aceito | Quando rever |
-|---|---|---|---|
-| 2026-11-17 | `picomatch` (dependência **só de desenvolvimento**, via tailwindcss, vitest/vite, eslint) — advisory **GHSA-fc5q-39xc-vjpf** (ReDoS em extglobs), alto, faixa `<= 4.0.7`, **sem versão corrigida publicada** (4.0.7 é a última; as linhas 2.x/3.x também estão na faixa). O `npm audit` completo mostra 21 "high", todos dessa cadeia. | Não vai para produção: `npm audit --omit=dev` = 0. Os padrões glob vêm só da configuração do próprio projeto (tailwind/vitest/eslint), nunca de entrada de usuário. As "correções" que o npm sugere são rebaixamentos de versão principal (vitest 3, eslint-config-next 14, tailwind 4), que **não** foram aplicados (nada de `--force`). No CI, o passo **bloqueante** é `npm audit --omit=dev --audit-level=high` (só produção); a auditoria completa é informativa (`npm audit \|\| true`). | Quando sair versão corrigida do `picomatch` (acima de 4.0.7, ou 2.x/3.x corrigida): atualizar sem `--force` e sem rebaixar vitest/eslint-config-next/tailwind. |
+Nenhum risco aceito em aberto no momento (veja "Resolvidos" abaixo).
+
+## Resolvidos
+
+| Data | Risco | O que mudou |
+|---|---|---|
+| 2026-11-18 | `picomatch` (dependência **só de desenvolvimento**, via tailwindcss, vitest/vite, eslint) — advisory **GHSA-fc5q-39xc-vjpf** (ReDoS em extglobs), alto, faixa `<= 4.0.7`, sem versão corrigida. Era risco aceito desde 2026-11-17 (o `npm audit` completo mostrava 21 "high", todos dessa cadeia; produção sempre 0). | **O GitHub retirou o advisory** (`withdrawn_at` 2026-11-18 15:38 UTC, "Withdrawn Advisory"). **Nenhuma versão mudou:** continuam `picomatch` 2.3.2 (via tailwindcss/chokidar/micromatch) e 4.0.7 (via vitest/vite/tinyglobby); `npm view picomatch` mostra a 4.0.7 como última; o `package-lock.json` não foi tocado. Com o aviso retirado, `npm audit` completo = **0 vulnerabilidades** e `npm audit --omit=dev` = 0. Nada de `--force` foi usado. |
 
 ## 27. CRM de leads (rodada 16-A)
 
@@ -724,3 +728,28 @@ Um ex-cliente com lead aberto aparece como **ex-cliente** (precedência 1); a et
 - Entidades reais do Paraná não estão no repositório: chegam por CSV da dona do produto.
 
 **Testes:** `lib/territorio.test.ts` (precedência de status e de plano em todas as combinações, cobertura, filtros na URL, privacidade da linha, lote), `lib/planos.test.ts` (bordas 9.999/10.000/49.999/50.000/199.999/200.000), `lib/baseMunicipios.test.ts` (fixture do IBGE e o arquivo real do PR), `lib/entidadesCsv.test.ts`, e `lib/territorio.integration.test.ts` em banco temporário. A prova de mutação: devolver o lead de colega com todos os campos faz o teste de chaves exatas falhar.
+
+## 29. Pendências da 16-A2 fechadas (rodada 16-A3)
+
+**Testes de integração estáveis.**
+- **Causa:** seis arquivos (`cancelamentoContrato`, `planos`, `papeis`, `mapaPublico`, `clientes/[id]/contrato` e `notas/[id]/arquivo`) testavam migrations com `ALTER TABLE … DROP/ADD CONSTRAINT/COLUMN` no **banco compartilhado**. Mesmo dentro de uma transação desfeita, isso pega trava exclusiva e espera qualquer outra sessão que esteja usando a tabela.
+- **Correção:** esses arquivos agora rodam **inteiros num banco temporário**, criado como produção.
+- **Regra:** teste de integração com DDL usa banco temporário (CLAUDE.md).
+- **Toda conexão de teste** tem `lock_timeout` de 5 s e o nome do arquivo (`application_name`). Teste que falha por trava imprime quem espera e quem bloqueia.
+- **No fim de cada arquivo**, sessão "idle in transaction" deixada pelo arquivo faz o arquivo falhar, apontando o pid e a consulta.
+- **Uma suíte por vez:** a suíte segura uma trava consultiva no Postgres. Uma **segunda execução simultânea** no mesmo banco falha na hora, com mensagem clara (duas suítes ao mesmo tempo no banco compartilhado se atrapalham).
+- **Sob carga**, o teste de login (bcrypt custo 12, até ~11 verificações por cenário) passava de 30 s. Ele ganhou timeout explícito de 120 s, e os cenários não dependem mais um do outro.
+- **Consultas juntas:** `lib/db.ts#consultasJuntas` roda leituras juntas em paralelo no pool e em sequência dentro de uma transação. Antes, o lote do Território empilhava consultas na mesma conexão (o `pg` avisa que deixa de aceitar isso no pg@9).
+
+**Concorrência do lote:** `lib/territorio.concorrencia.integration.test.ts` manda dois lotes ao mesmo tempo sobre os mesmos municípios, em 20 rodadas.
+- Cada município vira lead uma vez.
+- O perdedor recebe a lista de puladas, nunca 500.
+- Lote sem nada a criar devolve **200** com `criados: []` e as puladas (antes, 409).
+
+**Lead com município da base:**
+- **Estado liberado:** no cadastro e na edição de lead, o município é **escolhido na base** (busca por nome). Nome, UF, código IBGE e população vêm de lá e ficam travados, com "Trocar município". O servidor exige o código e recusa município de outra UF ou fora da base.
+- **Estado não liberado:** cadastro livre, como antes.
+- **Leads antigos sem código:** o detalhe mostra **"Vincular ao município"** (dono ou admin, mesma UF, grava no histórico). Não há migração automática por nome.
+- **Admin:** vê "N leads sem município vinculado", com link para a lista filtrada (`sem_municipio=true`).
+- **Entidades do lead** (etiquetas, filtro e exportação) só pelo código: lead sem código não mostra etiqueta, mostra "vincular município".
+
