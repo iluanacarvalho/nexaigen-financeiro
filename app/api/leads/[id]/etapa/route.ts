@@ -4,7 +4,7 @@
 // POST { acao: "mover", etapa } | { acao: "perder", motivo, detalhe? } | { acao: "reabrir" }
 //   → { etapa, versao }. Entre etapas abertas: avança ou volta. Perder exige
 //   motivo. De 'perdido' só reabrir (volta pra 'contato', histórico "reabertura").
-//   'ganho' → 409: O FECHAMENTO É O FLUXO DA RODADA 16-B — não há atalho aqui.
+//   'ganho' → 409: só o REGISTRO DO ACEITE grava 'ganho' (16-B1, POST /api/leads/[id]/aceite) — não há atalho aqui.
 
 import { NextRequest, NextResponse } from "next/server";
 import { NOME_COOKIE_ACCESS, exigirPapel, obterContextoAutenticado } from "@/lib/auth";

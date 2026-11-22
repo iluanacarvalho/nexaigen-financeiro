@@ -19,7 +19,8 @@ export function mostrarAvisoContrato(c: ClientePrefeitura): boolean {
 
 export function AvisoContrato({ cliente, onCriarNotaFinal }: { cliente: ClientePrefeitura; onCriarNotaFinal?: () => void }) {
   const termino = cliente.cancelamento_termino_em;
-  if (!termino || (cliente.status_contrato !== "em_aviso_previo" && cliente.status_contrato !== "encerrado")) return null;
+  // Em aviso prévio/encerrado o contrato SEMPRE tem data de início (CHECK da 0017: nula só aguardando assinatura).
+  if (!termino || !cliente.data_inicio_contrato || (cliente.status_contrato !== "em_aviso_previo" && cliente.status_contrato !== "encerrado")) return null;
   const sugestao = sugerirNotaFinal({ data_inicio_contrato: cliente.data_inicio_contrato, cancelamento_termino_em: termino, valorMensalCentavos: paraCentavos(cliente.valor_mensal) });
   return (
     <div role="status" aria-label="Aviso prévio" className="mt-1 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900">
@@ -50,6 +51,7 @@ export function AvisoContrato({ cliente, onCriarNotaFinal }: { cliente: ClienteP
 
 /** Formulário de nota já preenchido pra nota final (tela de Notas). */
 export function inicialNotaFinal(c: ClientePrefeitura): { clienteId: string; valor: string; competencia: string; dias: number; periodo: { inicio: string; fim: string } } {
-  const s = sugerirNotaFinal({ data_inicio_contrato: c.data_inicio_contrato, cancelamento_termino_em: c.cancelamento_termino_em!, valorMensalCentavos: paraCentavos(c.valor_mensal) });
+  // Só é chamada pra quem precisaNotaFinal (aviso prévio/encerrado) — sempre com data de início (CHECK da 0017).
+  const s = sugerirNotaFinal({ data_inicio_contrato: c.data_inicio_contrato!, cancelamento_termino_em: c.cancelamento_termino_em!, valorMensalCentavos: paraCentavos(c.valor_mensal) });
   return { clienteId: c.id, valor: centavosParaTextoCampo(s.valorCentavos), competencia: s.competencia.slice(0, 7), dias: s.dias, periodo: s.periodo };
 }

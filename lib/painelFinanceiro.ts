@@ -30,7 +30,7 @@ import { celulaTextoCsv, centavosCsv } from "./exportacao";
 import { LIMIAR_ATRASO_CRITICO_DIAS, diagnosticarNota } from "./prazos";
 import { statusPersistidoDe, type SituacaoNota } from "./estadoNota";
 import { rotuloDoPlano, temImplantacaoACobrar } from "./planos";
-import { statusContratoNaData } from "./cancelamentoContrato";
+import { aguardandoAssinatura, statusContratoNaData } from "./cancelamentoContrato";
 
 /** Notas sem atesto há MAIS que isto (dias desde a emissão) entram no KPI 6. */
 export const LIMIAR_PAINEL_SEM_ATESTO_DIAS = 15;
@@ -239,7 +239,8 @@ function diagnosticarAberta(nota: LinhaNotaPainel, hoje: string): NotaAbertaDiag
 /**
  * MRR: soma de valor_mensal dos contratos ATIVOS e EM AVISO PRÉVIO (a
  * mensalidade continua devida até o término — rodada 12-A) + contagem por
- * status. Encerrado e suspenso não entram. Status pela data de `hoje`
+ * status. Encerrado e suspenso não entram; AGUARDANDO ASSINATURA (16-B1)
+ * também não — nem no valor, nem nas contagens (é pré-contrato, sem cobrança). Status pela data de `hoje`
  * (aviso com término passado = encerrado, mesmo antes do job diário).
  * null sem nenhum cliente.
  */
@@ -376,7 +377,8 @@ export function montarPainelFinanceiro(entrada: { clientes: LinhaClientePainel[]
   }
 
   // Encerrado continua na tabela: a situação financeira vem das notas em aberto, que seguem exigíveis.
-  const linhasClientes: ClientePainel[] = clientes.map((c) => {
+  // Aguardando assinatura (16-B1) NÃO entra: é pré-contrato, sem cobrança (o MRR tem a sua própria regra em calcularMrr).
+  const linhasClientes: ClientePainel[] = clientes.filter((c) => !aguardandoAssinatura(c)).map((c) => {
     const doCliente = abertasPorCliente.get(c.id) ?? [];
     const maiorAtrasoDias = doCliente.reduce((max, a) => Math.max(max, a.diasDeAtraso), 0);
     const statusContrato = statusContratoNaData(c, hoje);

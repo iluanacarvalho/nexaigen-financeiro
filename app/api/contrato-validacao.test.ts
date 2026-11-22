@@ -195,7 +195,7 @@ describe("POST /api/equipe", { timeout: 30_000 }, () => {
   });
   it("(b) sem papel ou papel inexistente → 400 em fieldErrors.papel (nunca um papel default silencioso)", async () => {
     const sem = await esperar400ComDetalhes(await chamar(EQUIPE, "POST", { nome: "Nova Pessoa", email: "a@b.com.br" }));
-    expect(sem.fieldErrors.papel).toEqual(["Papel inválido — use um destes: admin, financeiro, vendas, rh."]);
+    expect(sem.fieldErrors.papel).toEqual(["Papel inválido — use um destes: admin, financeiro, vendas, rh, contratos, implantacao."]);
     const outro = await esperar400ComDetalhes(await chamar(EQUIPE, "POST", { nome: "Nova Pessoa", email: "a@b.com.br", papel: "diretor" }));
     expect(outro.fieldErrors.papel).toHaveLength(1);
   });
@@ -406,7 +406,7 @@ describe("PATCH /api/equipe/[id] (estrito)", () => {
   });
   it("(b) papel inválido → 400 em fieldErrors.papel", async () => {
     const d = await esperar400ComDetalhes(await chamar(ALTERAR_PAPEL, "PATCH", { papel: "dono" }));
-    expect(d.fieldErrors.papel).toEqual(["Papel inválido — use um destes: admin, financeiro, vendas, rh."]);
+    expect(d.fieldErrors.papel).toEqual(["Papel inválido — use um destes: admin, financeiro, vendas, rh, contratos, implantacao."]);
   });
   it("(c) chave desconhecida → 400 (só o papel muda por aqui)", async () => {
     const d = await esperar400ComDetalhes(await chamar(ALTERAR_PAPEL, "PATCH", { papel: "rh", ativo: false }));

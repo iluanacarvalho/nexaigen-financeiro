@@ -18,6 +18,7 @@ import {
 
 export const COR_STATUS: Record<StatusComercial, string> = {
   cliente: "bg-emerald-100 text-emerald-900 border-emerald-300",
+  em_fechamento: "bg-indigo-50 text-indigo-900 border-indigo-300",
   em_negociacao: "bg-blue-100 text-blue-900 border-blue-300",
   perdido: "bg-red-50 text-red-800 border-red-200",
   ex_cliente: "bg-sky-50 text-sky-900 border-sky-200",
@@ -26,6 +27,7 @@ export const COR_STATUS: Record<StatusComercial, string> = {
 
 const DESCRICAO_STATUS: Record<StatusComercial, string> = {
   cliente: "contrato vigente (ativo, em aviso prévio ou suspenso)",
+  em_fechamento: "aceite registrado, contrato aguardando assinatura",
   em_negociacao: "tem lead aberto",
   perdido: "o último lead foi perdido",
   ex_cliente: "todos os contratos estão encerrados",

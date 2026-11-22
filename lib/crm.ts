@@ -5,8 +5,9 @@
 // ETAPAS: novo → contato → demonstracao → proposta → negociacao (ABERTAS),
 // e as fechadas ganho / perdido. Entre as abertas pode avançar ou voltar
 // livremente; perder exige motivo; de 'perdido' só se REABRE (volta pra
-// 'contato'). 'ganho' EXISTE no banco mas NINGUÉM marca nesta rodada: o
-// fechamento (lead vira cliente) é o fluxo da rodada 16-B — não há atalho.
+// 'contato'). 'ganho' só é gravado pelo REGISTRO DO ACEITE da prefeitura
+// (rodada 16-B1, lib/fechamentoServico.ts#registrarAceite) — a mudança de
+// etapa genérica continua recusando 'ganho': não há atalho.
 
 import { somarDias } from "./estadoNota";
 import { nomeDeMunicipioNormalizado } from "./ibge";
@@ -74,7 +75,7 @@ export const ROTULO_INTERACAO: Record<TipoInteracao, string> = {
 export const TIPOS_ATIVIDADE: readonly TipoInteracao[] = [...TIPOS_CONTATO, "mudanca_etapa", "reabertura"];
 
 export const AVISO_LGPD = "Não registre dados pessoais de cidadãos, crianças ou famílias — só informações comerciais da prefeitura.";
-export const MENSAGEM_GANHO_BLOQUEADO = "O fechamento é feito pelo fluxo de fechamento (rodada 16-B) — a etapa 'ganho' não pode ser marcada por aqui.";
+export const MENSAGEM_GANHO_BLOQUEADO = 'O lead só vira "Ganho" pelo registro do aceite da prefeitura (botão "Registrar aceite da prefeitura" no detalhe do lead) — a etapa não pode ser marcada por aqui.';
 
 export function etapaAberta(etapa: string): etapa is EtapaAberta {
   return (ETAPAS_ABERTAS as readonly string[]).includes(etapa);
@@ -87,7 +88,7 @@ export type AcaoEtapa = { acao: "mover"; etapa: Etapa } | { acao: "perder"; moti
 export type ResultadoTransicao = { ok: true; etapaNova: Etapa; tipoHistorico: "mudanca_etapa" | "reabertura" } | { ok: false; erro: string };
 
 /**
- * Regras de transição. 'ganho' sempre recusado (rodada 16-B). Aberto →
+ * Regras de transição. 'ganho' sempre recusado aqui (só o aceite grava — 16-B1). Aberto →
  * qualquer outra aberta (avançar ou voltar) ou perdido (com motivo — o
  * schema já exige). Perdido → só reabrir (volta pra 'contato'). Ganho →
  * nada (é fechamento).
@@ -182,7 +183,7 @@ const ORDEM_FUNIL: readonly (EtapaAberta | "ganho")[] = [...ETAPAS_ABERTAS, "gan
  *   taxa        = passaram ÷ entraram
  * Pular etapa conta como ter passado pelas do meio (quem foi de Novo direto
  * pra Proposta passou de Contato). A última taxa (Negociação → Ganho) fica
- * 0 até a 16-B criar o fechamento.
+ * a partir do aceite registrado (16-B1).
  */
 export function calcularTaxasDeAvanco(etapasAlcancadasPorLead: readonly (readonly string[])[]): TaxaAvanco[] {
   const maiores = etapasAlcancadasPorLead.map((etapas) => Math.max(0, ...etapas.map((e) => ORDEM_FUNIL.indexOf(e as EtapaAberta)).filter((i) => i >= 0)));

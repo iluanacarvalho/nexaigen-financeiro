@@ -18,6 +18,8 @@ export async function lerDadosRelatorio(executor?: Executor): Promise<{ clientes
          c.data_inicio_contrato, c.municipio_id_externo,
          exists (select 1 from nota_fiscal n where n.cliente_id = c.id and n.tipo = 'implantacao' and n.status <> 'cancelada') as tem_implantacao_ativa
        from cliente_prefeitura c
+       -- Aguardando assinatura (16-B1) NÃO é contrato ainda: sem data de início, fora do relatório (entra no mês da assinatura).
+       where c.status_contrato <> 'aguardando_assinatura'
        order by c.nome`,
       [],
       executor

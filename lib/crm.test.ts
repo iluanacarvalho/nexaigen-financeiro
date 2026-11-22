@@ -29,7 +29,7 @@ describe("transições de etapa", () => {
     expect(validarTransicao("contato", { acao: "mover", etapa: "contato" })).toEqual({ ok: false, erro: "O lead já está na etapa Contato." });
   });
 
-  it("'ganho' SEMPRE recusado (fechamento é a rodada 16-B), de qualquer etapa", () => {
+  it("'ganho' SEMPRE recusado pela mudança de etapa (só o registro do aceite grava — 16-B1), de qualquer etapa", () => {
     for (const atual of ["novo", "contato", "demonstracao", "proposta", "negociacao", "perdido"]) {
       expect(validarTransicao(atual, { acao: "mover", etapa: "ganho" })).toEqual({ ok: false, erro: MENSAGEM_GANHO_BLOQUEADO });
     }

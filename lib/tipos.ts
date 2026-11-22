@@ -59,8 +59,9 @@ export interface ClientePrefeitura {
   tem_implantacao_ativa?: boolean;
   valor_mensal: string;
   dia_vencimento_contrato: number;
-  data_inicio_contrato: string;
-  status_contrato: "ativo" | "em_aviso_previo" | "suspenso" | "encerrado"; // lib/cancelamentoContrato.ts
+  /** null SÓ em "aguardando_assinatura" (16-B1 — a vigência começa na assinatura; CHECK da 0017). */
+  data_inicio_contrato: string | null;
+  status_contrato: "aguardando_assinatura" | "ativo" | "em_aviso_previo" | "suspenso" | "encerrado"; // lib/cancelamentoContrato.ts
   /** Data de recebimento do ofício de cancelamento (0011) — null sem cancelamento registrado. */
   cancelamento_pedido_em: string | null;
   /** Término do aviso prévio = pedido + 30 dias (0011). Continua preenchido depois do encerramento. */

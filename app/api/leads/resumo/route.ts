@@ -1,7 +1,7 @@
 // CRM — números do funil (rodada 16-A). Área "crm"; no escopo de quem lê
 // (vendas: só os seus leads). Mesma função da tela /crm
 // (lib/crmRepositorio.ts#obterResumoCrm): abertos e valor, por etapa,
-// ganhos no mês (null até a 16-B), perdidos no mês, taxa de avanço,
+// ganhos no mês (aceites registrados — 16-B1), perdidos no mês, taxa de avanço,
 // "minhas ações de hoje"; admin também carga por vendedor e pedidos pendentes.
 
 import { NextRequest, NextResponse } from "next/server";

@@ -101,6 +101,15 @@ import { PUT as estadoPut } from "./estados/[uf]/route";
 import { GET as visoesGet, POST as visoesPost } from "./crm/visoes/route";
 import { DELETE as visaoDelete } from "./crm/visoes/[id]/route";
 import { GET as buscaCrmGet } from "./crm/busca/route";
+import { POST as aceitePost } from "./leads/[id]/aceite/route";
+import { GET as contratoGerarGet } from "./clientes/[id]/contrato/gerar/route";
+import { POST as assinaturaPost } from "./operacao/clientes/[id]/assinatura/route";
+import { GET as tarefasGet } from "./operacao/tarefas/route";
+import { POST as tarefaPost } from "./operacao/tarefas/[id]/route";
+import { GET as modelosGet, POST as modelosPost } from "./modelos-contrato/route";
+import { POST as modeloAprovarPost } from "./modelos-contrato/[id]/aprovar/route";
+import { POST as modeloPreviaPost } from "./modelos-contrato/previa/route";
+import { GET as implantacaoGet } from "./integracao/implantacoes/[chave]/route";
 
 type Handler = (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => Promise<Response>;
 
@@ -176,7 +185,19 @@ const ROTAS: { rota: string; url: string; area: Area; handler: Handler }[] = [
   { rota: "GET /api/crm/visoes", url: "/api/crm/visoes", area: "crm", handler: visoesGet as Handler },
   { rota: "POST /api/crm/visoes", url: "/api/crm/visoes", area: "crm", handler: visoesPost as Handler },
   { rota: "DELETE /api/crm/visoes/[id]", url: `/api/crm/visoes/${ID}`, area: "crm", handler: visaoDelete as Handler },
-  { rota: "GET /api/crm/busca", url: "/api/crm/busca?q=curitiba", area: "crm", handler: buscaCrmGet as Handler }
+  { rota: "GET /api/crm/busca", url: "/api/crm/busca?q=curitiba", area: "crm", handler: buscaCrmGet as Handler },
+  // Fechamento (rodada 16-B1): aceite = "crm" (vendas no SEU lead, admin); contrato gerado = "contrato_gerado"
+  // (admin, contratos, vendas — dono conferido na rota); tarefas e assinatura = "operacao" (contratos, implantação,
+  // admin); modelos = "modelos_contrato" (só admin).
+  { rota: "POST /api/leads/[id]/aceite", url: `/api/leads/${ID}/aceite`, area: "crm", handler: aceitePost as Handler },
+  { rota: "GET /api/clientes/[id]/contrato/gerar", url: `/api/clientes/${ID}/contrato/gerar`, area: "contrato_gerado", handler: contratoGerarGet as Handler },
+  { rota: "POST /api/operacao/clientes/[id]/assinatura", url: `/api/operacao/clientes/${ID}/assinatura`, area: "operacao", handler: assinaturaPost as Handler },
+  { rota: "GET /api/operacao/tarefas", url: "/api/operacao/tarefas", area: "operacao", handler: tarefasGet as Handler },
+  { rota: "POST /api/operacao/tarefas/[id]", url: `/api/operacao/tarefas/${ID}`, area: "operacao", handler: tarefaPost as Handler },
+  { rota: "GET /api/modelos-contrato", url: "/api/modelos-contrato", area: "modelos_contrato", handler: modelosGet as Handler },
+  { rota: "POST /api/modelos-contrato", url: "/api/modelos-contrato", area: "modelos_contrato", handler: modelosPost as Handler },
+  { rota: "POST /api/modelos-contrato/[id]/aprovar", url: `/api/modelos-contrato/${ID}/aprovar`, area: "modelos_contrato", handler: modeloAprovarPost as Handler },
+  { rota: "POST /api/modelos-contrato/previa", url: "/api/modelos-contrato/previa", area: "modelos_contrato", handler: modeloPreviaPost as Handler }
 ];
 
 /**
@@ -194,6 +215,7 @@ const ROTAS_SEM_PAPEL = [
   "POST /api/auth/trocar-senha",
   "POST /api/cron/verificar-prazos",
   "POST /api/integracao/clientes",
+  "GET /api/integracao/implantacoes/[chave]",
   "POST /api/integracao/clientes/[municipioIdExterno]/cancelamento"
 ];
 
@@ -437,3 +459,33 @@ describe("rota PÚBLICA de propósito: GET /api/publico/mapa-clientes (rodada 15
     }
   });
 });
+
+describe("/api/integracao/implantacoes/[chave] (16-B1) — mesmo segredo da integração (INTEGRACAO_SECRET), nunca sessão de equipe", () => {
+  const ORIGINAL = process.env.INTEGRACAO_SECRET;
+  const SEGREDO = "segredo-de-teste-implantacao";
+  const ctxChave = { params: Promise.resolve({ chave: "4106902" }) };
+  const url = "http://localhost:3001/api/integracao/implantacoes/4106902";
+
+  beforeEach(() => {
+    process.env.INTEGRACAO_SECRET = SEGREDO;
+  });
+
+  afterAll(() => {
+    if (ORIGINAL === undefined) delete process.env.INTEGRACAO_SECRET;
+    else process.env.INTEGRACAO_SECRET = ORIGINAL;
+  });
+
+  it("sem segredo, segredo errado ou só cookie de sessão — 401, nunca chama query()", async () => {
+    for (const headers of [{}, { authorization: "Bearer outro" }, { cookie: "access_token=qualquer-coisa" }] as Record<string, string>[]) {
+      const res = await implantacaoGet(new NextRequest(url, { headers }), ctxChave);
+      expect(res.status).toBe(401);
+    }
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it("com Authorization: Bearer INTEGRACAO_SECRET — chega ao banco SEM sessão de equipe", async () => {
+    await expect(implantacaoGet(new NextRequest(url, { headers: { authorization: `Bearer ${SEGREDO}` } }), ctxChave)).rejects.toThrow("query() NUNCA deveria ser chamada sem sessão válida.");
+    expect(queryMock).toHaveBeenCalled();
+  });
+});
+

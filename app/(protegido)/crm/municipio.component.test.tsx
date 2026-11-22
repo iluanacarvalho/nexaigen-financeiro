@@ -108,7 +108,7 @@ describe("admin — leads sem município vinculado", () => {
     hoje: "2026-11-18",
     abertos: { quantidade: 0, valorCentavos: 0 },
     porEtapa: ETAPAS.map((etapa) => ({ etapa, quantidade: 0, valorCentavos: 0 })),
-    ganhosNoMes: null,
+    ganhosNoMes: 0,
     perdidosNoMes: 0,
     taxasDeAvanco: calcularTaxasDeAvanco([]),
     minhasAcoes: [],

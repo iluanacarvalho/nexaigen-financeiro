@@ -440,8 +440,8 @@ export interface ResumoCrm {
   hoje: string;
   abertos: { quantidade: number; valorCentavos: number };
   porEtapa: { etapa: Etapa; quantidade: number; valorCentavos: number }[];
-  /** null até a rodada 16-B (não existe fechamento ainda) — a tela mostra "—". */
-  ganhosNoMes: null;
+  /** Leads que ESTÃO ganhos e cujo aceite foi registrado neste mês (dia em SP) — 16-B1. */
+  ganhosNoMes: number;
   perdidosNoMes: number;
   taxasDeAvanco: TaxaAvanco[];
   /** Próximas ações vencidas ou de hoje dos leads EM QUE QUEM LÊ É O VENDEDOR (mesmo admin: "minhas"). */
@@ -469,7 +469,7 @@ export async function obterResumoCrm(escopo: EscopoCrm, hoje: string, executor?:
   const escopoSql = condicaoEscopo(escopo, pEsc, "l");
   const mes = hoje.slice(0, 7);
 
-  const [porEtapa, perdidos, alcancadas, acoes] = await consultasJuntas(executor, [
+  const [porEtapa, perdidos, ganhos, alcancadas, acoes] = await consultasJuntas(executor, [
     () => query<{ etapa: Etapa; quantidade: number; valor: number }>(
       `select l.etapa, count(*)::int as quantidade, coalesce(sum(l.valor_mensal_estimado_centavos), 0)::bigint as valor
        from lead l where ${escopoSql} group by l.etapa`,
@@ -481,6 +481,15 @@ export async function obterResumoCrm(escopo: EscopoCrm, hoje: string, executor?:
       `select count(*)::int as n from lead l
        where ${escopoSql} and l.etapa = 'perdido'
          and exists (select 1 from lead_interacao i where i.lead_id = l.id and i.etapa_nova = 'perdido'
+                     and to_char((i.em at time zone 'America/Sao_Paulo'), 'YYYY-MM') = $${pEsc.length + 1})`,
+      [...pEsc, mes],
+      executor
+    ),
+    // Ganhos no mês (16-B1): leads que ESTÃO ganhos e cujo aceite (mudança pra 'ganho') foi registrado neste mês (dia em SP).
+    () => query<{ n: number }>(
+      `select count(*)::int as n from lead l
+       where ${escopoSql} and l.etapa = 'ganho'
+         and exists (select 1 from lead_interacao i where i.lead_id = l.id and i.etapa_nova = 'ganho'
                      and to_char((i.em at time zone 'America/Sao_Paulo'), 'YYYY-MM') = $${pEsc.length + 1})`,
       [...pEsc, mes],
       executor
@@ -529,7 +538,7 @@ export async function obterResumoCrm(escopo: EscopoCrm, hoje: string, executor?:
     hoje,
     abertos: { quantidade: abertas.reduce((s, e) => s + e.quantidade, 0), valorCentavos: abertas.reduce((s, e) => s + e.valorCentavos, 0) },
     porEtapa: linhasEtapa,
-    ganhosNoMes: null,
+    ganhosNoMes: ganhos[0].n,
     perdidosNoMes: perdidos[0].n,
     taxasDeAvanco: calcularTaxasDeAvanco(alcancadas.map((r) => ["novo", r.etapa, ...(r.alcancadas ?? [])])),
     minhasAcoes: acoes,

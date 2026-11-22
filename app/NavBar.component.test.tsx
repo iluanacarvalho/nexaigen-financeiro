@@ -23,7 +23,7 @@ describe("NavBar por papel", () => {
     const { itens, rotulo } = links("admin");
     expect(itens).toEqual([
       ["Dashboard", "/"], ["Painel", "/painel"], ["Novos contratos", "/contratos"], ["Notas fiscais", "/notas"],
-      ["Fila de Checagem", "/checagem"], ["Clientes", "/clientes"], ["Alertas de Cobrança", "/alertas"], ["CRM", "/crm"], ["Equipe", "/equipe"]
+      ["Fila de Checagem", "/checagem"], ["Clientes", "/clientes"], ["Alertas de Cobrança", "/alertas"], ["CRM", "/crm"], ["Tarefas", "/operacao"], ["Modelos de contrato", "/modelos-contrato"], ["Equipe", "/equipe"]
     ]);
     expect(rotulo).toBe("(Administrador)");
   });

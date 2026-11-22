@@ -4,6 +4,7 @@
 import { rotuloStatusContrato } from "@/lib/cancelamentoContrato";
 
 const COR: Record<string, string> = {
+  aguardando_assinatura: "bg-indigo-50 text-indigo-800",
   ativo: "bg-emerald-50 text-emerald-700",
   em_aviso_previo: "bg-amber-100 text-amber-800",
   suspenso: "bg-slate-100 text-slate-600",

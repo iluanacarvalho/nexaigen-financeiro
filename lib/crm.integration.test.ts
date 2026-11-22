@@ -236,10 +236,10 @@ describe.skipIf(!LOCAL)("CRM — Postgres real (banco temporário)", () => {
       expect(lead.valor_mensal_estimado_centavos).toBe(850000);
     });
 
-    it("'ganho' → 409 (fechamento é a 16-B); mover pra perdido sem motivo → 409; perder sem motivo (schema) → 400", async () => {
+    it("'ganho' → 409 (só o registro do aceite grava — 16-B1); mover pra perdido sem motivo → 409; perder sem motivo (schema) → 400", async () => {
       const ganho = await rotaEtapa.POST(req(`/api/leads/${id}/etapa`, pessoas.vendasA, "POST", { acao: "mover", etapa: "ganho" }), ctx(id));
       expect(ganho.status).toBe(409);
-      expect((await ganho.json()).erro).toMatch(/fluxo de fechamento \(rodada 16-B\)/);
+      expect((await ganho.json()).erro).toMatch(/registro do aceite da prefeitura/);
       expect((await rotaEtapa.POST(req(`/api/leads/${id}/etapa`, pessoas.vendasA, "POST", { acao: "mover", etapa: "perdido" }), ctx(id))).status).toBe(409);
       expect((await rotaEtapa.POST(req(`/api/leads/${id}/etapa`, pessoas.vendasA, "POST", { acao: "perder" }), ctx(id))).status).toBe(400);
       const [lead] = await query<{ etapa: string }>(`select etapa from lead where id = $1`, [id]);

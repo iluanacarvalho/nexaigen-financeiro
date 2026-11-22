@@ -55,7 +55,7 @@ function resumo(extra: Partial<ResumoCrm> = {}): ResumoCrm {
       { etapa: "ganho", quantidade: 0, valorCentavos: 0 },
       { etapa: "perdido", quantidade: 1, valorCentavos: 0 }
     ],
-    ganhosNoMes: null,
+    ganhosNoMes: 0,
     perdidosNoMes: 1,
     taxasDeAvanco: calcularTaxasDeAvanco([["novo"], ["novo", "proposta"]]),
     minhasAcoes: [{ id: "l1", municipio_nome: "Arapongas", uf: "PR", etapa: "novo", proxima_acao_em: "2026-11-17", proxima_acao_descricao: "Ligar para a secretária" }],
@@ -119,10 +119,10 @@ describe("CRM — funil", () => {
     expect(within(screen.getByTestId("cartao-e2")).getByTestId("selo-ex-cliente").textContent).toBe("ex-cliente · data do encerramento não registrada");
   });
 
-  it("números: ganhos '—' com legenda da 16-B; taxa '—' quando ninguém entrou; minhas ações de hoje", () => {
+  it("números: ganhos no mês (aceites registrados — 16-B1); taxa '—' quando ninguém entrou; minhas ações de hoje", () => {
     render(<PainelCrm resumo={resumo()} funil={funilDe(ABERTOS, [])} admin={false} vendedores={[]} />);
     const numeros = screen.getByRole("region", { name: "Números do funil" });
-    expect(numeros.textContent).toMatch(/Ganhos no mês—O fechamento \(lead → cliente\) entra na rodada 16-B\./);
+    expect(numeros.textContent).toMatch(/Ganhos no mês0Aceites registrados neste mês\./);
     expect(screen.getByTestId("taxa-novo").textContent).toMatch(/Novo → Contato: 50%/);
     expect(screen.getByTestId("taxa-negociacao").textContent).toMatch(/Negociação → Ganho: — \(0 de 0\)/);
     const acoes = screen.getByRole("region", { name: "Minhas ações de hoje" });

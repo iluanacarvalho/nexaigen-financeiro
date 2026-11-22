@@ -141,7 +141,7 @@ describe("resumo e textos", () => {
     expect(percentualCobertura(0, 0)).toBeNull();
     expect(percentualCobertura(1, 3)).toBe(33.3);
     expect(percentualCobertura(3, 3)).toBe(100);
-    expect(resumirLinhas([])).toEqual({ total: 0, clientes: 0, em_negociacao: 0, perdidos: 0, ex_clientes: 0, nao_abordados: 0, cobertura: null });
+    expect(resumirLinhas([])).toEqual({ total: 0, clientes: 0, em_fechamento: 0, em_negociacao: 0, perdidos: 0, ex_clientes: 0, nao_abordados: 0, cobertura: null });
     expect(resumirLinhas([{ status: "cliente" }, { status: "nao_abordado" }, { status: "nao_abordado" }, { status: "ex_cliente" }])).toMatchObject({ total: 4, clientes: 1, nao_abordados: 2, ex_clientes: 1, cobertura: 25 });
   });
   it("textos", () => {

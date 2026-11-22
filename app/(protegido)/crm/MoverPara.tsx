@@ -3,7 +3,7 @@
 // "Mover para…" (rodada 16-A) — muda a etapa de um lead SEM arrastar:
 // select + botão (acessível por teclado). Perdido pede o motivo (lista) e um
 // detalhe opcional. Num lead perdido, só "Reabrir". 'Ganho' NÃO aparece:
-// o fechamento é o fluxo da rodada 16-B (a API também recusa).
+// "ganho" só pelo registro do aceite (16-B1 — a API também recusa).
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";

@@ -86,7 +86,7 @@ export default function TelaEntidade({
             <ul className="mt-1 flex flex-wrap gap-2" aria-label="Já fecharam conosco">
               {clientes.map((l) => (
                 <li key={l.codigo_ibge} className="rounded-lg border border-emerald-300 bg-white px-3 py-1 text-sm">
-                  <span className="font-semibold">{l.nome}</span> · {rotuloDoPlano(l.contrato!.plano)} · desde {dataBr(l.contrato!.desde)}
+                  <span className="font-semibold">{l.nome}</span> · {rotuloDoPlano(l.contrato!.plano)} · desde {l.contrato!.desde ? dataBr(l.contrato!.desde) : "—"}
                 </li>
               ))}
             </ul>

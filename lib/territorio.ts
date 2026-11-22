@@ -3,13 +3,17 @@
 // as telas (Território, tela da entidade, etiquetas, exportação, lote).
 // Leitura: lib/territorioRepositorio.ts; escrita (lote): lib/territorioServico.ts.
 //
-// STATUS COMERCIAL do município, nesta precedência:
+// STATUS COMERCIAL do município, nesta precedência (16-B1: + "em fechamento"):
 //   1) cliente — há cliente_prefeitura do município (mesmo código IBGE; ou,
 //      se o cliente não tem código, mesmo nome normalizado + UF — e a linha
 //      ganha o aviso "cliente sem código IBGE, corrigir") com contrato
 //      VIGENTE hoje (ativo, em aviso prévio, suspenso). Se TODOS os clientes
 //      do município estão encerrados hoje → "ex-cliente" (regra da 16-A1,
 //      lib/crm.ts#clienteEncerrado), não "cliente";
+//      Se o ÚNICO contrato vigente está 'aguardando_assinatura' (aceite
+//      registrado, contrato ainda não assinado) → "em fechamento": ainda não
+//      é cliente (fora da cobertura), mas NUNCA "não abordado" e o município
+//      não pode virar lead novo;
 //   2) em negociação — lead ABERTO (etapa e vendedor);
 //   3) perdido — o lead mais recente foi perdido (motivo e data);
 //   4) não abordado.
@@ -36,10 +40,11 @@ import { UFS_BRASIL } from "./entidades";
 
 // --- Status ------------------------------------------------------------------------
 
-export const STATUS_COMERCIAIS = ["cliente", "em_negociacao", "perdido", "ex_cliente", "nao_abordado"] as const;
+export const STATUS_COMERCIAIS = ["cliente", "em_fechamento", "em_negociacao", "perdido", "ex_cliente", "nao_abordado"] as const;
 export type StatusComercial = (typeof STATUS_COMERCIAIS)[number];
 export const ROTULO_STATUS_COMERCIAL: Record<StatusComercial, string> = {
   cliente: "Cliente",
+  em_fechamento: "Em fechamento",
   em_negociacao: "Em negociação",
   perdido: "Perdido",
   ex_cliente: "Ex-cliente",
@@ -55,7 +60,8 @@ export interface ClienteDoTerritorio {
   /** Último evento 'contrato_encerrado' (0011), se houver. */
   encerrado_em: string | null;
   plano: string;
-  data_inicio_contrato: string;
+  /** null enquanto aguarda assinatura (16-B1). */
+  data_inicio_contrato: string | null;
 }
 
 export interface LeadDoTerritorio {
@@ -90,7 +96,7 @@ export function clientesDoMunicipioBase<T extends Pick<ClienteDoTerritorio, "nom
   return clientes.filter((c) => c.codigo_ibge === m.codigo_ibge || (c.codigo_ibge === null && c.uf === m.uf && nomeDeMunicipioNormalizado(c.nome) === nome));
 }
 
-/** Leads do município: mesmo código; lead SEM código casa por UF + nome normalizado. Nunca 'ganho' (fechamento é a 16-B). */
+/** Leads do município: mesmo código; lead SEM código casa por UF + nome normalizado. Nunca 'ganho' (virou cliente pelo aceite — 16-B1). */
 export function leadsDoMunicipioBase<T extends Pick<LeadDoTerritorio, "nome_busca" | "uf" | "codigo_ibge" | "etapa">>(leads: readonly T[], m: Pick<MunicipioDoTerritorio, "codigo_ibge" | "nome" | "uf">): T[] {
   const nome = nomeDeMunicipioNormalizado(m.nome);
   return leads.filter((l) => l.etapa !== "ganho" && (l.codigo_ibge === m.codigo_ibge || (l.codigo_ibge === null && l.uf === m.uf && l.nome_busca === nome)));
@@ -119,7 +125,10 @@ export function situacaoComercial(clientes: readonly ClienteDoTerritorio[], lead
   const leadPerdido = leadAberto ? null : ([...leads].filter((l) => l.etapa === "perdido").sort((a, b) => b.atualizado_em.localeCompare(a.atualizado_em))[0] ?? null);
   const datas = clientes.map((c) => c.encerrado_em ?? c.cancelamento_termino_em).filter((d): d is string => d !== null).sort();
   const base = { clienteSemCodigo: clientes.some((c) => c.codigo_ibge === null), leadAberto, leadPerdido };
-  if (vigentes.length > 0) return { ...base, status: "cliente", clienteVigente: vigentes[0], situacaoContrato: statusContratoNaData(vigentes[0], hoje), exClienteEncerradoEm: null };
+  if (vigentes.length > 0) {
+    const situacaoContrato = statusContratoNaData(vigentes[0], hoje);
+    return { ...base, status: situacaoContrato === "aguardando_assinatura" ? "em_fechamento" : "cliente", clienteVigente: vigentes[0], situacaoContrato, exClienteEncerradoEm: null };
+  }
   if (clientes.length > 0) return { ...base, status: "ex_cliente", clienteVigente: null, situacaoContrato: null, exClienteEncerradoEm: datas.at(-1) ?? null };
   return { ...base, status: leadAberto ? "em_negociacao" : leadPerdido ? "perdido" : "nao_abordado", clienteVigente: null, situacaoContrato: null, exClienteEncerradoEm: null };
 }
@@ -202,8 +211,8 @@ export interface LinhaTerritorio {
   microrregiao: string | null;
   mesorregiao: string | null;
   status: StatusComercial;
-  /** Cliente vigente: situação do contrato hoje, plano contratado, início. null fora de "cliente". */
-  contrato: { situacao: string; plano: string; desde: string } | null;
+  /** Cliente vigente: situação do contrato hoje, plano contratado, início (null em "em fechamento": a vigência nasce na assinatura). null fora de "cliente"/"em fechamento". */
+  contrato: { situacao: string; plano: string; desde: string | null } | null;
   ex_cliente_encerrado_em: string | null;
   cliente_sem_codigo: boolean;
   /** Lead aberto (ou o perdido mais recente). Pra vendas, lead de colega = só etapa e vendedor. */
@@ -267,6 +276,7 @@ export function montarLinha(
 /** Texto do status pra tela/planilha: "Cliente — Ativo", "Em negociação — Proposta", "Ex-cliente", … */
 export function rotuloStatusDaLinha(l: Pick<LinhaTerritorio, "status" | "contrato" | "lead">): string {
   if (l.status === "cliente" && l.contrato) return `Cliente — ${rotuloStatusContrato(l.contrato.situacao)}`;
+  if (l.status === "em_fechamento") return "Em fechamento — aguardando assinatura";
   if (l.status === "em_negociacao" && l.lead) return `Em negociação — ${ROTULO_ETAPA[l.lead.etapa]}`;
   return ROTULO_STATUS_COMERCIAL[l.status];
 }
@@ -281,6 +291,8 @@ export function percentualCobertura(clientes: number, total: number): number | n
 export interface ResumoTerritorio {
   total: number;
   clientes: number;
+  /** Aceite registrado, contrato ainda não assinado (16-B1) — NÃO entra na cobertura. */
+  em_fechamento: number;
   em_negociacao: number;
   perdidos: number;
   ex_clientes: number;
@@ -291,7 +303,7 @@ export interface ResumoTerritorio {
 export function resumirLinhas(linhas: readonly Pick<LinhaTerritorio, "status">[]): ResumoTerritorio {
   const n = (s: StatusComercial) => linhas.filter((l) => l.status === s).length;
   const clientes = n("cliente");
-  return { total: linhas.length, clientes, em_negociacao: n("em_negociacao"), perdidos: n("perdido"), ex_clientes: n("ex_cliente"), nao_abordados: n("nao_abordado"), cobertura: percentualCobertura(clientes, linhas.length) };
+  return { total: linhas.length, clientes, em_fechamento: n("em_fechamento"), em_negociacao: n("em_negociacao"), perdidos: n("perdido"), ex_clientes: n("ex_cliente"), nao_abordados: n("nao_abordado"), cobertura: percentualCobertura(clientes, linhas.length) };
 }
 
 /** "37 prefeituras" / "1 prefeitura" / "Nenhuma prefeitura". */
@@ -563,6 +575,7 @@ export type ModoLote = "selecao" | "nao_abordados";
 
 export function motivoParaPular(l: Pick<LinhaTerritorio, "status" | "contrato" | "lead">, modo: ModoLote): string | null {
   if (l.status === "cliente") return `já é cliente (contrato ${rotuloStatusContrato(l.contrato?.situacao ?? "").toLowerCase()})`;
+  if (l.status === "em_fechamento") return "em fechamento (aceite registrado, aguardando assinatura do contrato)";
   if (l.lead && etapaAberta(l.lead.etapa)) return `já tem lead aberto com ${l.lead.vendedor_nome} — etapa ${ROTULO_ETAPA[l.lead.etapa]}`;
   if (modo === "nao_abordados" && l.status === "perdido") return "já foi abordada (lead perdido — reabra o lead, se for o caso)";
   if (modo === "nao_abordados" && l.status === "ex_cliente") return "ex-cliente (não entra em \"não abordadas\" — selecione a linha, se for o caso)";

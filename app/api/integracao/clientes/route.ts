@@ -48,6 +48,19 @@
 // atual (se havia) continua o mesmo, e a resposta traz `avisoContrato`.
 // enviado_por da versão fica nulo (quem envia é o outro sistema) e o
 // motivo registra a origem.
+//
+// FECHAMENTO (rodada 16-B1) — tudo RETROCOMPATÍVEL (o Educa atual segue igual):
+//   - campo OPCIONAL `codigoIbge`: se já existe cliente com esse código
+//     (criado pelo aceite no CRM, ainda sem municipio_id_externo), a chamada
+//     o LIGA ao município do Educa e ATUALIZA esse cliente — nunca duplica.
+//     Código que já pertence a OUTRO município do Educa → 409;
+//   - cliente que veio do fechamento (lead_id preenchido): plano, mensalidade,
+//     taxa e data de início NÃO são sobrescritos pelo Educa — foram
+//     combinados no aceite, e a data de início é a da ASSINATURA;
+//   - cliente já assinado ('ativo'…): ao receber o provisionamento, a tarefa
+//     de IMPLANTAÇÃO aberta é concluída com autor "integração Educa" (a
+//     resposta ganha `implantacaoConcluida: true`). Cliente ainda
+//     aguardando assinatura não é ativado por aqui — só a assinatura ativa.
 
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
@@ -59,6 +72,7 @@ import { CATEGORIA_ALERTA_INTEGRACAO, autorizarIntegracao } from "@/lib/autentic
 import { detalhesDoErro } from "@/lib/validacao";
 import { centavosParaNumeric } from "@/lib/dinheiro";
 import { MENSAGEM_DISPENSA_SEM_TAXA, valoresPadrao, type IdPlano } from "@/lib/planos";
+import { concluirImplantacaoPelaIntegracao } from "@/lib/tarefasServico";
 
 const AVISO_CONTRATO = "não foi possível salvar o contrato anexado";
 
@@ -94,27 +108,48 @@ export async function POST(req: NextRequest) {
   const taxaInsertCentavos = c.taxaImplantacao !== undefined ? c.taxaImplantacao : padraoInsert.taxaImplantacaoCentavos;
   const numericOuNull = (centavos: number | null | undefined) => (centavos === undefined || centavos === null ? null : centavosParaNumeric(centavos));
 
-  let linhas: { id: string; criado: boolean }[];
+  // Fechamento (16-B1): cliente criado pelo aceite casa pelo código IBGE — liga ao município do Educa antes do upsert.
+  if (c.codigoIbge) {
+    const [doCodigo] = await query<{ id: string; municipio_id_externo: string | null }>(`select id, municipio_id_externo from cliente_prefeitura where codigo_ibge = $1`, [c.codigoIbge]);
+    if (doCodigo && doCodigo.municipio_id_externo && doCodigo.municipio_id_externo !== c.municipioIdExterno) {
+      return NextResponse.json({ erro: "Este código IBGE já pertence a outro município cadastrado pelo Educa." }, { status: 409 });
+    }
+    if (doCodigo && !doCodigo.municipio_id_externo) {
+      try {
+        await query(`update cliente_prefeitura set municipio_id_externo = $1 where id = $2 and municipio_id_externo is null`, [c.municipioIdExterno, doCodigo.id]);
+      } catch (erro) {
+        if ((erro as { code?: string })?.code === "23505") return NextResponse.json({ erro: "Este município do Educa já está ligado a outro cliente." }, { status: 409 });
+        throw erro;
+      }
+    }
+  }
+
+  let linhas: { id: string; criado: boolean; status_contrato: string }[];
   try {
-    linhas = await query<{ id: string; criado: boolean }>(
+    // Cliente do FECHAMENTO (lead_id): plano, mensalidade, taxa e data de início (= assinatura) ficam como estão (16-B1).
+    linhas = await query<{ id: string; criado: boolean; status_contrato: string }>(
       `insert into cliente_prefeitura
          (municipio_id_externo, nome, uf, valor_mensal, data_inicio_contrato, plano, dia_vencimento_contrato,
           cnpj, sistema_portal, portal_url, portal_usuario, contato_nome, contato_email, contato_telefone,
-          observacao, taxa_implantacao)
+          observacao, taxa_implantacao, codigo_ibge)
        values ($1, $2, $3, $4::numeric, $5, coalesce($6::text, 'dispensa'), coalesce($7::int, 1),
-               $8, $9, $10, $11, $12, $13, $14, $15, $17::numeric)
+               $8, $9, $10, $11, $12, $13, $14, $15, $17::numeric, $20)
        on conflict (municipio_id_externo) where municipio_id_externo is not null do update set
          nome = excluded.nome,
          uf = excluded.uf,
-         valor_mensal = coalesce($16::numeric, cliente_prefeitura.valor_mensal),
-         data_inicio_contrato = excluded.data_inicio_contrato,
-         plano = coalesce($6::text, cliente_prefeitura.plano),
+         valor_mensal = case when cliente_prefeitura.lead_id is not null then cliente_prefeitura.valor_mensal
+                             else coalesce($16::numeric, cliente_prefeitura.valor_mensal) end,
+         data_inicio_contrato = case when cliente_prefeitura.lead_id is not null then cliente_prefeitura.data_inicio_contrato
+                                     else excluded.data_inicio_contrato end,
+         plano = case when cliente_prefeitura.lead_id is not null then cliente_prefeitura.plano else coalesce($6::text, cliente_prefeitura.plano) end,
          dia_vencimento_contrato = coalesce($7::int, cliente_prefeitura.dia_vencimento_contrato),
          taxa_implantacao = case
+           when cliente_prefeitura.lead_id is not null then cliente_prefeitura.taxa_implantacao
            when $18::boolean then $19::numeric
            when coalesce($6::text, cliente_prefeitura.plano) = 'dispensa' then null
            else cliente_prefeitura.taxa_implantacao
          end,
+         codigo_ibge = coalesce(cliente_prefeitura.codigo_ibge, excluded.codigo_ibge),
          cnpj = coalesce(excluded.cnpj, cliente_prefeitura.cnpj),
          sistema_portal = coalesce(excluded.sistema_portal, cliente_prefeitura.sistema_portal),
          portal_url = coalesce(excluded.portal_url, cliente_prefeitura.portal_url),
@@ -123,7 +158,7 @@ export async function POST(req: NextRequest) {
          contato_email = coalesce(excluded.contato_email, cliente_prefeitura.contato_email),
          contato_telefone = coalesce(excluded.contato_telefone, cliente_prefeitura.contato_telefone),
          observacao = coalesce(excluded.observacao, cliente_prefeitura.observacao)
-       returning id, (xmax = 0) as criado`,
+       returning id, (xmax = 0) as criado, status_contrato`,
       [
         c.municipioIdExterno,
         c.nome,
@@ -143,7 +178,8 @@ export async function POST(req: NextRequest) {
         numericOuNull(c.valorMensal),
         numericOuNull(taxaInsertCentavos),
         c.taxaImplantacao !== undefined,
-        numericOuNull(c.taxaImplantacao)
+        numericOuNull(c.taxaImplantacao),
+        c.codigoIbge ?? null
       ]
     );
   } catch (erro) {
@@ -162,8 +198,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ erro: "Falha ao gravar o cliente — tente novamente em instantes." }, { status: 500 });
   }
 
-  const { id, criado } = linhas[0];
-  if (!contratoPdf) return NextResponse.json({ id, criado });
+  const { id, criado, status_contrato } = linhas[0];
+  // Provisionado no Educa e contrato JÁ assinado: a tarefa de implantação conclui sozinha (autor "integração Educa").
+  const implantacaoConcluida = status_contrato !== "aguardando_assinatura" && (await concluirImplantacaoPelaIntegracao(id));
+  const extra = implantacaoConcluida ? { implantacaoConcluida: true } : {};
+  if (!contratoPdf) return NextResponse.json({ id, criado, ...extra });
 
   const versao = await registrarVersaoPdf(ALVO_CONTRATO, id, {
     buffer: contratoPdf,
@@ -171,5 +210,5 @@ export async function POST(req: NextRequest) {
     motivo: "Enviado pela integração com o nexaigen-educa.",
     enviadoPor: null
   });
-  return NextResponse.json(versao.ok ? { id, criado, versaoContrato: versao.versao } : { id, criado, avisoContrato: AVISO_CONTRATO });
+  return NextResponse.json(versao.ok ? { id, criado, ...extra, versaoContrato: versao.versao } : { id, criado, ...extra, avisoContrato: AVISO_CONTRATO });
 }

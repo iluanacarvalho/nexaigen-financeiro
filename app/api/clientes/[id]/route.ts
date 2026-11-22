@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import { ClientePatchSchema } from "@/lib/clienteSchema";
+import { ClientePatchSchema, MENSAGEM_INICIO_NA_ASSINATURA } from "@/lib/clienteSchema";
 import { NOME_COOKIE_ACCESS, exigirPapel, obterContextoAutenticado } from "@/lib/auth";
 import { detalhesDoErro, ehUuid } from "@/lib/validacao";
 import { centavosParaNumeric } from "@/lib/dinheiro";
@@ -64,6 +64,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // Plano Dispensa com taxa (ex.: PATCH só de plano=dispensa num cliente que tem taxa, ou só de taxa num
     // cliente Dispensa): o CHECK do banco (0010) recusa — vira 400 explicando o que mandar, nunca 500.
     const pg = erro as { code?: string; constraint?: string };
+    // Aguardando assinatura (16-B1): a data de início só nasce do registro da assinatura — nunca pela edição.
+    if (pg?.code === "23514" && pg.constraint === "ck_cliente_prefeitura_inicio_so_depois_da_assinatura") {
+      return NextResponse.json(
+        { erro: "Dados inválidos", detalhes: { formErrors: [], fieldErrors: { data_inicio_contrato: [MENSAGEM_INICIO_NA_ASSINATURA] } } },
+        { status: 400 }
+      );
+    }
     if (pg?.code === "23514" && pg.constraint === "ck_cliente_prefeitura_dispensa_sem_taxa") {
       return NextResponse.json(
         { erro: "Dados inválidos", detalhes: { formErrors: [`${MENSAGEM_DISPENSA_SEM_TAXA} Ao mudar para Dispensa, envie também taxa_implantacao: null.`], fieldErrors: {} } },

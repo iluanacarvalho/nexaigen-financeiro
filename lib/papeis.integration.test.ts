@@ -74,7 +74,14 @@ const req = (url: string, cookie: string, metodo = "GET", corpo?: unknown) =>
 let pessoas: Record<Papel, { id: string; cookie: string; token: string }>;
 
 beforeAll(async () => {
-  pessoas = { admin: await criarConta("admin"), financeiro: await criarConta("financeiro"), vendas: await criarConta("vendas"), rh: await criarConta("rh") };
+  pessoas = {
+    admin: await criarConta("admin"),
+    financeiro: await criarConta("financeiro"),
+    vendas: await criarConta("vendas"),
+    rh: await criarConta("rh"),
+    contratos: await criarConta("contratos"),
+    implantacao: await criarConta("implantacao")
+  };
 });
 
 afterAll(async () => {

@@ -68,7 +68,7 @@ function formDoCliente(c: ClientePrefeitura | null): DadosForm {
     valorMensal: centavosParaTextoCampo(paraCentavos(c.valor_mensal)),
     taxaImplantacao: c.taxa_implantacao === null ? "" : centavosParaTextoCampo(paraCentavos(c.taxa_implantacao)),
     diaVencimento: String(c.dia_vencimento_contrato),
-    dataInicio: c.data_inicio_contrato,
+    dataInicio: c.data_inicio_contrato ?? "",
     sistemaPortal: c.sistema_portal ?? "",
     portalUrl: c.portal_url ?? "",
     contatoEmail: c.contato_email ?? "",
@@ -126,7 +126,8 @@ export default function ClientesPage() {
       // Dispensa nunca tem taxa (o servidor recusa) — na edição manda null, pra limpar a taxa ao mudar pra Dispensa.
       taxa_implantacao: temTaxa ? (dados.taxaImplantacao.trim() === "" ? null : dados.taxaImplantacao.trim()) : editando ? null : undefined,
       dia_vencimento_contrato: Number(dados.diaVencimento || 1),
-      data_inicio_contrato: dados.dataInicio,
+      // Aguardando assinatura (16-B1): a data de início NASCE da assinatura registrada — a edição não manda.
+      data_inicio_contrato: editando?.status_contrato === "aguardando_assinatura" ? undefined : dados.dataInicio,
       sistema_portal: dados.sistemaPortal || undefined,
       portal_url: dados.portalUrl || undefined,
       contato_email: dados.contatoEmail || undefined,
@@ -369,7 +370,13 @@ function FormCliente({ cliente, erro, onSalvar }: { cliente: ClientePrefeitura |
       </section>
 
       <CampoTexto rotulo="Dia de vencimento do contrato" tipo="number" valor={dados.diaVencimento} onMudar={(v) => alterar({ diaVencimento: v })} />
-      <CampoTexto rotulo="Data de início do contrato" tipo="date" valor={dados.dataInicio} onMudar={(v) => alterar({ dataInicio: v })} obrigatorio />
+      {cliente?.status_contrato === "aguardando_assinatura" ? (
+        <p className="text-sm text-indigo-800 sm:col-span-2" data-testid="inicio-na-assinatura">
+          Data de início do contrato: <strong>na assinatura</strong> — este cliente aguarda assinatura (a cobrança só começa quando a assinatura for registrada pela pessoa de Contratos).
+        </p>
+      ) : (
+        <CampoTexto rotulo="Data de início do contrato" tipo="date" valor={dados.dataInicio} onMudar={(v) => alterar({ dataInicio: v })} obrigatorio />
+      )}
       <CampoTexto rotulo="Sistema do portal (ex.: Betha)" valor={dados.sistemaPortal} onMudar={(v) => alterar({ sistemaPortal: v })} />
       <CampoTexto rotulo="URL do portal" valor={dados.portalUrl} onMudar={(v) => alterar({ portalUrl: v })} />
       <CampoTexto rotulo="E-mail de contato" tipo="email" valor={dados.contatoEmail} onMudar={(v) => alterar({ contatoEmail: v })} />

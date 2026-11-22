@@ -15,6 +15,8 @@ const { queryMock, registrarVersaoMock, alertarErroSistemaMock, registrarTentati
   desfazerTentativaMock: vi.fn()
 }));
 vi.mock("@/lib/db", () => ({ query: queryMock }));
+// Conclusão automática da implantação (16-B1) tem teste de integração próprio — aqui, sem tarefa aberta.
+vi.mock("@/lib/tarefasServico", () => ({ concluirImplantacaoPelaIntegracao: vi.fn(async () => false) }));
 vi.mock("@/lib/versionamentoPdf", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/versionamentoPdf")>()),
   registrarVersaoPdf: registrarVersaoMock
@@ -153,7 +155,9 @@ describe("POST /api/integracao/clientes — upsert por municipio_id_externo", ()
     expect(params[15]).toBe("4500.00");
     expect(params[16]).toBeNull();
     expect(params[17]).toBe(false);
-    expect(params).toHaveLength(19);
+    // $20 (16-B1): codigoIbge OPCIONAL — ausente (Educa atual) chega null e não muda nada.
+    expect(params[19]).toBeNull();
+    expect(params).toHaveLength(20);
     expect(sql).not.toContain("contrato_arquivo");
     expect(registrarVersaoMock).not.toHaveBeenCalled();
   });

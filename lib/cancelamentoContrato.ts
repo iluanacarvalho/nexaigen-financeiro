@@ -29,16 +29,29 @@ export const AVISO_PREVIO_DIAS = 30;
 export const DIAS_DO_PERIODO = 30;
 export const TAMANHO_MAXIMO_MOTIVO_CANCELAMENTO = 500;
 
-export type StatusContrato = "ativo" | "em_aviso_previo" | "suspenso" | "encerrado";
+/**
+ * 'aguardando_assinatura' (rodada 16-B1): PRÉ-contrato — cliente criado no
+ * aceite, ainda sem assinatura. SEM vigência e SEM cobrança: sem
+ * data_inicio_contrato, fora de MRR, notas, alertas e mapa público. Vira
+ * 'ativo' só quando a assinatura é registrada (lib/fechamentoServico.ts).
+ */
+export type StatusContrato = "aguardando_assinatura" | "ativo" | "em_aviso_previo" | "suspenso" | "encerrado";
 
-export const STATUS_CONTRATO: readonly StatusContrato[] = ["ativo", "em_aviso_previo", "suspenso", "encerrado"];
+/** Ordem do contrato "mais vivo" pro menos (o Território escolhe o primeiro vigente nesta ordem). */
+export const STATUS_CONTRATO: readonly StatusContrato[] = ["ativo", "em_aviso_previo", "suspenso", "aguardando_assinatura", "encerrado"];
 
 export const ROTULO_STATUS_CONTRATO: Record<StatusContrato, string> = {
+  aguardando_assinatura: "Aguardando assinatura",
   ativo: "Ativo",
   em_aviso_previo: "Em aviso prévio",
   suspenso: "Suspenso",
   encerrado: "Encerrado"
 };
+
+/** Cliente do fechamento que ainda não assinou: sem vigência, sem cobrança (16-B1). */
+export function aguardandoAssinatura(c: { status_contrato: string }): boolean {
+  return c.status_contrato === "aguardando_assinatura";
+}
 
 /** Rótulo em português; status desconhecido aparece como veio (nunca quebra uma tela). */
 export function rotuloStatusContrato(status: string): string {

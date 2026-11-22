@@ -9,10 +9,12 @@
 // escolhido na base; lead SEM código IBGE mostra "Vincular ao município"
 // (etiquetas de entidade só com município vinculado).
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { centavosParaTextoCampo, formatarMoeda } from "@/lib/dinheiro";
-import { AVISO_LGPD, ORIGENS, ROTULO_ETAPA, ROTULO_INTERACAO, ROTULO_MOTIVO_PERDA, ROTULO_ORIGEM, TIPOS_CONTATO, type MotivoPerda, type Origem, type TipoContato, type TipoInteracao } from "@/lib/crm";
+import { rotuloStatusContrato } from "@/lib/cancelamentoContrato";
+import { AVISO_LGPD, etapaAberta, ORIGENS, ROTULO_ETAPA, ROTULO_INTERACAO, ROTULO_MOTIVO_PERDA, ROTULO_ORIGEM, TIPOS_CONTATO, type MotivoPerda, type Origem, type TipoContato, type TipoInteracao } from "@/lib/crm";
 import type { InteracaoLead, LeadListado } from "@/lib/crmRepositorio";
 import { PLANOS, rotuloDoPlano } from "@/lib/planos";
 import { UF_POR_CODIGO } from "@/lib/ibge";
@@ -150,7 +152,8 @@ export default function DetalheLead({
   admin,
   vendedores,
   entidades = [],
-  ufsLiberadas = []
+  ufsLiberadas = [],
+  fechamento = null
 }: {
   lead: LeadListado;
   historico: InteracaoLead[];
@@ -160,6 +163,8 @@ export default function DetalheLead({
   entidades?: EntidadeEtiqueta[];
   /** UFs liberadas no Território: nelas o município vem da base (16-A3). */
   ufsLiberadas?: string[];
+  /** Cliente criado pelo aceite deste lead (16-B1) — null se ainda não houve aceite. */
+  fechamento?: { cliente_id: string; nome: string; status_contrato: string } | null;
 }) {
   const router = useRouter();
   const recarregar = () => router.refresh();
@@ -191,6 +196,25 @@ export default function DetalheLead({
         Etapa: <strong>{ROTULO_ETAPA[lead.etapa]}</strong> · Vendedor: {lead.vendedor_nome}
         {lead.motivo_perda && ` · Motivo da perda: ${ROTULO_MOTIVO_PERDA[lead.motivo_perda as MotivoPerda]}${lead.detalhe_perda ? ` (${lead.detalhe_perda})` : ""}`}
       </p>
+      {etapaAberta(lead.etapa) && (
+        <div className="mb-3">
+          <Link href={`/crm/${lead.id}/aceite`} className="inline-block rounded bg-teal px-4 py-2 text-sm font-semibold text-white">
+            Registrar aceite da prefeitura
+          </Link>
+          <span className="ml-2 text-xs text-slate-500">Só depois do aceite: cria o cliente (aguardando assinatura) e a tarefa de Contratos.</span>
+        </div>
+      )}
+      {fechamento && (
+        <section role="status" aria-label="Fechamento" className="mb-3 rounded border border-indigo-300 bg-indigo-50 p-3 text-sm text-indigo-900" data-testid="fechamento">
+          <p>
+            Aceite registrado — cliente <strong>{fechamento.nome}</strong> ({rotuloStatusContrato(fechamento.status_contrato).toLowerCase()}).
+            {fechamento.status_contrato === "aguardando_assinatura" && " A pessoa de Contratos gera o contrato, colhe a assinatura e registra — a cobrança só começa na assinatura."}
+          </p>
+          <a href={`/api/clientes/${fechamento.cliente_id}/contrato/gerar`} className="mt-1 inline-block font-medium underline">
+            Baixar o contrato gerado (.docx)
+          </a>
+        </section>
+      )}
       <div className="mb-1 flex flex-wrap items-center gap-2">
         <Selos lead={lead} />
         <span className="text-xs text-slate-600">

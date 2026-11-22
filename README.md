@@ -765,3 +765,101 @@ Um ex-cliente com lead aberto aparece como **ex-cliente** (precedência 1); a et
 - **Suíte de integração:** os testes com banco temporário fecham o pool e as conexões **antes** de apagar o banco (`encerrarBancoTemporario`). O apagamento ainda confere se sobrou alguém conectado e, se sobrou, falha dizendo quem. Antes, uma conexão parada morta pelo `DROP … WITH (FORCE)` aparecia como "Unhandled Errors" e o comando saía com **código 1 mesmo com todos os testes passando**.
 - **Regra:** sempre conferir o código de saída do comando, não só a contagem de testes.
 
+## 31. Fechamento: aceite no CRM → cliente → contrato → tarefas (rodada 16-B1)
+
+**Regra central (dona do produto): a vigência e a cobrança começam na DATA DE ASSINATURA do contrato.**
+- No **aceite**, o cliente nasce em `aguardando_assinatura`: **sem data de início, sem cobrança**, fora de MRR, notas e alertas.
+- Só quando a **assinatura** é registrada (data + PDF) ele vira `ativo`, com `data_inicio_contrato` = data da assinatura. A partir daí valem os períodos de 30 dias, as notas e o MRR.
+
+**Estados do cliente:** `aguardando_assinatura` → `ativo` → (`em_aviso_previo` → `encerrado`) ou `suspenso`. A data de início é nula **só** em `aguardando_assinatura` (CHECK `ck_cliente_prefeitura_inicio_so_depois_da_assinatura`).
+
+**Fluxo:**
+1. **Aceite:** no detalhe do lead (etapa aberta, dono do lead ou admin), botão **"Registrar aceite da prefeitura"**. O formulário tem 3 blocos:
+   - **Município:** vem da base, e o lead precisa ter código IBGE (senão, "vincular ao município" antes).
+   - **Contrato:** plano (o de interesse do lead, senão o sugerido pela população), mensalidade e taxa com os padrões de `lib/planos.ts` (editáveis; Dispensa nunca tem taxa) e data prevista de assinatura.
+   - **Dados da prefeitura:** CNPJ com dígito verificador, endereço com CEP, representante legal (nome e cargo) e contato operacional (pré-preenchido do lead).
+
+   Depois vem a prévia **"Confira antes de confirmar"**, que diz o que vai acontecer.
+2. **Ao confirmar**, numa **única transação**:
+   - o lead vira **Ganho** (com histórico);
+   - o cliente é criado em `aguardando_assinatura`, ligado ao lead;
+   - entra o evento `aceite_registrado`;
+   - abre a tarefa de **Contratos** (prazo: 5 dias corridos, ou a data prevista se for depois).
+
+   É o **único** caminho que grava "Ganho"; a mudança de etapa comum continua recusando.
+   - **Recusas (409):** aceite repetido, cliente **vigente** do mesmo município, lead sem código IBGE, versão velha do lead. Lead de colega dá 404.
+   - **Ex-cliente:** a **mesma linha** do cliente volta para `aguardando_assinatura` (o código IBGE é único entre clientes). Notas e eventos do contrato antigo ficam, e a autorização antiga de divulgação no mapa é revogada (evento `divulgacao_revogada`).
+3. **Contratos:** a pessoa de Contratos baixa o **contrato gerado** (.docx) e, quando a prefeitura assina, registra **data (não futura) + PDF assinado** na tarefa.
+   - O PDF entra primeiro pelo armazenamento versionado de sempre. Se o bucket estiver fora do ar, aparece a mesma mensagem de sempre e **nada muda**.
+   - Com o PDF aceito, numa transação: o cliente vira `ativo` com início = assinatura, entra o evento `assinatura_registrada`, a tarefa de Contratos é concluída e abre a tarefa de **Implantação** (prazo: 15 dias corridos).
+   - Nenhuma nota é criada sozinha (a nota de implantação continua sendo o botão explícito).
+4. **Implantação:** a pessoa de Implantação conclui a tarefa (com observação), ou ela **conclui sozinha** quando o Educa provisiona o município (autor "integração Educa").
+
+**Papéis novos (`lib/papeis.ts`):**
+- **Contratos:** área `operacao` (fila de tarefas e registro da assinatura) e `contrato_gerado` (baixar o contrato). Nada financeiro (Painel, notas, alertas, checagem), nada de CRM.
+- **Implantação:** só a área `operacao`, com os dados mínimos do cliente (nome, plano, UF, código IBGE, contato).
+- **Vendas:** registra o aceite dos **seus** leads e baixa o contrato gerado do **seu** fechamento.
+- **Financeiro e rh:** sem acesso às áreas novas.
+- **Admin:** tudo, inclusive **Modelos de contrato** (`modelos_contrato`, só admin).
+
+Os dados de cliente que Contratos e Implantação veem saem de consultas próprias, montadas chave a chave (teste de chaves exatas). Eles **nunca** usam as rotas completas de `/api/clientes`.
+
+**Tarefas** (`/operacao`, `tarefa_operacional`):
+- **Abas:** "Minhas tarefas", "Fila do meu papel" e, só para admin, "Todas" e "Em atraso". Selos "atrasada" e "vence hoje"; a contagem de abertas e atrasadas também aparece na página inicial do papel.
+- **Isolamento:** cada pessoa só enxerga e age nas tarefas do **seu** papel. Tarefa de outro papel dá 404.
+- **Ações:** assumir, devolver, concluir (a tarefa de assinatura conclui sozinha), alterar prazo e cancelar (estas duas só admin; cancelar exige motivo).
+- **Histórico:** `tarefa_historico` é somente acréscimo e imutável.
+- **Concorrência:** duas pessoas assumindo ao mesmo tempo resulta numa só vencedora (testado com 2 conexões, 20 rodadas).
+
+**Modelos de contrato** (`/modelos-contrato`, só admin; `contrato_modelo`):
+- **Um modelo por plano.** Versões **imutáveis**: um trigger bloqueia mudar texto, título, plano ou versão e bloqueia apagar.
+- **Para trocar o texto:** "Editar (nova versão)" cria a próxima versão em **rascunho**, e a anterior não muda.
+- **Pré-visualização** com dados fictícios de exemplo.
+- **Aprovar** pede confirmação e registra quem e quando; a versão aprovada não muda mais.
+- **Qual versão a geração usa:** a **aprovada** mais recente do plano. Sem nenhuma aprovada, usa o **rascunho** mais recente, e o documento sai com a faixa **"RASCUNHO — SEM VALIDADE JURÍDICA — modelo vX do plano Y"** no cabeçalho de todas as páginas.
+- **Rodapé:** "Gerado em <data> pela plataforma NEXAIGEN, modelo <plano> v<versão>".
+- **Seed:** a migration traz 1 rascunho **provisório** por plano, só com as cláusulas já combinadas e "[A SER REVISADO PELO JURÍDICO]" nos trechos jurídicos. O texto real é o admin que coloca pela tela.
+
+**Formato do texto do modelo:** `# Título`, `## Subtítulo`, linha em branco separa parágrafos, `**negrito**`. Campos (lista **fechada** — campo desconhecido é recusado ao **salvar**):
+
+| Campo | O que entra |
+|---|---|
+| `{{municipio_nome}}`, `{{uf}}`, `{{codigo_ibge}}` | Município (base do IBGE) |
+| `{{cnpj}}` | CNPJ formatado (12.345.678/0001-95) |
+| `{{endereco_completo}}` | Logradouro, número, complemento, bairro, município — UF, CEP |
+| `{{representante_nome}}`, `{{representante_cargo}}` | Representante legal |
+| `{{plano_rotulo}}` | Plano contratado |
+| `{{valor_mensal}}`, `{{valor_mensal_extenso}}` | Mensalidade (R$ e por extenso) |
+| `{{taxa_implantacao}}`, `{{taxa_implantacao_extenso}}` | Taxa de implantação — o **parágrafo some** quando não há taxa |
+| `{{data_assinatura}}` | Por extenso, ou "____ de ________ de ____" se ainda não assinado |
+| `{{contato_nome}}`, `{{contato_cargo}}`, `{{contato_email}}`, `{{contato_telefone}}` | Contato operacional |
+| `{{data_geracao}}` | Data em que o documento foi gerado |
+
+Se faltar um dado obrigatório do cliente, a geração responde 422 com a lista **exata** do que falta. O .docx é montado na hora, por um escritor próprio (`lib/docx.ts`, reaproveitando o ZIP do XLSX, sem dependência nova), e **nada é guardado**. Cada geração registra o evento `contrato_gerado` com o modelo usado. Valores por extenso: `lib/extenso.ts`.
+
+**Onde "aguardando assinatura" fica de fora (auditado):**
+- **MRR, Painel e Dashboard:** fora do valor, das contagens e da tabela de clientes do Painel.
+- **Novos contratos:** fora do relatório; o cliente entra no mês da assinatura.
+- **Cron de prazos e alertas, e notas:** criar nota é recusado.
+- **"Implantação a cobrar":** não conta.
+- **Mapa público:** a divulgação não pode ser autorizada.
+- **Cancelamento** (equipe e Educa): recusado com 409, nunca 500.
+- **Território:** status **"Em fechamento"** (fora da cobertura; nunca "não abordado"; o lote pula).
+- **CRM:** não deixa abrir lead novo do município.
+- **Clientes:** selo "Aguardando assinatura"; a edição não aceita data de início.
+
+**Integração com o Educa** (para a 16-B2):
+- `GET /api/integracao/implantacoes/<municipioIdExterno-uuid OU codigoIbge>` usa o mesmo `Authorization: Bearer <INTEGRACAO_SECRET>` e a mesma proteção (tempo constante, rate limit), sem cache.
+- **Resposta:** `{ nome, uf, codigo_ibge, plano, contato: { nome, cargo, email, telefone }, data_assinatura, status }`. Nada financeiro, nada de CNPJ, endereço ou representante.
+- **Erros:** 409 se o cliente ainda aguarda assinatura (a implantação só começa depois), 404 sem cliente, 400 chave inválida.
+- **Cadastro (`POST /api/integracao/clientes`):** aceita o campo **opcional** `codigoIbge`. Com ele, o Educa **liga** o município ao cliente criado pelo fechamento (atualiza, nunca duplica), sem sobrescrever plano, valores e data de início (que é a da assinatura), e conclui a tarefa de implantação (`implantacaoConcluida: true` na resposta). Sem o campo, tudo funciona como antes.
+
+**Dados:**
+- **CNPJ:** só os 14 dígitos (o que existia foi normalizado; o que não era CNPJ foi para `cnpj_legado`, nada apagado).
+- **CPF:** **não guardamos** (LGPD: não é necessário agora).
+
+**Testes:**
+- **Unitários:** `lib/extenso.test.ts`, `lib/contratoModelo.test.ts` (inclui o .docx: abre como ZIP, XML bem formado e conferido pelo `xmllint`, e conversão de verificação pelo `textutil` do macOS quando existe) e `lib/fechamento.test.ts`.
+- **Integração** (banco temporário): `lib/fechamento.integration.test.ts` e `lib/tarefas.concorrencia.integration.test.ts`.
+- **Componente:** `app/(protegido)/fechamento.component.test.tsx`.
+

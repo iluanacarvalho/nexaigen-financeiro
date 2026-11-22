@@ -11,7 +11,7 @@
 // (controle otimista: o PATCH manda a versão que leu).
 //
 // 'ganho' nunca é gravado aqui (lib/crm.ts#validarTransicao): o fechamento
-// é a rodada 16-B.
+// é o registro do aceite (rodada 16-B1, lib/fechamentoServico.ts).
 //
 // `executor` opcional em todas: roda dentro de uma transação que já existe
 // (testes); sem ele, cada função abre a sua.

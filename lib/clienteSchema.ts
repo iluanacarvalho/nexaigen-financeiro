@@ -21,6 +21,33 @@
 import { z } from "zod";
 import { lerValorMonetario } from "./dinheiro";
 import { IDS_PLANOS, IDS_PLANOS_DESCONTINUADOS, MENSAGEM_DISPENSA_SEM_TAXA, mensagemPlanoDescontinuado, precosDeCriacao } from "./planos";
+import { cnpjValido, somenteDigitos } from "./cnpj";
+
+export const MENSAGEM_INICIO_NA_ASSINATURA =
+  "Este cliente aguarda assinatura: a data de início do contrato vem do registro da assinatura (tarefa de Contratos), não da edição.";
+
+/**
+ * CNPJ nas rotas da EQUIPE (16-B1): o banco guarda só os 14 dígitos (CHECK
+ * da 0017) — pontuação é aceita e removida; dígito verificador errado → 400.
+ * Vazio = sem CNPJ.
+ */
+const cnpjDaEquipe = z
+  .string()
+  .trim()
+  .transform(somenteDigitos)
+  .refine((v) => v === "" || cnpjValido(v), { error: "CNPJ inválido — confira os 14 dígitos." })
+  .transform((v) => (v === "" ? undefined : v));
+
+/**
+ * CNPJ vindo do EDUCA: o contrato público da integração aceitava texto livre
+ * — continua aceitando (nunca 400 por isso). Válido → os 14 dígitos; o que
+ * não for um CNPJ válido é IGNORADO (no UPDATE mantém o salvo; no INSERT fica
+ * sem CNPJ) em vez de quebrar o cadastro.
+ */
+const cnpjDaIntegracao = z
+  .string()
+  .optional()
+  .transform((v) => (v !== undefined && cnpjValido(v) ? somenteDigitos(v) : undefined));
 
 const planoSchema = z.enum(IDS_PLANOS, {
   error: (issue) =>
@@ -47,7 +74,7 @@ function textoMonetario() {
 const CAMPOS_CLIENTE = {
   nome: z.string().min(3),
   uf: z.string().length(2),
-  cnpj: z.string().optional(),
+  cnpj: cnpjDaEquipe.optional(),
   plano: planoSchema,
   valor_mensal: textoMonetario(),
   /** null = sem implantação combinada. */
@@ -141,7 +168,9 @@ export const IntegracaoClienteSchema = z
     dataInicioContrato: c.data_inicio_contrato,
     plano: c.plano.optional(),
     diaVencimentoContrato: c.dia_vencimento_contrato.optional(),
-    cnpj: c.cnpj,
+    cnpj: cnpjDaIntegracao,
+    /** Código IBGE (16-B1, OPCIONAL — retrocompatível): casa com o cliente criado pelo fechamento no CRM. */
+    codigoIbge: z.string().trim().regex(/^[0-9]{7}$/, { error: "O código IBGE do município tem exatamente 7 dígitos." }).optional(),
     sistemaPortal: c.sistema_portal,
     portalUrl: c.portal_url,
     portalUsuario: c.portal_usuario,

@@ -10,6 +10,7 @@ import { listarVendedores, obterLead } from "@/lib/crmRepositorio";
 import { etiquetasPorMunicipio, ufsLiberadas } from "@/lib/territorioRepositorio";
 import { hojeEmSaoPaulo } from "@/lib/painelFinanceiro";
 import { ehUuid } from "@/lib/validacao";
+import { query } from "@/lib/db";
 import DetalheLead from "./DetalheLead";
 
 export default async function LeadPage({ params }: { params: Promise<{ id: string }> }) {
@@ -24,10 +25,12 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   const { historico, ...dados } = lead;
   // Etiquetas das entidades do município (rodada 16-A2) — SÓ pelo código IBGE do lead (16-A3). Sem código: a tela oferece "Vincular ao município".
   const codigo = dados.codigo_ibge;
-  const [entidades, liberadas, vendedores] = await Promise.all([
+  const [entidades, liberadas, vendedores, [fechamento]] = await Promise.all([
     codigo ? etiquetasPorMunicipio([codigo], escopo, hoje).then((m) => m.get(codigo) ?? []) : Promise.resolve([]),
     ufsLiberadas(),
-    escopo.admin ? listarVendedores() : Promise.resolve([])
+    escopo.admin ? listarVendedores() : Promise.resolve([]),
+    // Cliente criado pelo aceite deste lead (16-B1) — o lead já foi lido no escopo de quem pede.
+    query<{ cliente_id: string; nome: string; status_contrato: string }>(`select id as cliente_id, nome, status_contrato from cliente_prefeitura where lead_id = $1`, [dados.id])
   ]);
-  return <DetalheLead lead={dados} historico={historico} admin={escopo.admin} vendedores={vendedores} entidades={entidades} ufsLiberadas={liberadas} />;
+  return <DetalheLead lead={dados} historico={historico} admin={escopo.admin} vendedores={vendedores} entidades={entidades} ufsLiberadas={liberadas} fechamento={fechamento ?? null} />;
 }

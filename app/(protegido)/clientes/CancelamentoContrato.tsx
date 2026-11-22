@@ -36,7 +36,9 @@ export function PainelRegistrarCancelamento({ cliente, onConcluido, onDesistir }
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
 
-  const validacao = validarPedido({ dataPedido, hoje, dataInicioContrato: cliente.data_inicio_contrato, statusContrato: cliente.status_contrato });
+  // Só aparece pra contrato ATIVO — que sempre tem data de início (CHECK da 0017: nula só aguardando assinatura).
+  const inicio = cliente.data_inicio_contrato ?? "";
+  const validacao = validarPedido({ dataPedido, hoje, dataInicioContrato: inicio, statusContrato: cliente.status_contrato });
 
   function continuar() {
     setErro(null);
@@ -73,7 +75,7 @@ export function PainelRegistrarCancelamento({ cliente, onConcluido, onDesistir }
                 type="date"
                 value={dataPedido}
                 max={hoje}
-                min={cliente.data_inicio_contrato}
+                min={inicio || undefined}
                 onChange={(e) => setDataPedido(e.target.value)}
                 className="mt-1 block rounded border border-slate-300 px-2 py-1"
               />

@@ -124,7 +124,7 @@ export default function PainelCrm({
       <section aria-label="Números do funil" className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Numero titulo="Leads abertos" valor={String(resumo.abertos.quantidade)} />
         <Numero titulo="Valor mensal estimado em aberto" valor={formatarMoeda(resumo.abertos.valorCentavos)} />
-        <Numero titulo="Ganhos no mês" valor="—" legenda="O fechamento (lead → cliente) entra na rodada 16-B." />
+        <Numero titulo="Ganhos no mês" valor={String(resumo.ganhosNoMes)} legenda="Aceites registrados neste mês." />
         <Numero titulo="Perdidos no mês" valor={String(resumo.perdidosNoMes)} />
       </section>
 

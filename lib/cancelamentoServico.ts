@@ -206,6 +206,10 @@ export async function encerrarContrato(
   return executar(async (c) => {
     const cliente = await travarCliente(c, clienteId);
     if (cliente.status_contrato === "encerrado") return resultado(cliente, false);
+    // 16-B1: pré-contrato (aceite registrado, ainda sem assinatura) não tem vigência pra encerrar.
+    if (cliente.status_contrato === "aguardando_assinatura") {
+      throw new Recusada({ ok: false, motivo: "transicao_invalida", erro: "Este cliente ainda aguarda a assinatura do contrato — não há contrato vigente para encerrar." });
+    }
 
     const termino = cliente.cancelamento_termino_em;
     if (cliente.status_contrato === "em_aviso_previo" && termino && avisoPrevioVencido(termino, hoje)) {

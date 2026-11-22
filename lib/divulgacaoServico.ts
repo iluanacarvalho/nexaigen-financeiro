@@ -8,7 +8,8 @@
 //     null = "posição pendente"). Recusado enquanto o cliente estiver
 //     AUTORIZADO: trocar o município de quem está no mapa público exige
 //     revogar antes (evita mover/apagar um ponto público sem querer).
-//   - autorizar: exige código e posição (o CHECK da 0013 garante de novo);
+//   - autorizar: exige código e posição (o CHECK da 0013 garante de novo) e
+//     contrato JÁ ASSINADO (16-B1: 'aguardando_assinatura' é recusado);
 //     grava quando e quem; evento 'divulgacao_autorizada'.
 //   - revogar: sai do mapa NA HORA no banco (o cache de 60s é só de borda,
 //     no endpoint público); limpa quando/quem; evento 'divulgacao_revogada'.
@@ -28,6 +29,7 @@ interface ClienteTravado {
   codigo_ibge: string | null;
   latitude: string | null;
   autorizacao_divulgacao: boolean;
+  status_contrato: string;
 }
 
 class Recusa extends Error {
@@ -40,7 +42,7 @@ const NAO_ENCONTRADO = { ok: false as const, motivo: "nao_encontrado" as const, 
 
 async function travar(c: Executor, clienteId: string): Promise<ClienteTravado> {
   const [cliente] = await query<ClienteTravado>(
-    `select nome, uf, codigo_ibge, latitude, autorizacao_divulgacao from cliente_prefeitura where id = $1 for update`,
+    `select nome, uf, codigo_ibge, latitude, autorizacao_divulgacao, status_contrato from cliente_prefeitura where id = $1 for update`,
     [clienteId],
     c
   );
@@ -95,6 +97,10 @@ export function autorizarDivulgacao(clienteId: string, equipeId: string, hoje: s
   return executar(async (c) => {
     const cliente = await travar(c, clienteId);
     if (cliente.autorizacao_divulgacao) throw new Recusa({ ok: false, motivo: "transicao_invalida", erro: "Este cliente já está autorizado no mapa público." });
+    // 16-B1: pré-contrato não vai ao mapa — a divulgação é uma cláusula do contrato ASSINADO.
+    if (cliente.status_contrato === "aguardando_assinatura") {
+      throw new Recusa({ ok: false, motivo: "transicao_invalida", erro: "Este cliente ainda aguarda a assinatura do contrato — a divulgação só pode ser autorizada depois da assinatura." });
+    }
     if (!cliente.codigo_ibge || cliente.latitude === null) {
       throw new Recusa({ ok: false, motivo: "transicao_invalida", erro: "Para autorizar, o cliente precisa de código IBGE e posição (busque a posição antes)." });
     }

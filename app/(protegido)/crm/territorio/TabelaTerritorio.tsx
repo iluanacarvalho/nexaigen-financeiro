@@ -66,7 +66,8 @@ function Numero({ titulo, valor }: { titulo: string; valor: string }) {
 }
 
 function AcaoDaLinha({ linha, aoAbrir, abrindo }: { linha: LinhaTerritorio; aoAbrir: () => void; abrindo: boolean }) {
-  if (linha.status === "cliente" && linha.contrato) return <span className="text-xs text-emerald-800">Cliente desde {dataBr(linha.contrato.desde)}</span>;
+  if (linha.status === "cliente" && linha.contrato?.desde) return <span className="text-xs text-emerald-800">Cliente desde {dataBr(linha.contrato.desde)}</span>;
+  if (linha.status === "em_fechamento") return <span className="text-xs text-indigo-800">Em fechamento — aguardando assinatura</span>;
   const lead = linha.lead;
   const elegivel = motivoParaPular(linha, "selecao") === null;
   return (
@@ -154,9 +155,10 @@ export default function TabelaTerritorio(p: PropsTabelaTerritorio) {
         </ul>
       )}
 
-      <section aria-label="Resumo" className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+      <section aria-label="Resumo" className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
         <Numero titulo="Prefeituras" valor={String(p.resumo.total)} />
         <Numero titulo="Clientes" valor={String(p.resumo.clientes)} />
+        <Numero titulo="Em fechamento" valor={String(p.resumo.em_fechamento)} />
         <Numero titulo="Em negociação" valor={String(p.resumo.em_negociacao)} />
         <Numero titulo="Perdidos" valor={String(p.resumo.perdidos)} />
         <Numero titulo="Ex-clientes" valor={String(p.resumo.ex_clientes)} />

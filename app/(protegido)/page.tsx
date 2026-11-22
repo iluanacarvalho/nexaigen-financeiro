@@ -7,6 +7,8 @@
 import { redirect } from "next/navigation";
 import { contextoDaPagina } from "@/lib/authPagina";
 import { podeAcessar } from "@/lib/papeis";
+import { hojeEmSaoPaulo } from "@/lib/painelFinanceiro";
+import { contarTarefas } from "@/lib/tarefasServico";
 import BoasVindas from "./BoasVindas";
 import Dashboard from "./Dashboard";
 
@@ -14,5 +16,7 @@ export default async function Inicio() {
   const contexto = await contextoDaPagina();
   if (!contexto) redirect("/login");
   if (podeAcessar(contexto.papel, "dashboard")) return <Dashboard />;
-  return <BoasVindas nome={contexto.nome} papel={contexto.papel} />;
+  // Contratos e Implantação (16-B1): a página inicial mostra as tarefas abertas e atrasadas do papel.
+  const tarefas = podeAcessar(contexto.papel, "operacao") ? await contarTarefas({ equipeId: contexto.equipeId, papel: contexto.papel }, hojeEmSaoPaulo(new Date())) : null;
+  return <BoasVindas nome={contexto.nome} papel={contexto.papel} tarefas={tarefas} />;
 }

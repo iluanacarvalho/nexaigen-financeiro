@@ -36,8 +36,10 @@ interface MudancaPendente {
 const DESCRICAO_PAPEL: Record<Papel, string> = {
   admin: "tudo, inclusive Equipe",
   financeiro: "clientes, notas, painel, novos contratos, checagem, alertas e dashboard",
-  vendas: "ainda nenhum módulo (reservado para o CRM)",
-  rh: "ainda nenhum módulo (reservado para o RH)"
+  vendas: "o CRM (os próprios leads, território e entidades) e o registro do aceite dos seus leads",
+  rh: "ainda nenhum módulo (reservado para o RH)",
+  contratos: "a fila de tarefas de contrato: dados do cliente em fechamento, contrato gerado e registro da assinatura — nada financeiro, nada de CRM",
+  implantacao: "a fila de tarefas de implantação, com os dados mínimos do cliente — nada financeiro, nada de CRM"
 };
 
 async function buscarColegas(): Promise<Colega[]> {
